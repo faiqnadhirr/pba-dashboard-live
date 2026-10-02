@@ -1,6 +1,6 @@
 "use client";
 import React, { useMemo, useState } from "react";
-import { Card, Kpi, Note, DataTable, Chips, LevelTag, StatusTag, EvTag, Tag, EvidenceTable, AvailTriple, Bar100, STATUS, fInt, fMin, fH, fPct, isNum } from "@/components/ui";
+import { Card, Kpi, Note, DataTable, Chips, LevelTag, BbtCell, bbtCsv, StatusTag, EvTag, Tag, EvidenceTable, AvailTriple, Bar100, STATUS, fInt, fMin, fH, fPct, isNum } from "@/components/ui";
 import { STATUS_ORDER } from "@/lib/logic";
 
 const LV = ["P1", "P2", "P3", "P4"];
@@ -19,7 +19,8 @@ export default function BbsActions({ scope, cfg, setPick }) {
     k, measured: scope.filter((s) => s.bbt_status === k && s.battery.measured).length,
     estimated: scope.filter((s) => s.bbt_status === k && !s.battery.measured && s.battery.source === "ESTIMATED").length,
     ticket: scope.filter((s) => s.bbt_status === k && s.battery.source === "TICKET").length,
-    none: scope.filter((s) => s.bbt_status === k && !s.battery.measured && !["ESTIMATED", "TICKET"].includes(s.battery.source)).length,
+    unverified: scope.filter((s) => s.bbt_status === k && s.battery.unverified && s.battery.source !== "TICKET").length,
+    none: scope.filter((s) => s.bbt_status === k && !s.battery.measured && !s.battery.unverified && !["ESTIMATED", "TICKET"].includes(s.battery.source)).length,
   })), [scope]);
   const sources = [...new Set(all.map((s) => s.battery.source))].sort();
 
@@ -28,28 +29,28 @@ export default function BbsActions({ scope, cfg, setPick }) {
       <Note>
         <b>Battery vs design</b> ({b.design_minutes} min, editable in Config): ✔ Meets design ≥ 100% · ◐ Below design {b.ok_pct * 100}–100% · ◆ Degraded {b.degraded_pct * 100}–{b.ok_pct * 100}% · ▲ Critical &lt; {b.degraded_pct * 100}% · ✖ Dead ≤ {b.dead_max_minutes} min.
         <b> Evidence precedence:</b> measured BBT &gt; validated inspection &gt; ticket &gt; derived &gt; estimate — an estimate can only trigger <i>Inspect &amp; verify</i>, never a replacement.
-        <b> Priority</b> P1–P4 (separate scale) = BBT gap · PLN history · class · dependency · availability gap; measured Dead/Critical cannot be lower than {cfg.severity_floor.measured_dead_critical}. P1/P2 never get “Monitor”.
+        <b> BBS priority</b> BBS-P1…P4 (separate from MBP-P1…P4) = BBT gap · PLN history · class · dependency · availability gap; measured Dead/Critical (ACTUAL, or DERIVED backed by site downtime) cannot be lower than BBS-{cfg.severity_floor.measured_dead_critical}. BBS-P1/P2 never get “Monitor”. A ticket-based status shows “no battery per ticket” instead of a number.
       </Note>
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <Kpi scope="filtered" label="Sites needing action" value={fInt(rows.length)} sub={`of ${fInt(scope.length)} in scope`} />
-        {LV.map((l, i) => <Kpi key={l} scope="filtered" label={`${l} · Batch ${i + 1}`} value={fInt(c((s) => s.bbs_priority_level === l))} sub={cfg.action_batches[l]?.split(" — ")[1]} tone={["crit", "warn", "navy", "slate"][i]} />)}
-        <Kpi scope="filtered" label="Inspect & verify (estimated)" value={fInt(c((s) => s.rule?.startsWith("R2")))} sub="no replacement on an estimate" tone="warn" />
+        {LV.map((l, i) => <Kpi key={l} scope="filtered" label={`BBS-${l} · Batch ${i + 1}`} value={fInt(c((s) => s.bbs_priority_level === l))} sub={cfg.action_batches[l]?.split(" — ")[1]} tone={["crit", "warn", "navy", "slate"][i]} />)}
+        <Kpi scope="filtered" label="Inspect & verify" value={fInt(c((s) => s.rule?.startsWith("R2")))} sub={`${fInt(c((s) => s.rule === "R2b" || s.rule?.startsWith("R2b")))} unverified derived · rest estimated`} tone="warn" />
       </div>
 
       <Card title="Battery vs design — evidence basis" sub="All sites in scope. Measured (ACTUAL/DERIVED) is kept apart from ESTIMATED and ticket-based status, so estimates never look like measurements.">
         <div className="overflow-x-auto">
           <table className="w-full text-[12.5px] tabular min-w-[620px]">
-            <thead><tr className="text-slate text-left">{["Status", "Measured", "Ticket", "Estimated", "No evidence", "Distribution"].map((h) => <th key={h} className="py-1 pr-2 border-b border-line">{h}</th>)}</tr></thead>
-            <tbody>{dist.map((d) => { const tot = d.measured + d.ticket + d.estimated + d.none; return (
-              <tr key={d.k} className="border-b border-line/60"><td className="py-1 pr-2"><StatusTag v={d.k} /></td><td>{fInt(d.measured)}</td><td>{fInt(d.ticket)}</td><td>{fInt(d.estimated)}</td><td>{fInt(d.none)}</td>
-                <td className="w-[40%] py-1">{tot > 0 && <Bar100 height={10} parts={[{ label: "measured", c: "#2a78d6", v: d.measured }, { label: "ticket", c: "#55627A", v: d.ticket }, { label: "estimated", c: "#eb6834", v: d.estimated }, { label: "none", c: "#C9CFD9", v: d.none }].filter((p) => p.v)} />}</td></tr>); })}</tbody>
+            <thead><tr className="text-slate text-left">{["Status", "Measured", "Ticket", "Derived — unverified", "Estimated", "No evidence", "Distribution"].map((h) => <th key={h} className="py-1 pr-2 border-b border-line">{h}</th>)}</tr></thead>
+            <tbody>{dist.map((d) => { const tot = d.measured + d.ticket + d.unverified + d.estimated + d.none; return (
+              <tr key={d.k} className="border-b border-line/60"><td className="py-1 pr-2"><StatusTag v={d.k} /></td><td>{fInt(d.measured)}</td><td>{fInt(d.ticket)}</td><td>{fInt(d.unverified)}</td><td>{fInt(d.estimated)}</td><td>{fInt(d.none)}</td>
+                <td className="w-[40%] py-1">{tot > 0 && <Bar100 height={10} parts={[{ label: "measured", c: "#2a78d6", v: d.measured }, { label: "ticket", c: "#55627A", v: d.ticket }, { label: "unverified", c: "#f3c3a5", v: d.unverified }, { label: "estimated", c: "#eb6834", v: d.estimated }, { label: "none", c: "#C9CFD9", v: d.none }].filter((p) => p.v)} />}</td></tr>); })}</tbody>
           </table>
         </div>
       </Card>
 
       <Card title="Action list" sub="Sorted by priority. Expand ▸ for Metric → Value → Threshold → Rule → Action. Click a site ID for full detail. CSV exports all filtered rows with the full explanation.">
         <div className="flex flex-wrap gap-4 mb-3">
-          <Chips label="Priority" options={LV} value={lv} onChange={setLv} />
+          <Chips label="BBS priority" options={LV} value={lv} onChange={setLv} />
           <Chips label="Battery status" options={PROB} value={st} onChange={setSt} />
           <Chips label="Status basis" options={sources} value={ev} onChange={setEv} />
         </div>
@@ -68,9 +69,9 @@ export default function BbsActions({ scope, cfg, setPick }) {
               { key: "site_id", label: "Site", render: (r) => <span><span className="font-semibold text-navy">{r.site_id}</span> <span className="text-slate">{r.site_name}</span></span>, csv: (r) => r.site_id },
               { key: "nop", label: "NOP" },
               { key: "avail_delta_pp", label: "Availability · target · gap", num: true, render: (r) => <AvailTriple a={r.avail_wc_pct} t={r.ran_target_pct} g={r.avail_delta_pp} compact />, csv: (r) => (isNum(r.avail_wc_pct) ? `${r.avail_wc_pct.toFixed(2)} / ${r.ran_target_pct.toFixed(2)} / ${r.avail_delta_pp.toFixed(2)}` : "") },
-              { key: "bbt_value_min", label: "BBT", num: true, render: (r) => <span className="inline-flex items-center gap-1.5">{r.battery.source === "TICKET" && !isNum(r.bbt_value_min) ? "—" : fMin(r.bbt_value_min)}<StatusTag v={r.bbt_status} /><EvTag v={r.battery.source} /></span>, csv: (r) => `${isNum(r.bbt_value_min) ? Math.round(r.bbt_value_min) : ""} ${r.bbt_status} ${r.battery.source}` },
+              { key: "bbt_value_min", label: "BBT", num: true, sortVal: (r) => r.battery.display.value, render: (r) => <BbtCell r={r} showStatus />, csv: (r) => `${bbtCsv(r)} ${r.bbt_status}` },
               { key: "ran_power_down_h", label: "Power downtime", num: true, render: (r) => fH(r.ran_power_down_h) },
-              { key: "bbs_priority_score", label: "Priority", num: true, render: (r) => <LevelTag v={r.bbs_priority_level} />, csv: (r) => `${r.bbs_priority_level} ${r.bbs_priority_score?.toFixed(3)}` },
+              { key: "bbs_priority_score", label: "BBS priority", num: true, render: (r) => <LevelTag kind="BBS" v={r.bbs_priority_level} />, csv: (r) => `BBS-${r.bbs_priority_level} ${r.bbs_priority_score?.toFixed(3)}` },
               { key: "recommended_action", label: "Action", wrap: true, render: (r) => <span className="font-medium">{r.recommended_action}{r.mbp_standby_flag ? <> <Tag tone="warn">MBP standby</Tag></> : null}</span> },
             ]}
             extraCsv={[

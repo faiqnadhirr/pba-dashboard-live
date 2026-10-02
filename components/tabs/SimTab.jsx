@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { Card, Kpi, Note, DataTable, Select, Slider, Toggle, LevelTag, EvTag, Tag, fInt, fMin, fKm, fH, f2, fPct, isNum } from "@/components/ui";
 import { simulate, kmeans } from "@/lib/logic";
@@ -66,6 +66,8 @@ export default function SimTab({ model: scored, data, cfg, nop: gNop, setPick, s
     setRes(out); setShow("A · Current");
   };
 
+  // C5 — pre-run the default scenario (top-20 PLN-frequency sites, 4 h outage) whenever the NOP changes, so the page is never empty
+  useEffect(() => { if (inNop.length && mode === "top") run(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [nop, inNop.length]);
   const cur = res && res[show];
   const kRows = res ? Object.entries(res).map(([k, v]) => ({ scenario: k, ...v.kpi })) : [];
   const siteMap = useMemo(() => new Map(scored.map((s) => [s.site_id, s])), [scored]);
@@ -95,7 +97,7 @@ export default function SimTab({ model: scored, data, cfg, nop: gNop, setPick, s
               <Toggle label="B · Move one base camp" checked={moveOn} onChange={setMoveOn} />
               {moveOn && <>
                 <Select label="MBP to move" value={moveMbp} onChange={setMoveMbp} options={[{ value: "", label: "— choose —" }, ...mbpsNop.filter((m) => m.lat != null).map((m) => m.mbp_id)]} />
-                <Select label="…to the location of site" value={moveTo} onChange={setMoveTo} options={[{ value: "", label: "— choose —" }, ...[...inNop].sort((a, b) => b.mbp_priority_score - a.mbp_priority_score).slice(0, 300).map((s) => ({ value: s.site_id, label: `${s.site_id} · ${s.site_name} (${s.mbp_priority_level})` }))]} />
+                <Select label="…to the location of site" value={moveTo} onChange={setMoveTo} options={[{ value: "", label: "— choose —" }, ...[...inNop].sort((a, b) => b.mbp_priority_score - a.mbp_priority_score).slice(0, 300).map((s) => ({ value: s.site_id, label: `${s.site_id} · ${s.site_name} (MBP-${s.mbp_priority_level})` }))]} />
               </>}
               <Slider label="C · Additional MBPs (pre-positioned)" value={addN} onChange={setAddN} min={0} max={10} />
               <Slider label="D · Alternative outage duration" value={altH} onChange={setAltH} min={0.5} max={24} step={0.5} fmt={(v) => `${v} h`} />
@@ -104,7 +106,7 @@ export default function SimTab({ model: scored, data, cfg, nop: gNop, setPick, s
           </div>
         </Card>
         <div className="space-y-4 min-w-0">
-          {!res ? <Card title="Results"><div className="text-mut text-[13px]">Choose the affected sites and press <b>Run simulation</b>.</div></Card> : <>
+          {!res ? <Card title="Results"><div className="text-mut text-[13px]">Running the default scenario (top-20 PLN-frequency sites, 4 h outage)…</div></Card> : <>
             <Card title="Scenario comparison" sub="Priority-weighted coverage = share of affected-site priority that is saved or needs no MBP.">
               <div className="overflow-x-auto">
                 <table className="w-full text-[12.5px] tabular">
@@ -128,9 +130,9 @@ export default function SimTab({ model: scored, data, cfg, nop: gNop, setPick, s
                 legendOverride={Object.values(OUT).map((o) => ({ label: o.label, c: o.c }))} height={380} />
               <div className="mt-3">
                 <DataTable rows={cur.rows} filename={`pba_simulation_${show}.csv`.replace(/[^\w.]+/g, "_")} onRowClick={(r) => setPick(siteMap.get(r.site_id))} columns={[
-                  { key: "priority", label: "Priority", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center"><LevelTag v={r.priority_level} />{f2(r.priority)}</span>, csv: (r) => `${r.priority_level} ${f2(r.priority)}` },
+                  { key: "priority", label: "Priority", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center"><LevelTag kind="MBP" v={r.priority_level} />{f2(r.priority)}</span>, csv: (r) => `MBP-${r.priority_level} ${f2(r.priority)}` },
                   { key: "site_id", label: "Site ID" }, { key: "site_name", label: "Site name" }, { key: "site_class", label: "Class" },
-                  { key: "bbt_min", label: "BBT", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center">{fMin(r.bbt_min)}<EvTag v={String(r.bbt_evidence).split(" ")[0]} /></span> },
+                  { key: "bbt_min", label: "BBT", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center">{r.bbt_text ? <span className="text-slate">{r.bbt_text}</span> : fMin(r.bbt_shown)}<EvTag v={String(r.bbt_evidence).split(" ")[0]} /></span>, csv: (r) => r.bbt_text || `${isNum(r.bbt_shown) ? Math.round(r.bbt_shown) : ""} ${r.bbt_evidence}` },
                   { key: "mbp", label: "Recommended MBP", render: (r) => r.mbp || "—" }, { key: "km", label: "Distance", num: true, render: (r) => fKm(r.km) },
                   { key: "eta_min", label: "ETA", num: true, render: (r) => fMin(r.eta_min) }, { key: "served_before", label: "Served before", num: true },
                   { key: "feasible", label: "Arrives before BBT?", render: (r) => (r.feasible === true ? <Tag tone="good">✔ yes</Tag> : r.feasible === false ? <Tag tone="crit">✖ no (fallback)</Tag> : "—"), csv: (r) => (r.feasible == null ? "" : r.feasible ? "yes" : "no") },

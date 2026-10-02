@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid, Legend } from "recharts";
 import { loadDetail } from "@/lib/data";
-import { LevelTag, StatusTag, EvTag, Tag, Note, EvidenceTable, AvailTriple, fInt, fMin, fH, fKm, fPct, fPP, f2, f1, fCoord, precisionNote, isNum, MONTHS } from "./ui";
+import { LevelTag, BbtCell, StatusTag, EvTag, Tag, Note, EvidenceTable, AvailTriple, fInt, fMin, fH, fKm, fPct, fPP, f2, f1, fCoord, precisionNote, isNum, MONTHS } from "./ui";
 import { ACCESS_LABEL, RESP, CAUSE } from "@/lib/logic";
 
 const Row = ({ k, v }) => (
@@ -37,14 +37,16 @@ export default function SiteDrawer({ site, cfg, onClose }) {
         </header>
         <div className="p-5 space-y-4">
           <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-[12px] text-mut">MBP priority</span><LevelTag v={s.mbp_priority_level} /><span className="tabular text-[12px]">{f2(s.mbp_priority_score)}</span>
-            <span className="text-[12px] text-mut ml-3">Action priority</span>{s.bbs_priority_level ? <LevelTag v={s.bbs_priority_level} /> : <span className="text-mut text-[12px]">not needed</span>}
+            <span className="text-[12px] text-mut">MBP priority</span><LevelTag kind="MBP" v={s.mbp_priority_level} /><span className="tabular text-[12px]">{f2(s.mbp_priority_score)}</span>
+            <span className="text-[12px] text-mut ml-3">Action priority</span>{s.bbs_priority_level ? <LevelTag kind="BBS" v={s.bbs_priority_level} /> : <span className="text-mut text-[12px]">not needed</span>}
             <StatusTag v={s.bbt_status} /><EvTag v={A.source} />
             {s.reach_risk === 1 && <Tag tone="crit">✖ dark before MBP arrives</Tag>}
             {!s.covered && <Tag tone="crit">no MBP within {cfg?.mbp?.max_radius_km} km</Tag>}
             {s.nop_flag && <Tag tone="warn">{s.nop_flag}</Tag>}
+            {s.offair && <Tag tone="crit" title={s.offair}>suspected off-air / data issue</Tag>}
           </div>
 
+          {s.offair && <Note tone="warn">{s.offair}. Excluded from power KPIs by default (header toggle).</Note>}
           <Box title="Recommended action">
             <div className="text-[14px] font-semibold">{s.recommended_action}{s.mbp_standby_flag ? <> <Tag tone="warn">MBP standby</Tag></> : null}</div>
             {s.action_batch && <div className="text-[12px] text-slate mt-0.5">{s.action_batch} · rule {s.rule}{s.priority_floor ? ` · score level ${s.priority_floor} raised to ${s.bbs_priority_level} (severity floor)` : ""}</div>}
@@ -73,16 +75,16 @@ export default function SiteDrawer({ site, cfg, onClose }) {
 
           <div className="grid md:grid-cols-2 gap-4">
             <Box title="14 mandatory fields">
-              <Row k="1 · Priority" v={<span><LevelTag v={s.mbp_priority_level} /> {f2(s.mbp_priority_score)}</span>} />
+              <Row k="1 · Priority" v={<span><LevelTag kind="MBP" v={s.mbp_priority_level} /> {f2(s.mbp_priority_score)}</span>} />
               <Row k="2–4 · ID / Name / Class" v={`${s.site_id} · ${s.site_name} · ${s.site_class}`} />
-              <Row k="5 · Dependency" v={isNum(s.dependency_children) ? `${s.dependency_children} (PROXY: ${s.hub_site})` : "—"} />
+              <Row k="5 · Dependency (PROXY)" v={isNum(s.dependency_children) ? `${s.dependency_children} (PROXY: ${s.hub_site})` : "—"} />
               <Row k="6 · NOP" v={s.nop} />
-              <Row k="7 · BBT Design" v={`${design} min (PROXY)`} />
-              <Row k="8 · BBT Measured" v={<span>{fMin(s.bbt_value_min)} <EvTag v={s.bbt_value_evidence} /></span>} />
+              <Row k="7 · BBT Design" v={<span title={s.bbt_design_basis}>{fMin(s.bbt_design_min)} <EvTag v={s.bbt_design_evidence} /></span>} />
+              <Row k="8 · BBT Measured" v={<BbtCell r={s} />} />
               <Row k="9 · PLN outage (freq)" v={fInt(s.pln_freq)} />
               <Row k="10 · Outage duration" v={fH(s.pln_total_h)} />
-              <Row k="11 · Distance to MBP" v={s.covered ? `${fKm(s.km_assigned)} → ${s.mbp_assigned}` : <Tag tone="crit">not covered</Tag>} />
-              <Row k="12 · Travel time (ESTIMATED)" v={isNum(s.eta_min) ? fMin(s.eta_min) : s.access_class === "island" ? "island — no road ETA" : "—"} />
+              <Row k="11 · Distance to MBP" v={`${fKm(s.dist_km)} → ${s.dist_mbp || "—"}${s.within_radius ? "" : " (nearest, beyond radius)"}`} />
+              <Row k="12 · Travel time (ESTIMATED)" v={`${fMin(s.dist_eta_min)}${s.access_class === "island" ? " · sea access (indicative)" : ""}`} />
               <Row k="13 · Historical MBP" v={`${fInt(s.mbp_deployments)} deployments${s.in_ticket_file ? "" : " (site not in ticket file)"}`} />
               <Row k="14 · Total MBP backup time" v={fH(s.mbp_backup_h)} />
             </Box>
@@ -102,6 +104,10 @@ export default function SiteDrawer({ site, cfg, onClose }) {
 
           <Box title="Battery evidence">
             <Row k="Status basis (precedence)" v={<span className="text-[11.5px]">{A.precedence}</span>} />
+            {A.display?.hidden_estimate != null && <Row k="Estimate (reference only — ticket outranks it)" v={`${fMin(A.display.hidden_estimate)} ESTIMATED`} />}
+            <Row k="BBT design basis" v={<span className="text-[11.5px]">{s.bbt_design_basis}</span>} />
+            <Row k="% of standard / site design" v={`${s.bbt_pct_design ?? "—"}% / ${s.bbt_pct_site_design ?? "—"}%`} />
+            <Row k="Dark months (≥ threshold power downtime)" v={`${s.dark_months}/6${s.dark ? " — dark site" : ""}`} />
             <Row k="BBT basis" v={<span className="text-[11.5px]">{s.bbt_value_basis || "—"}</span>} />
             {s.bbt_value_evidence === "ESTIMATED" && <Row k="Estimate range · confidence" v={`${fMin(s.bbt_est_low_min)}–${fMin(s.bbt_est_high_min)} · ${s.bbt_est_confidence}`} />}
             <Row k="Battery events (exhausted / PLN back first)" v={`${fInt(s.evt_exhaustion)} / ${fInt(s.evt_censored)}`} />

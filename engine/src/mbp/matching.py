@@ -17,6 +17,19 @@ SPELL = [(r"\bMUHAMMAD\b|\bMUHAMAD\b|\bMOHAMMAD\b|\bMOH\b|\bMHD\b|\bM\b\.?", "M"
          (r"\bHSB\b", "HASIBUAN"), (r"\bHRP\b", "HARAHAP"), (r"\bSPD\b|\bST\b|\bSE\b", "")]
 
 
+def display_name(raw) -> str:
+    """Person (PIC) name for display: 'BPS001-BKT-AIDIL RICOS' -> 'AIDIL RICOS' (order kept)."""
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return ""
+    s = str(raw).upper().strip()
+    for _ in range(3):
+        s2 = CODE.sub("", PREFIX.sub("", s))
+        if s2 == s:
+            break
+        s = s2
+    return re.sub(r"\s+", " ", s).strip()
+
+
 def core_name(raw) -> str:
     """'BPS001-BKT-AIDIL RICOS' -> 'AIDIL RICOS'; token-sorted, punctuation-free, common abbreviations expanded."""
     if raw is None or (isinstance(raw, float) and pd.isna(raw)):

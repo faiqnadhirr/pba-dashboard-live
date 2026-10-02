@@ -19,7 +19,7 @@ export default function Accountability({ scope, setPick }) {
   const agg = useMemo(() => aggregateResponsibility(scope), [scope]);
   const obs = RESP_POWER.reduce((a, k) => a + agg.hours[k], 0), inf = agg.hours.utility_inferred, unk = agg.hours.unknown;
   const tot = agg.total || 1;
-  const rows = useMemo(() => scope.filter((s) => (s.ran_power_down_h || 0) > 0).map((s) => ({ ...s, _pd_min: s.ran_power_down_h * 60 })), [scope]);
+  const rows = useMemo(() => scope.filter((s) => (s.ran_power_down_h || 0) > 0).map((s) => ({ ...s, _pd_h: s.ran_power_down_h })), [scope]);
   const byNop = useMemo(() => {
     const m = new Map();
     scope.forEach((s) => { const g = m.get(s.nop) || [];  g.push(s); m.set(s.nop, g); });
@@ -61,11 +61,11 @@ export default function Accountability({ scope, setPick }) {
         ]} />
       </Card>
       <Card title="Sites — power downtime and responsibility" sub="Expand a row (▸) for the evidence. Click the site ID for the full site detail.">
-        <DataTable rows={rows} filename="pba_power_responsibility_sites.csv" initialSort={{ key: "_pd_min", dir: -1 }}
+        <DataTable rows={rows} filename="pba_power_responsibility_sites.csv" initialSort={{ key: "_pd_h", dir: -1 }}
           expand={(r) => <div className="text-[12px] text-slate"><b className="text-ink">Why:</b> {r.resp.why} <button className="ml-2 text-s1 underline" onClick={() => setPick(r)}>open site detail</button></div>}
           columns={[
             { key: "site_id", label: "Site", render: (r) => <span className="font-semibold text-navy">{r.site_id}</span> }, { key: "site_name", label: "Name" }, { key: "nop", label: "NOP" },
-            { key: "_pd_min", label: "Power downtime", num: true, render: (r) => `${fInt(r._pd_min)} min` },
+            { key: "_pd_h", label: "Power downtime", num: true, render: (r) => fH(r._pd_h), csv: (r) => r._pd_h.toFixed(2) },
             { key: "resp_primary", label: "Responsibility", sortVal: (r) => r.resp.primary, render: (r) => RESP[r.resp.primary] || "—", csv: (r) => RESP[r.resp.primary] },
             { key: "resp_kind", label: "Basis", sortVal: (r) => r.resp.kind, render: (r) => <EvTag v={r.resp.kind} />, csv: (r) => r.resp.kind },
             { key: "resp_conf", label: "Confidence", render: (r) => r.resp.evidence, csv: (r) => r.resp.evidence },

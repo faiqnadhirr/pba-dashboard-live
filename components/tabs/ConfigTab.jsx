@@ -43,8 +43,8 @@ export default function ConfigTab({ cfg, saveCfg, data }) {
         <Weights title="Candidate MBP ranking (simulation)" note="Lower cost wins: ETA and workload add cost, familiarity reduces it." obj={d.mbp_candidate} onChange={(v) => set(["mbp_candidate"], v)} />
         <Card title="Priority cut-offs (score → P1…P4)">
           <div className="grid sm:grid-cols-3 gap-4">
-            {["P1", "P2", "P3"].map((p) => <Slider key={"m" + p} label={`MBP ${p} ≥`} value={d.priority_levels[p]} min={0.1} max={0.9} step={0.01} onChange={(v) => set(["priority_levels", p], v)} fmt={(x) => x.toFixed(2)} />)}
-            {["P1", "P2", "P3"].map((p) => <Slider key={"b" + p} label={`BBS ${p} ≥`} value={d.bbs_priority_levels[p]} min={0.1} max={0.9} step={0.01} onChange={(v) => set(["bbs_priority_levels", p], v)} fmt={(x) => x.toFixed(2)} />)}
+            {["P1", "P2", "P3"].map((p) => <Slider key={"m" + p} label={`MBP-${p} ≥`} value={d.priority_levels[p]} min={0.1} max={0.9} step={0.01} onChange={(v) => set(["priority_levels", p], v)} fmt={(x) => x.toFixed(2)} />)}
+            {["P1", "P2", "P3"].map((p) => <Slider key={"b" + p} label={`BBS-${p} ≥`} value={d.bbs_priority_levels[p]} min={0.1} max={0.9} step={0.01} onChange={(v) => set(["bbs_priority_levels", p], v)} fmt={(x) => x.toFixed(2)} />)}
           </div>
         </Card>
         <Card title="BBT criteria">
@@ -72,11 +72,36 @@ export default function ConfigTab({ cfg, saveCfg, data }) {
         <Card title="Access, availability & severity rules">
           <div className="grid sm:grid-cols-2 gap-4">
             {["riverine_delta", "remote"].map((k) => <Slider key={k} label={`ETA multiplier — ${k.replace("_", " / ")}`} value={d.travel.access_multiplier[k]} min={1} max={4} step={0.1} onChange={(v) => set(["travel", "access_multiplier", k], v)} fmt={(v) => `×${v.toFixed(1)}`} />)}
-            <Slider label="Trend: change counted as worse/better" value={d.availability.trend_pp} min={0.05} max={2} step={0.05} onChange={(v) => set(["availability", "trend_pp"], v)} fmt={(v) => `${v.toFixed(2)} pp`} />
+            <Slider label="Trend: availability change counted (primary)" value={d.availability.trend_pp} min={0.05} max={2} step={0.05} onChange={(v) => set(["availability", "trend_pp"], v)} fmt={(v) => `${v.toFixed(2)} pp`} />
             <Slider label="Trend: min. sites per cluster" value={d.availability.min_cluster_sites} min={1} max={30} onChange={(v) => set(["availability", "min_cluster_sites"], v)} />
-            <Slider label="'Dark' site = power downtime ≥" value={d.availability.dark_power_h} min={0.1} max={24} step={0.1} onChange={(v) => set(["availability", "dark_power_h"], v)} fmt={(v) => `${v} h`} />
+            <Slider label="Dark month = power downtime ≥" value={d.availability.dark_month_h} min={0.5} max={48} step={0.5} onChange={(v) => set(["availability", "dark_month_h"], v)} fmt={(v) => `${v} h`} />
+            <Slider label="Dark site = dark months ≥ (of 6)" value={d.availability.dark_min_months} min={1} max={6} onChange={(v) => set(["availability", "dark_min_months"], v)} />
+            <Slider label="Dark in a quarter = dark months ≥ (of 3)" value={d.availability.dark_quarter_min_months} min={1} max={3} onChange={(v) => set(["availability", "dark_quarter_min_months"], v)} />
+            <Slider label="Trend: dark-share change counted" value={d.availability.trend_dark_share_pp} min={0.5} max={20} step={0.5} onChange={(v) => set(["availability", "trend_dark_share_pp"], v)} fmt={(v) => `${v} pp of sites`} />
+            <Slider label="Off-air: downtime share of period ≥" value={d.offair.max_outage_share} min={0.1} max={0.9} step={0.05} onChange={(v) => set(["offair", "max_outage_share"], v)} fmt={(v) => `${Math.round(v * 100)}%`} />
+            <Slider label="Off-air: a month down ≥" value={d.offair.full_month_share} min={0.5} max={1} step={0.05} onChange={(v) => set(["offair", "full_month_share"], v)} fmt={(v) => `${Math.round(v * 100)}%`} />
+            <Slider label="Off-air: downtime with no alarms/tickets ≥" value={d.offair.no_alarm_min_share} min={0.02} max={0.5} step={0.02} onChange={(v) => set(["offair", "no_alarm_min_share"], v)} fmt={(v) => `${Math.round(v * 100)}%`} />
             <label className="flex flex-col gap-1 text-[12px] text-mut">Measured Dead/Critical priority floor
-              <select value={d.severity_floor.measured_dead_critical} onChange={(e) => set(["severity_floor", "measured_dead_critical"], e.target.value)} className="border border-line rounded-md px-2 py-1 text-[12.5px] text-ink">{["P1", "P2", "P3", "P4"].map((p) => <option key={p}>{p}</option>)}</select></label>
+              <select value={d.severity_floor.measured_dead_critical} onChange={(e) => set(["severity_floor", "measured_dead_critical"], e.target.value)} className="border border-line rounded-md px-2 py-1 text-[12.5px] text-ink">{["P1", "P2", "P3", "P4"].map((p) => <option key={p} value={p}>BBS-{p}</option>)}</select></label>
+          </div>
+        </Card>
+        <Card title="BBT design & evidence rules" sub="Source files have no Ah capacity: Ah per bank is an assumption — replace with the real module rating.">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <label className="flex flex-col gap-1 text-[12px] text-mut">Problem criteria measured against
+              <select value={d.bbt.criteria_basis} onChange={(e) => set(["bbt", "criteria_basis"], e.target.value)} className="border border-line rounded-md px-2 py-1 text-[12.5px] text-ink">
+                <option value="standard">standard design ({d.bbt.design_minutes} min, management order)</option><option value="site">per-site design (col 7)</option></select></label>
+            {Object.keys(d.bbt.design_from_battery.ah_per_bank).map((k) => <Slider key={"ah" + k} label={`Ah per bank — ${k}`} value={d.bbt.design_from_battery.ah_per_bank[k]} min={25} max={300} step={5} onChange={(v) => set(["bbt", "design_from_battery", "ah_per_bank", k], v)} fmt={(v) => `${v} Ah`} />)}
+            {Object.keys(d.bbt.design_from_battery.usable_dod).map((k) => <Slider key={"dod" + k} label={`Usable depth of discharge — ${k}`} value={d.bbt.design_from_battery.usable_dod[k]} min={0.3} max={1} step={0.05} onChange={(v) => set(["bbt", "design_from_battery", "usable_dod", k], v)} fmt={(v) => `${Math.round(v * 100)}%`} />)}
+            <Slider label="Derived Dead/Critical trusted with ≥ exhausted events" value={d.bbt.derived_support.min_exhaustion_events} min={1} max={10} onChange={(v) => set(["bbt", "derived_support", "min_exhaustion_events"], v)} />
+            <Slider label="…or power downtime ≥" value={d.bbt.derived_support.min_power_h} min={0} max={24} step={0.5} onChange={(v) => set(["bbt", "derived_support", "min_power_h"], v)} fmt={(v) => `${v} h`} />
+            <Slider label="…and ≥ share of PLN outage hours" value={d.bbt.derived_support.min_share_of_pln} min={0} max={1} step={0.05} onChange={(v) => set(["bbt", "derived_support", "min_share_of_pln"], v)} fmt={(v) => `${Math.round(v * 100)}%`} />
+          </div>
+        </Card>
+        <Card title="Placement & fleet size" sub="Defaults for the Placement page.">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Slider label="Target share of MBP-P1/P2 reached" value={d.placement.target_share} min={0.5} max={1} step={0.05} onChange={(v) => set(["placement", "target_share"], v)} fmt={(v) => `${Math.round(v * 100)}%`} />
+            <Slider label="Max additional MBPs" value={d.placement.max_new} min={1} max={30} onChange={(v) => set(["placement", "max_new"], v)} />
+            <Slider label="Relocation: removal loses <" value={d.placement.relocation_max_loss_pp} min={0} max={5} step={0.1} onChange={(v) => set(["placement", "relocation_max_loss_pp"], v)} fmt={(v) => `${v} pp`} />
           </div>
         </Card>
         <Card title="Base camp signal (under-served rule)" sub="Under-served when at least N criteria are met.">

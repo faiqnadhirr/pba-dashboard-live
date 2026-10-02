@@ -23,7 +23,7 @@ from src.normalization import clean as C
 from src.analytics import kpi as K
 from src.analytics.site_table import assemble
 from src.mbp import engine as M
-from src.mbp.matching import match_pics, duplicate_basecamps
+from src.mbp.matching import match_pics, duplicate_basecamps, display_name
 from src.common import haversine_km
 from src.bbs import model as B
 from src.bbs import survival as S
@@ -51,6 +51,8 @@ def jclean(v):
         return int(v)
     if isinstance(v, (float, np.floating)):
         return None if (math.isnan(v) or math.isinf(v)) else round(float(v), 3)
+    if isinstance(v, list):
+        return [jclean(x) for x in v]
     if v is pd.NA or v is pd.NaT:
         return None
     return v
@@ -94,6 +96,86 @@ def source_status():
     return out
 
 
+MERGE_CSV = ROOT / "config" / "basecamp_merge.csv"
+
+
+def apply_basecamp_merge(mbps, tickets, dups, qa):
+    """Merge duplicate base-camp records using engine/config/basecamp_merge.csv (created on first run).
+    The file is the review point: set apply=no to keep a pair separate, or add rows. keep = record that survives."""
+    if not MERGE_CSV.exists():
+        rows = []
+        for r in dups.itertuples():
+            a, b = r.mbp_a, r.mbp_b
+            ma, mb = mbps.set_index("mbp_id").loc[a], mbps.set_index("mbp_id").loc[b]
+            # keep the coded master record (BPSnnn-/MBP-) when one exists, else the located one
+            coded = lambda x: bool(re.match(r"^(BPS\d*|MBP|SCD|TS\d*)[-_ ]", x))
+            keep, drop = (b, a) if (coded(b) and not coded(a)) or (pd.isna(ma["lat"]) and pd.notna(mb["lat"])) else (a, b)
+            rows.append(dict(keep=keep, drop=drop, status=r.status, km_apart=r.km_apart, similarity=r.similarity,
+                             apply="yes" if r.status.startswith("LIKELY SAME PERSON") else "no",
+                             reviewer_note=""))
+        pd.DataFrame(rows).to_csv(MERGE_CSV, index=False)
+    mm = pd.read_csv(MERGE_CSV, dtype=str).fillna("")
+    ap = mm[mm["apply"].str.lower().isin(["yes", "y", "1", "true"])]
+    ids = set(mbps["mbp_id"])
+    ap = ap[ap["keep"].isin(ids) & ap["drop"].isin(ids) & (ap["keep"] != ap["drop"])]
+    remap = dict(zip(ap["drop"], ap["keep"]))
+    m = mbps.set_index("mbp_id")
+    for d, k in remap.items():                       # keep record without location inherits the dropped one's location
+        if pd.isna(m.at[k, "lat"]) and pd.notna(m.at[d, "lat"]):
+            m.loc[k, ["lat", "lon", "coord_status"]] = m.loc[d, ["lat", "lon", "coord_status"]].values
+    m = m.drop(index=list(remap)).reset_index()
+    m["merged_from"] = m["mbp_id"].map(lambda k: " | ".join(d for d, kk in remap.items() if kk == k) or None)
+    m["pic_name"] = m["mbp_id"].map(display_name)       # person (PIC) vs base camp record (location)
+    tickets = tickets.copy()
+    tickets["mbp_id"] = tickets["mbp_id"].map(lambda x: remap.get(x, x) if isinstance(x, str) else x)
+    qa["basecamp_merge"] = {"pairs_in_map": int(len(mm)), "applied": int(len(remap)), "basecamps_before": int(len(mbps)), "basecamps_after": int(len(m))}
+    return m, tickets, mm
+
+
+SANITY: list = []
+
+
+def sanity(t, corr, f, mbps, tickets, merge_map, qa):
+    """Build-time sanity checks (fail the build on error). Rule-level checks run in `npm test` (called at the end)."""
+    def chk(name, ok, detail=""):
+        SANITY.append(dict(check=name, ok=bool(ok), detail=str(detail)))
+    # A6: every correlation n comes from the same cleaned site-table field that is exported
+    for r in corr.itertuples():
+        n_site = int((t[r.feature].notna() & t["bbt_measured_min"].notna()).sum()) if r.feature in t else -1
+        chk(f"A6 correlation n({r.feature}) = site table non-null with measured BBT", n_site == r.n, f"{r.n} vs {n_site}")
+    chk("A6 battery_banks exported and populated", t["battery_banks"].notna().sum() > 0, int(t["battery_banks"].notna().sum()))
+    # B3: merge map applied, no dropped base camp left in master or tickets
+    ap = merge_map[merge_map["apply"].str.lower().isin(["yes", "y", "1", "true"])]
+    gone = set(ap["drop"])
+    chk("B3 merged base camps removed from master", not (set(mbps["mbp_id"]) & gone), len(gone))
+    chk("B3 tickets remapped to surviving base camp", not tickets["mbp_id"].isin(gone).any())
+    chk("B3 base camp ids unique", mbps["mbp_id"].is_unique)
+    # A2/A5 inputs: monthly series present and physically valid
+    ok = all(v is None or len(v) == 6 for v in t["m_pw"])
+    chk("A2 monthly power series has 6 months", ok)
+    bad = sum(1 for h, p in zip(t["m_hours"], t["m_pw"]) if h and p and any(pp is not None and hh is not None and pp > hh + 1e-6 for pp, hh in zip(p, h)))
+    chk("A2 monthly power downtime <= hours in month", bad == 0, bad)
+    qa["build_sanity"] = SANITY
+    for c in SANITY:
+        print(("  PASS " if c["ok"] else "  FAIL ") + c["check"] + ("" if c["ok"] else "  — " + c["detail"]), flush=True)
+    if not all(c["ok"] for c in SANITY):
+        raise SystemExit("build sanity checks failed")
+
+
+def run_js_tests():
+    """Rule-level regression tests (lib/logic.js) on the freshly written data. Skip with PBA_SKIP_JS_TESTS=1."""
+    import shutil, subprocess
+    if os.environ.get("PBA_SKIP_JS_TESTS") or not shutil.which("node"):
+        log("JS rule tests skipped (node not found or PBA_SKIP_JS_TESTS set) — run `npm test`")
+        return
+    log("running JS rule tests (npm test)")
+    r = subprocess.run(["node", "--test", "tests/logic.test.mjs"], cwd=ROOT.parent, capture_output=True, text=True)
+    tail = "\n".join(l for l in r.stdout.splitlines() if l.startswith(("# pass", "# fail", "not ok")))
+    print(tail, flush=True)
+    if r.returncode != 0:
+        raise SystemExit("JS rule tests failed — see `npm test`")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw", default=None, help="folder with raw files (default engine/data/raw)")
@@ -129,6 +211,8 @@ def main():
     qa["ticket_mbp_match_rate"] = round(float(tickets["mbp_matched"].mean()), 4)
     qa["pic_match_status"] = pm["status"].value_counts().to_dict()
     dups = duplicate_basecamps(mbps, haversine_km)
+    # ---- reviewable merge map (B3): default = merge only "LIKELY SAME PERSON (<= 20 km, same NOP)"
+    mbps, tickets, merge_map = apply_basecamp_merge(mbps, tickets, dups, qa)
     events, q = C.clean_bbt_events(events_raw); qa.update(q)
     monthly = C.clean_bbt_monthly(monthly_raw)
     o25 = C.clean_outage_2025(out25)
@@ -302,19 +386,27 @@ def main():
         "site_id", "site_name", "site_class", "nop", "nop_flag", "cluster_to", "city", "site_active", "vip",
         "lat", "lon", "coord_decimals", "is_urban", "access_class", "access_basis", "hub_site",
         # battery evidence
-        "battery_type", "battery_age_y", "load_a", "bbt_value_min", "bbt_value_evidence", "bbt_value_basis", "bbt_measured_min",
+        "battery_type", "battery_age_y", "load_a", "battery_banks", "battery_qty", "bbt_value_min", "bbt_value_evidence", "bbt_value_basis", "bbt_measured_min",
         "bbt_lower_bound_min", "bbt_est_confidence", "bbt_est_low_min", "bbt_est_high_min", "bbt_trend_min",
         "evt_total", "evt_exhaustion", "evt_censored", "evt_flapping", "tk_no_battery",
         # power / PLN
         "pln_freq", "pln_total_h", "pln_source", "pln_anomaly_months", "outage_2025_h",
         # availability (RAN, wall-clock) incl. cause decomposition + trend periods
         "avail_wc_pct", "ran_target_pct", "ran_hours", "ran_outage_h", "ran_power_down_h", "ran_transport_down_h",
-        "ran_ran_down_h", "ran_other_down_h", "q1_hours", "q1_outage_h", "q1_power_h", "q2_hours", "q2_outage_h", "q2_power_h",
+        "ran_ran_down_h", "ran_other_down_h", "m_hours", "m_out", "m_pw", "q1_hours", "q1_outage_h", "q1_power_h", "q2_hours", "q2_outage_h", "q2_power_h",
         # MBP history
         "in_ticket_file", "mbp_primary_hist", "mbp_deployments", "mbp_backup_h",
     ] + rc_cols
     for c in rc_cols:
         t[c] = t[c].fillna(0).astype(int)
+    # per-month RAN series (Jan..Jun) — dark-site definition and off-air detection are computed per month in lib/logic.js
+    yms = [f"20260{m}" for m in range(1, 7)]
+    rr = ran.assign(h=ran["days"].astype(float) * 24, o=ran["outage_sec"] / 3600, p=ran["power_sec"] / 3600)
+    piv = {k: rr.pivot_table(index="site_id", columns="ym", values=k, aggfunc="sum").reindex(columns=yms) for k in ("h", "o", "p")}
+    for k, col in (("h", "m_hours"), ("o", "m_out"), ("p", "m_pw")):
+        P = piv[k].reindex(t["site_id"])
+        t[col] = [None if np.all(np.isnan(r)) else [None if np.isnan(v) else round(float(v), 2) for v in r] for r in P.to_numpy(dtype=float)]
+    sanity(t, corr, f, mbps, tickets, merge_map, qa)
     sz = {}
     sz["sites.json"] = dump(columnar(t[site_cols]), "sites.json")
     mbp_out = mbps.merge(wl, on="mbp_id", how="left")
@@ -395,6 +487,7 @@ def main():
     t.to_pickle(ROOT / "data" / "site_table.pkl")
     pd.to_pickle(dict(ev=ev, iv=iv, tk=tk, ran=ran, mo=mo), ROOT / "data" / "sources.pkl")
     log("sizes: " + ", ".join(f"{k} {v / 1e6:.1f} MB" for k, v in sz.items()))
+    run_js_tests()
     log("done")
 
 

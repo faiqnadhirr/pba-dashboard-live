@@ -28,7 +28,7 @@ export default function Health({ scope, data, nop, inactive, cfg }) {
     r.forEach((m) => { const g = by.get(m.ym) || { ym: m.ym, hours: 0, outage: 0, power: 0, target_h: 0 }; g.hours += m.hours; g.outage += m.outage; g.power += m.power; g.target_h += m.target_h; by.set(m.ym, g); });
     return [...by.values()].sort((x, y) => x.ym.localeCompare(y.ym)).map((g) => ({ month: MONTHS[+g.ym.slice(4) - 1], availability: 100 * (1 - g.outage / g.hours), target: g.target_h / g.hours, power_h: g.power }));
   }, [data, nop, inactive]);
-  const measured = scope.filter((s) => s.bbt_value_evidence === "ACTUAL" || s.bbt_value_evidence === "DERIVED").length;
+  const measured = scope.filter((s) => s.battery.measured).length;
 
   return (
     <div className="space-y-4">
@@ -38,7 +38,7 @@ export default function Health({ scope, data, nop, inactive, cfg }) {
         <Kpi scope="filtered" label="…of which power" value={a.gap < 0 ? fPP(a.contrib.power) : "—"} tone="crit" sub={`power = ${Math.round(a.powerSharePct || 0)}% of all downtime`} />
         <Kpi scope="filtered" label="Sites below target" value={fInt(below)} sub={`of ${fInt(scope.length)} in scope`} tone="warn" />
         <Kpi scope="filtered" label="Network downtime" value={fH(a.outage)} sub="site-hours, wall-clock (RAN)" />
-        <Kpi scope="filtered" label="BBT measured" value={fInt(measured)} sub="ACTUAL + DERIVED (same set used in BBT method)" />
+        <Kpi scope="filtered" label="BBT measured" value={fInt(measured)} sub="ACTUAL + DERIVED backed by site evidence (unverified derived values excluded)" />
       </div>
 
       <Card title="What causes the availability gap?" sub="Downtime by cause from the RAN availability feed (wall-clock, DERIVED). The gap vs target is attributed to causes in proportion to their share of downtime.">

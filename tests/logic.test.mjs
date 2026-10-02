@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   buildModel, travelMinutes, dependencyChildren, pctRank, statusOf, aggregateAvailability, aggregateResponsibility,
-  clusterTable, topWorstSites, simulate, basecampSummary, PROBLEM,
+  clusterTable, topWorstSites, simulate, basecampSummary, PROBLEM, trendLabel, bbtDisplay, placementPlan,
 } from "../lib/logic.js";
 import { fromColumnar } from "../lib/data.js";
 
@@ -137,7 +137,8 @@ test("J · cluster trend = Q2 vs Q1 availability / dark sites", () => {
   assert.ok(ok.length > 0);
   for (const r of ok) {
     assert.ok(close(r.delta_pp, r.q2_avail - r.q1_avail, 1e-9));
-    if (r.trend === "Deteriorating") assert.ok(r.delta_pp <= -cfg.availability.trend_pp || r.q2_dark - r.q1_dark >= cfg.availability.trend_dark_sites);
+    if (r.trend === "Deteriorating") assert.ok(r.delta_pp <= -cfg.availability.trend_pp);
+    if (r.trend === "Improving") assert.ok(r.delta_pp >= cfg.availability.trend_pp);
   }
   assert.ok(rows.filter((r) => r.small).every((r) => r.severity == null));
 });
@@ -166,4 +167,100 @@ test("Simulation: picked MBP within radius; feasible-first; outcomes classified"
   }
   const k = r.kpi;
   assert.equal(k.saved + k.late + k.unserved_busy + k.unserved_no_coverage + k.unserved_island + k.no_mbp_needed, k.sites_affected);
+});
+
+/* ================= second fix pass (A1–A6, B1–B3, D1) ================= */
+const scope = active.filter((s) => !s.offair);
+
+test("A1 · trend: availability is primary; dark-site change is a share; disagreement → Mixed; realistic spread", () => {
+  assert.equal(trendLabel(1.76, 18.9, cfg)[0], "Mixed");                 // TO TAKENGON case
+  assert.equal(trendLabel(-1.0, 0.5, cfg)[0], "Deteriorating");
+  assert.equal(trendLabel(0.8, -3, cfg)[0], "Improving");
+  assert.equal(trendLabel(0.1, 0.5, cfg)[0], "Stable");
+  const rows = clusterTable(scope, cfg).filter((r) => r.trend !== "Insufficient data");
+  assert.equal(rows.filter((r) => r.trend === "Deteriorating" && r.delta_pp > 0).length, 0, "no Deteriorating with rising availability");
+  const labels = new Set(rows.map((r) => r.trend));
+  assert.ok(labels.size >= 3, [...labels].join(","));
+  assert.ok(rows.filter((r) => r.trend === "Deteriorating").length < rows.length, "not every cluster Deteriorating");
+});
+
+test("A2 · dark site is defined per month; dark share is no longer ~100%", () => {
+  const share = scope.filter((s) => s.dark).length / scope.length;
+  assert.ok(share < 0.6, `dark share ${share.toFixed(3)}`);
+  for (const s of scope.slice(0, 4000)) {
+    const n = (s.m_pw || []).filter((v) => v >= cfg.availability.dark_month_h).length;
+    assert.equal(s.dark_months, n);
+    assert.equal(!!s.dark, n >= cfg.availability.dark_min_months);
+  }
+});
+
+test("A3 · no row shows a status that contradicts its displayed BBT basis", () => {
+  const b = cfg.bbt;
+  for (const s of M) {
+    const d = bbtDisplay(s);
+    if (s.battery.source === "TICKET") { assert.equal(d.value, null, s.site_id); assert.ok(/no battery per ticket/.test(d.text)); continue; }
+    if (d.value != null) assert.equal(statusOf(d.value, b, s.bbt_criteria_design_min), s.bbt_status, s.site_id);
+    assert.equal(d.evidence, s.battery.source, s.site_id);
+  }
+  for (const id of ["LHK154", "UJT096"]) assert.equal(bbtDisplay(byId.get(id)).value, null);
+  // every tab renders the BBT through bbtDisplay (no raw bbt_value_min in BBT cells)
+  assert.ok(fs.readFileSync("components/ui.jsx", "utf8").includes("bbtDisplay(r)"));
+  for (const f of ["components/tabs/BbsActions.jsx", "components/tabs/Impact.jsx", "components/SiteDrawer.jsx"])
+    assert.ok(fs.readFileSync(f, "utf8").includes("<BbtCell"), f);
+  assert.ok(fs.readFileSync("components/tabs/SimTab.jsx", "utf8").includes("bbt_shown"));
+  // simulation rows carry the same display value
+  const sim = simulate(M, ["LHK154", "UJT096", "MGR003"], 4, mbps, { fam }, cfg, {});
+  for (const r of sim.rows) assert.equal(r.bbt_shown, bbtDisplay(byId.get(r.site_id)).value);
+});
+
+test("A4 · derived zero BBT without site evidence: no priority floor, Inspect & verify, out of BBS-P1", () => {
+  for (const id of ["MGR003", "MBN001", "MGA099"]) {
+    const s = byId.get(id);
+    assert.ok(s.battery.unverified, id);
+    assert.notEqual(s.bbs_priority_level, "P1", id);
+    assert.ok(s.recommended_action.startsWith("Inspect"), id);
+  }
+  assert.equal(M.filter((s) => s.battery.unverified && s.priority_floor).length, 0);
+  assert.equal(M.filter((s) => s.battery.unverified && /replace|upgrade/i.test(s.recommended_action)).length, 0);
+});
+
+test("A5 · off-air / data-issue sites are flagged and excluded from default scope", () => {
+  assert.ok(byId.get("BTM493").offair);
+  const fl = active.filter((s) => s.offair);
+  assert.ok(fl.length > 0 && fl.length < 0.05 * active.length, `${fl.length}`);
+  assert.equal(scope.filter((s) => s.offair).length, 0);
+});
+
+test("A6 · battery_banks present in the export (Data quality and correlation use the same field)", () => {
+  assert.ok(sites.filter((s) => s.battery_banks > 0).length > 9000);
+});
+
+test("B1 · per-site BBT design whenever banks are known; class fallback (PROXY) only when banks are missing", () => {
+  for (const s of M) {
+    if (s.battery_banks > 0) assert.notEqual(s.bbt_design_evidence, "PROXY", s.site_id);
+    else assert.equal(s.bbt_design_evidence, "PROXY", s.site_id);
+    if (s.battery_banks > 0 && s.load_a > 0) assert.equal(s.bbt_design_evidence, "DERIVED", s.site_id);
+  }
+});
+
+test("B2 · distance and ETA always filled for located sites (nearest MBP even beyond radius)", () => {
+  const loc = M.filter((s) => s.lat != null);
+  assert.equal(loc.filter((s) => s.dist_km == null || s.dist_eta_min == null).length, 0);
+  assert.ok(loc.filter((s) => !s.covered).every((s) => s.within_radius === 0 && s.dist_km > cfg.mbp.max_radius_km));
+});
+
+test("B3 · base camp merge map applied (no merged record left)", () => {
+  const mm = fs.readFileSync("engine/config/basecamp_merge.csv", "utf8").trim().split("\n").slice(1).map((l) => l.split(","));
+  const ids = new Set(mbps.map((m) => m.mbp_id));
+  assert.equal(ids.size, mbps.length);
+  for (const r of mm) if (r.at(-2) === "yes") assert.ok(!ids.has(r[1]), r[1]);
+});
+
+test("D1 · placement: monotonic marginal gain, anchors are real sites, target respected", () => {
+  for (const nop of ["NOP PALEMBANG", "NOP ACEH", "NOP BINJAI"]) {
+    const p = placementPlan(M.filter((s) => s.nop === nop), mbps, cfg);
+    for (let i = 1; i < p.steps.length; i++) assert.ok(p.steps[i].share >= p.steps[i - 1].share);
+    for (const a of p.added) assert.ok(byId.has(a.anchor_site));
+    if (p.needed != null) assert.ok(p.steps[p.needed].share >= cfg.placement.target_share);
+  }
 });

@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import L from "leaflet";
 import { MapContainer, TileLayer, CircleMarker, Circle, Marker, Polyline, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { LEVEL, STATUS, fInt, fKm, fMin, fPct, fPP, isNum } from "./ui";
+import { LEVEL_KIND, STATUS, fInt, fKm, fMin, fPct, fPP, isNum } from "./ui";
 import { ACCESS_LABEL, RESP } from "@/lib/logic";
 
 const MAX_POINTS = 4000;
@@ -36,7 +36,7 @@ function ViewWatch({ onView }) {
 }
 
 export const COLOR_MODES = {
-  priority: { label: "MBP priority", of: (s) => LEVEL[s.mbp_priority_level]?.c, legend: ["P1", "P2", "P3", "P4"].map((k) => ({ label: `${LEVEL[k].i} ${k}`, c: LEVEL[k].c })) },
+  priority: { label: "MBP priority", of: (s) => LEVEL_KIND.MBP[s.mbp_priority_level]?.c, legend: ["P1", "P2", "P3", "P4"].map((k) => ({ label: `${LEVEL_KIND.MBP[k].i} MBP-${k}`, c: LEVEL_KIND.MBP[k].c })) },
   design: { label: "Battery vs design", of: (s) => STATUS[s.bbt_status]?.c, legend: Object.entries(STATUS).map(([k, v]) => ({ label: `${v.i} ${k}`, c: v.c })) },
   survival: { label: "MBP arrives before BBT?", of: (s) => (!s.covered ? "#7a1414" : s.can_arrive_before_bbt ? "#0ca30c" : "#ec835a"),
     legend: [{ label: "✔ arrives in time", c: "#0ca30c" }, { label: "▲ arrives after battery runs out", c: "#ec835a" }, { label: "✖ no MBP within radius", c: "#7a1414" }] },
@@ -105,8 +105,8 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             <ViewWatch onView={onView} />
             {selMbp && coverage && <Circle center={[selMbp.lat, selMbp.lon]} radius={R * 1000} pathOptions={{ color: "#eda100", weight: 2, dashArray: "6 6", fillOpacity: 0.05 }} />}
             {showSites && clustered && clusters.map((c, i) => (
-              <Marker key={"c" + i} position={[c.lat, c.lon]} icon={CLUSTER(c.n, LEVEL[c.worst]?.c || "#55627A")}>
-                <Tooltip direction="top">{c.n} sites · worst priority {c.worst}{c.unc ? ` · ${c.unc} not covered` : ""}<br />zoom in for detail</Tooltip>
+              <Marker key={"c" + i} position={[c.lat, c.lon]} icon={CLUSTER(c.n, LEVEL_KIND.MBP[c.worst]?.c || "#55627A")}>
+                <Tooltip direction="top">{c.n} sites · worst MBP-{c.worst}{c.unc ? ` · ${c.unc} beyond MBP radius` : ""}<br />zoom in for detail</Tooltip>
               </Marker>
             ))}
             {selMbp && coverage && !clustered && mbpSites.slice(0, 400).map((s) => (
@@ -118,7 +118,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
                 <CircleMarker key={s.site_id} center={[s.lat, s.lon]} radius={s.mbp_priority_level === "P1" ? 6 : 4.5}
                   pathOptions={{ color: cov ? "#ffffff" : c, weight: cov ? 0.8 : 2.2, fillColor: cov ? c : "#ffffff", fillOpacity: dim ? 0.15 : 0.95, opacity: dim ? 0.3 : 1 }}
                   eventHandlers={{ click: () => { setSelSite(s); setSelMbp(null); } }}>
-                  <Tooltip direction="top"><b>{s.site_id}</b> · {s.site_name}<br />{s.mbp_priority_level} · {s.bbt_status} · {cov ? `MBP ${s.mbp_assigned}` : "not covered"}</Tooltip>
+                  <Tooltip direction="top"><b>{s.site_id}</b> · {s.site_name}<br />MBP-{s.mbp_priority_level} · {s.bbt_status} · {cov ? `MBP ${s.mbp_assigned}` : `nearest MBP ${s.nearest_mbp || "—"} ${s.nearest_mbp_km ? Math.round(s.nearest_mbp_km) + " km" : ""} (beyond radius)`}</Tooltip>
                 </CircleMarker>
               );
             })}
@@ -141,7 +141,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
                 <div className="text-[11px] text-[#8a5a00] mb-1">Radius = operational coverage assumption ({R} km), not a fixed boundary — MBPs move.</div>
                 {st ? (
                   <table className="w-full"><tbody>
-                    {[["Sites assigned", fInt(st.sites_covered)], ["P1 / P2 assigned", fInt(st.p1_p2)], ["Sites within radius", fInt(inRadiusOfSel?.size)],
+                    {[["Sites assigned", fInt(st.sites_covered)], ["MBP-P1/P2 assigned", fInt(st.p1_p2)], ["Sites within radius", fInt(inRadiusOfSel?.size)],
                       ["Avg distance", fKm(st.avg_km)], ["Avg ETA (ESTIMATED)", fMin(st.avg_eta_min)], ["Dark before MBP", `${fInt(st.at_risk_sites)} (${Math.round(100 * st.risk_share)}%)`],
                       ["Workload (H1 deployments)", fInt(st.deployments_h1)], ["Signal", st.load_signal]].map(([k, v]) => <tr key={k}><td className="text-mut py-0.5">{k}</td><td className="text-right font-medium">{v}</td></tr>)}
                   </tbody></table>) : <div className="text-mut">No statistics (scenario MBP).</div>}
@@ -154,9 +154,9 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
                 <div className="text-mut mb-1">{selSite.site_class} · {selSite.nop} · {ACCESS_LABEL[selSite.access_class]}</div>
                 <table className="w-full"><tbody>
                   {[["Availability", fPct(selSite.avail_wc_pct)], ["Target", fPct(selSite.ran_target_pct)], ["Gap", fPP(selSite.avail_delta_pp)],
-                    ["BBT", `${fMin(selSite.bbt_value_min)} · ${selSite.bbt_value_evidence}`], ["Battery vs design", selSite.bbt_status],
+                    ["BBT", selSite.battery?.display?.text || `${fMin(selSite.battery?.display?.value)} · ${selSite.battery?.display?.evidence}`], ["Battery vs design", selSite.bbt_status],
                     ["Power downtime", isNum(selSite.ran_power_down_h) ? `${fInt(selSite.ran_power_down_h * 60)} min` : "—"], ["Responsible (power)", selSite.resp?.primary ? `${RESP[selSite.resp.primary]} (${selSite.resp.kind})` : "—"],
-                    ["Assigned MBP", selSite.mbp_assigned || "none within radius"], ["ETA", fMin(selSite.eta_min)],
+                    ["MBP (assigned / nearest)", `${selSite.dist_mbp || "—"}${selSite.within_radius ? "" : " — beyond radius"}`], ["Distance · ETA", `${fKm(selSite.dist_km)} · ${fMin(selSite.dist_eta_min)}${selSite.access_class === "island" ? " (sea access)" : ""}`],
                     ["Inside MBP coverage", selSite.covered ? `yes (${selSite.mbps_in_radius} MBP ≤ ${R} km)` : `no — nearest ${fKm(selSite.nearest_mbp_km)}`],
                     ["Arrives before BBT", selSite.can_arrive_before_bbt ? "✔ yes" : "✖ no"]].map(([k, v]) => <tr key={k}><td className="text-mut py-0.5 pr-2">{k}</td><td className="text-right font-medium">{v}</td></tr>)}
                 </tbody></table>

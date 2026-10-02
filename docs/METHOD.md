@@ -243,3 +243,71 @@ Each site shows its components and its primary/secondary driver.
 - Python (`engine/`) prepares **evidence only**. `engine/validate.py` checks data and sanity (25 checks).
 - All statuses, priorities, actions, coverage, simulation and analytics live in **`lib/logic.js`**, and every tab uses the same model.
 - `npm test` runs regression scenarios A–K on the real snapshot.
+
+## 10. Fix pass v3.1 (correctness + fleet size)
+
+**Dark site (A2).**
+
+- A *dark month* is a month with ≥ 8 h of power-caused downtime (RAN, wall-clock).
+- A *dark site* has ≥ 2 dark months out of 6.
+- A site is *dark in a quarter* when it has ≥ 2 of 3 dark months.
+- All three thresholds are in Config.
+- The BBT event feed caps events at about 60 min, so per-event durations cannot be used for this definition.
+
+**Trend (A1).**
+
+- **Primary signal:** availability change from Q1 to Q2, ±0.5 pp.
+- **Secondary signal:** change in the share of the cluster's sites that are dark, ±2 pp of sites.
+- When the two signals disagree → **Mixed**, with the reason shown.
+- A **vs network** column compares each cluster's change with the change of the whole scope (−0.76 pp in H1-2026, a May event).
+
+**Battery status (A3/A4).**
+
+- One function (`batteryAssessment`) decides status, evidence and what the BBT cell displays.
+- When the status comes from a ticket, the cell shows "— (no battery per ticket)". The estimate appears only in the site detail.
+- A DERIVED (monthly-summary) Dead/Critical value is trusted only with supporting evidence: ≥ 2 battery-exhausted events, or power downtime ≥ 1 h **and** ≥ 50% of PLN outage hours.
+- Without that support the value is *DERIVED-UNVERIFIED*:
+  - no priority floor
+  - BBT severity 0.5
+  - action = Inspect & verify (rule R2b)
+
+**Off-air (A5).** A site is flagged as suspected off-air / dismantle / data issue when any of these holds:
+
+- downtime ≥ 30% of the period
+- a month with downtime ≥ 90% of its hours
+- downtime ≥ 10% with no battery alarms and no tickets
+
+Flagged sites are excluded from every KPI unless the header toggle is on. They are listed in Data quality.
+
+**BBT design (B1).** Design BBT = banks × Ah per bank × usable DoD ÷ NE load × 60.
+
+- Ah per bank is **assumed** (100 Ah per module) because the source files have no Ah field.
+- Evidence tiers:
+  - **DERIVED** — banks and load both known
+  - **ESTIMATED** — banks known, load = median for that battery type
+  - **PROXY** — no banks, so the class default (120 min) is used
+- Problem criteria still use the 120-min management design by default (`bbt.criteria_basis`).
+- Data quality shows a calibration check: measured BBT is about 25% of the computed design, so the Ah assumption needs confirming.
+
+**Distance and ETA (B2).** Distance and ETA always point to the assigned MBP (within radius) or, if none is within radius, to the nearest MBP. A separate *Within radius* column shows which. Island sites show straight-line km and an indicative ETA (×3), marked as sea access. Feasibility and the simulation still treat islands as sea logistics.
+
+**Base camps (B3).**
+
+- `engine/config/basecamp_merge.csv` is a reviewable merge map. By default only "LIKELY SAME PERSON ≤ 20 km same NOP" pairs are merged (8 pairs).
+- The data model keeps the base camp record and the PIC (person) separately.
+- Base camps with no location or 0 sites are hidden from the dropdown and listed in Data quality.
+
+**Placement & fleet size (D1, ESTIMATED).**
+
+- For each NOP, MBP locations are added greedily, each snapped to a real MBP-P1/P2 site.
+- Each step picks the location that brings the most not-yet-reached P1/P2 sites within reach before BBT.
+- It stops at the target share (90%) or after +15 MBPs.
+- Excluded from the denominator and reported separately:
+  - island sites
+  - sites whose BBT is shorter than the mobilisation time
+- Relocation candidates are existing base camps whose removal (one at a time) loses < 0.5 pp of reach.
+
+**Checks.**
+
+- `engine/build.py` runs build sanity checks: the correlation n values equal the exported fields, the merge map was applied, and the monthly series is valid.
+- It then runs `npm test` (24 rule tests). The build fails if anything fails.

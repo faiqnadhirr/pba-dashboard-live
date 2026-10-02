@@ -1,5 +1,6 @@
 "use client";
 import React, { Fragment, useMemo, useState } from "react";
+import { bbtDisplay } from "@/lib/logic";
 
 /* ---------------- format (never None / nan; counts as integers; precision follows the data) ---------------- */
 export const isNum = (v) => typeof v === "number" && Number.isFinite(v);
@@ -17,6 +18,11 @@ export const precisionNote = (dec) => (dec >= 5 ? "≈ ±1 m" : dec === 4 ? "≈
 export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
 
 /* ---------------- colours + ICONS (never colour alone) ---------------- */
+// C4 — two priority scales, two colour families, always prefixed (never a bare "P1")
+export const LEVEL_KIND = {
+  MBP: { P1: { c: "#2b2370", t: "white", i: "▲" }, P2: { c: "#5a4fc4", t: "white", i: "◆" }, P3: { c: "#a9a2ea", t: "#141821", i: "●" }, P4: { c: "#DCD9F5", t: "#141821", i: "○" } },
+  BBS: { P1: { c: "#d03b3b", t: "white", i: "▲" }, P2: { c: "#ec835a", t: "#141821", i: "◆" }, P3: { c: "#fab219", t: "#141821", i: "●" }, P4: { c: "#C9CFD9", t: "#141821", i: "○" } },
+};
 export const LEVEL = {
   P1: { c: "#d03b3b", t: "white", i: "▲" }, P2: { c: "#ec835a", t: "#141821", i: "◆" },
   P3: { c: "#fab219", t: "#141821", i: "●" }, P4: { c: "#C9CFD9", t: "#141821", i: "○" },
@@ -26,7 +32,7 @@ export const STATUS = {
   "Below design": { c: "#DDE3EC", t: "#141821", i: "◐" }, "Meets design": { c: "#0ca30c", t: "white", i: "✔" }, Unknown: { c: "#EEF1F5", t: "#55627A", i: "?" },
 };
 export const EVID = {
-  ACTUAL: { c: "#2a78d6", t: "white" }, DERIVED: { c: "#1baf7a", t: "#0b2b1f" }, ESTIMATED: { c: "#eb6834", t: "white" },
+  ACTUAL: { c: "#2a78d6", t: "white" }, "DERIVED-UNVERIFIED": { c: "#f3d9c9", t: "#7a2d0b" }, DERIVED: { c: "#1baf7a", t: "#0b2b1f" }, ESTIMATED: { c: "#eb6834", t: "white" },
   PROXY: { c: "#4a3aa7", t: "white" }, UNAVAILABLE: { c: "#C9CFD9", t: "#141821" }, TICKET: { c: "#55627A", t: "white" },
   OBSERVED: { c: "#2a78d6", t: "white" }, INFERRED: { c: "#eb6834", t: "white" }, UNKNOWN: { c: "#C9CFD9", t: "#141821" },
 };
@@ -35,7 +41,13 @@ export const RESP_COLOR = { utility: "#d03b3b", internal: "#4a3aa7", battery: "#
 const Pill = ({ c, t, children, title }) => (
   <span title={title} className="inline-flex items-center gap-1 px-1.5 py-[1px] rounded text-[11px] font-semibold whitespace-nowrap" style={{ background: c, color: t }}>{children}</span>
 );
-export const LevelTag = ({ v }) => (v ? <Pill {...LEVEL[v]} title={`Priority ${v} (P1 = highest)`}><span aria-hidden>{LEVEL[v].i}</span>{v}</Pill> : <span className="text-mut">—</span>);
+export const LevelTag = ({ v, kind = "MBP" }) => { const L = LEVEL_KIND[kind][v]; return v && L ? <Pill {...L} title={`${kind === "MBP" ? "MBP response priority" : "BBS battery-action priority"} ${kind}-${v} (P1 = highest)`}><span aria-hidden>{L.i}</span>{kind}-{v}</Pill> : <span className="text-mut">—</span>; };
+/** A3 — the only way a BBT value is rendered: status basis and number can never contradict */
+export const BbtCell = ({ r, showStatus = false }) => {
+  const d = bbtDisplay(r);
+  return <span className="inline-flex items-center gap-1.5">{d.text ? <span className="text-slate">{d.text}</span> : fMin(d.value)}{showStatus && <StatusTag v={r.bbt_status} />}<EvTag v={d.evidence} /></span>;
+};
+export const bbtCsv = (r) => { const d = bbtDisplay(r); return d.text ? d.text : `${isNum(d.value) ? Math.round(d.value) : ""} ${d.evidence || ""}`.trim(); };
 export const StatusTag = ({ v }) => { const s = STATUS[v] || STATUS.Unknown; return v ? <Pill {...s} title="Battery vs design"><span aria-hidden>{s.i}</span>{v}</Pill> : <span className="text-mut">—</span>; };
 export const EvTag = ({ v }) => <Pill {...(EVID[v] || EVID.UNAVAILABLE)} title="Evidence level">{v || "UNAVAILABLE"}</Pill>;
 export const Tag = ({ children, tone = "slate", title }) => {
@@ -243,24 +255,25 @@ export function DataTable({ rows, columns, initialSort, onRowClick, filename = "
 }
 
 /* ---------------- the 14 mandatory columns (management order) + availability triple ---------------- */
-export const SITE14 = (design) => [
-  { key: "mbp_priority_score", label: "1 · Priority", num: true, help: "MBP priority (P1 highest)", render: (r) => <span className="inline-flex items-center gap-1.5"><LevelTag v={r.mbp_priority_level} /><span>{f2(r.mbp_priority_score)}</span></span>, csv: (r) => `${r.mbp_priority_level} ${f2(r.mbp_priority_score)}` },
+export const SITE14 = () => [
+  { key: "mbp_priority_score", label: "1 · Priority", num: true, help: "MBP response priority (MBP-P1 highest)", render: (r) => <span className="inline-flex items-center gap-1.5"><LevelTag kind="MBP" v={r.mbp_priority_level} /><span>{f2(r.mbp_priority_score)}</span></span>, csv: (r) => `MBP-${r.mbp_priority_level} ${f2(r.mbp_priority_score)}` },
   { key: "site_id", label: "2 · Site ID", render: (r) => <span className="font-semibold text-navy">{r.site_id}</span> },
   { key: "site_name", label: "3 · Site Name" },
   { key: "site_class", label: "4 · Class" },
-  { key: "dependency_children", label: "5 · Dependency", num: true, help: "Children sites — PROXY from HUB Site bucket", render: (r) => (isNum(r.dependency_children) ? <span title={r.hub_site}>{r.dependency_children} <span className="text-mut text-[10px]">PROXY</span></span> : "—") },
+  { key: "dependency_children", label: "5 · Dependency (PROXY)", num: true, help: "PROXY: estimated child sites from the 'HUB Site' bucket in New_BBT. Needed for a real value: parent–child site topology (transmission hub → child site list).", render: (r) => (isNum(r.dependency_children) ? <span title={`HUB Site: ${r.hub_site} — PROXY. Real value needs parent–child site topology.`}>{r.dependency_children}</span> : "—") },
   { key: "nop", label: "6 · NOP" },
-  { key: "bbt_design_min", label: "7 · BBT Design", num: true, render: () => <span>{design} min <span className="text-mut text-[10px]">PROXY</span></span>, csv: () => design },
-  { key: "bbt_value_min", label: "8 · BBT Measured", num: true, render: (r) => <span className="inline-flex items-center gap-1.5">{fMin(r.bbt_value_min)}<EvTag v={r.bbt_value_evidence} /></span>, csv: (r) => `${isNum(r.bbt_value_min) ? Math.round(r.bbt_value_min) : ""} ${r.bbt_value_evidence}` },
+  { key: "bbt_design_min", label: "7 · BBT Design", num: true, help: "Per site: banks × Ah/bank (assumed) × DoD ÷ NE load. PROXY = class default (battery data missing).", render: (r) => <span title={r.bbt_design_basis} className="inline-flex items-center gap-1.5">{fMin(r.bbt_design_min)}<EvTag v={r.bbt_design_evidence} /></span>, csv: (r) => `${r.bbt_design_min} ${r.bbt_design_evidence}` },
+  { key: "bbt_value_min", label: "8 · BBT Measured", num: true, sortVal: (r) => r.battery?.display?.value, render: (r) => <BbtCell r={r} />, csv: bbtCsv },
   { key: "pln_freq", label: "9 · PLN outage (freq)", num: true, render: (r) => fInt(r.pln_freq) },
   { key: "pln_total_h", label: "10 · Outage Duration", num: true, render: (r) => fH(r.pln_total_h) },
-  { key: "km_assigned", label: "11 · Distance to MBP", num: true, render: (r) => (r.covered ? fKm(r.km_assigned) : <Tag tone="crit" title={r.assignment_basis}>not covered</Tag>), csv: (r) => (r.covered ? r.km_assigned?.toFixed(1) : "not covered") },
-  { key: "eta_min", label: "12 · Travel time", num: true, help: "ESTIMATED; red = MBP cannot arrive before battery runs out",
-    render: (r) => (isNum(r.eta_min) ? <span className={r.can_arrive_before_bbt ? "" : "text-[#b42318] font-semibold"}>{r.can_arrive_before_bbt ? "" : "✖ "}{fMin(r.eta_min)}</span> : <Tag tone="mut">{r.access_class === "island" ? "island" : "n/a"}</Tag>),
-    csv: (r) => (isNum(r.eta_min) ? Math.round(r.eta_min) : r.access_class) },
+  { key: "dist_km", label: "11 · Distance to MBP", num: true, help: "Straight-line km to the assigned MBP (within radius) or, if none, to the nearest MBP", render: (r) => <span title={`${r.dist_mbp || ""}${r.dist_note ? " — " + r.dist_note : ""}`}>{isNum(r.dist_km) ? fKm(r.dist_km) : "no site coordinates"}</span>, csv: (r) => r.dist_km?.toFixed(1) },
+  { key: "dist_eta_min", label: "12 · Travel time", num: true, help: "ESTIMATED (speed model). Red ✖ = cannot arrive before BBT. Island = indicative road-equivalent (sea access).",
+    render: (r) => (isNum(r.dist_eta_min) ? <span className={r.can_arrive_before_bbt ? "" : "text-[#b42318] font-semibold"} title={r.dist_note || ""}>{r.can_arrive_before_bbt ? "" : "✖ "}{fMin(r.dist_eta_min)}{r.access_class === "island" ? <span className="text-mut font-normal text-[10px]"> sea access</span> : null}</span> : "no site coordinates"),
+    csv: (r) => (isNum(r.dist_eta_min) ? Math.round(r.dist_eta_min) : "") },
+  { key: "within_radius", label: "Within radius", render: (r) => (r.within_radius ? <Tag tone="good">✔ yes</Tag> : <Tag tone="crit">✖ no</Tag>), csv: (r) => (r.within_radius ? "yes" : "no") },
   { key: "mbp_deployments", label: "13 · Historical MBP", num: true, render: (r) => fInt(r.mbp_deployments) },
   { key: "mbp_backup_h", label: "14 · MBP backup time", num: true, render: (r) => fH(r.mbp_backup_h) },
   { key: "avail_delta_pp", label: "Availability · target · gap", num: true, sortVal: (r) => r.avail_delta_pp, render: (r) => <AvailTriple a={r.avail_wc_pct} t={r.ran_target_pct} g={r.avail_delta_pp} compact />, csv: (r) => `${f2(r.avail_wc_pct)} / ${f2(r.ran_target_pct)} / ${f2(r.avail_delta_pp)}` },
-  { key: "mbp_assigned", label: "Assigned MBP" },
+  { key: "dist_mbp", label: "MBP (assigned / nearest)" },
   { key: "can_arrive_before_bbt", label: "Arrives before BBT?", render: (r) => (r.can_arrive_before_bbt ? <Tag tone="good">✔ yes</Tag> : <Tag tone="crit">✖ no</Tag>), csv: (r) => (r.can_arrive_before_bbt ? "yes" : "no") },
 ];

@@ -13,6 +13,31 @@ bbt:
   dead_max_minutes: 5          # <= 5 min backup   -> Dead (no effective backup)
   min_exhaustion_events: 1     # events needed to call BBT "measured"
   max_events_per_site_flag: 300  # above this in 6 months -> flagged as alarm flapping
+  criteria_basis: standard     # standard = problem criteria vs the 120-min management design; site = vs per-site design (B1)
+  design_by_class:             # fallback design BBT when battery design data is missing (PROXY)
+    Diamond: 120
+    Platinum: 120
+    Gold: 120
+    Silver: 120
+    Bronze: 120
+    Unknown: 120
+  design_from_battery:         # per-site design BBT = banks x Ah/bank x usable DoD / NE load (A) x 60  (nominal V cancels: 48 V both sides)
+    ah_per_bank:               # ASSUMED — the source files have no Ah field; set to the standard module per type
+      LITHIUM: 100
+      VRLA: 100
+      MIXED: 100
+      OTHER: 100
+    usable_dod:
+      LITHIUM: 0.90
+      VRLA: 0.50
+      MIXED: 0.70
+      OTHER: 0.50
+    min_minutes: 30
+    max_minutes: 480
+  derived_support:             # A4: a DERIVED (monthly summary) Dead/Critical BBT is trusted only with supporting evidence
+    min_exhaustion_events: 2   #   >= this many battery-exhausted events, OR
+    min_power_h: 1.0           #   power downtime >= this many hours AND
+    min_share_of_pln: 0.5      #   power downtime >= this share of PLN outage hours (a near-zero battery turns outages into downtime)
 
 battery_age_replace_years:     # age at which replacement is recommended
   VRLA: 4
@@ -45,6 +70,7 @@ travel:                        # ESTIMATED travel-time model (Sumatera roads)
     unknown: 1.0
     riverine_delta: 1.5        # river crossings / tidal roads (Banyuasin, OKI, Indragiri Hilir ...)
     remote: 2.0                # 'Kepulauan' flag outside known island / delta regencies
+    island: 3.0                # indicative only (table display); simulation/feasibility treat islands as sea logistics
 
 dependency_children:           # PROXY: HUB Site bucket -> children estimate (editable)
   end site: 0
@@ -86,10 +112,23 @@ action_batches:                # execution batches by priority
   P4: "Batch 4 — next quarter"
 
 availability:
-  dark_power_h: 1.0            # site counts as "dark (power)" in a period if power-caused downtime >= this (wall-clock h)
-  trend_pp: 0.20               # availability change (pp) between Q1 and Q2 to call a cluster Deteriorating / Improving
-  trend_dark_sites: 2          # or a change of >= this many dark sites
+  dark_month_h: 8.0            # A2: a "dark month" = power-caused downtime >= this many wall-clock hours in that month
+  dark_min_months: 2           #     a site is "dark" over the period with >= this many dark months (of 6)
+  dark_quarter_min_months: 2   #     ... and "dark in a quarter" with >= this many dark months in that quarter
+  trend_pp: 0.50               # A1: primary signal — availability change Q1 -> Q2 (pp)
+  trend_dark_share_pp: 2.0     #     secondary signal — change in the share of dark sites (percentage points of cluster sites)
   min_cluster_sites: 5         # clusters with fewer sites -> Insufficient data
+
+offair:                        # A5: suspected off-air / dismantled / data issue
+  max_outage_share: 0.30       # total downtime >= 30% of the period
+  full_month_share: 0.90       # or any month with downtime >= 90% of its hours
+  no_alarm_min_share: 0.10     # or downtime >= 10% of the period with no battery alarms and no tickets
+  exclude_by_default: true     # excluded from KPIs unless the header toggle is on
+
+placement:                     # D1: fleet size & placement (ESTIMATED: straight-line x road factor)
+  target_share: 0.90           # add MBPs until >= this share of MBP-P1/P2 sites is reached before BBT expires
+  max_new: 15
+  relocation_max_loss_pp: 0.5  # a base camp is a relocation candidate if removing it loses < this many pp of P1/P2 reach
 
 severity_floor:                # escalation: measured Dead/Critical battery can never be below this priority
   measured_dead_critical: P2
