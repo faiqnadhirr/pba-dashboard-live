@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+html, body { padding: 0; margin: 0; background: #F5F7FA; color: #141821; }
+* { box-sizing: border-box; }
+.tabular { font-variant-numeric: tabular-nums; }
+::-webkit-scrollbar { height: 10px; width: 10px }
+::-webkit-scrollbar-thumb { background: #C7CEDA; border-radius: 6px }
+.leaflet-container { background: #e9edf2; font: inherit; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important } }

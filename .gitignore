@@ -1,0 +1,7 @@
+node_modules/
+.next/
+.vercel/
+engine/data/
+engine/**/__pycache__/
+*.pyc
+.env*

@@ -1,0 +1,35 @@
+# ---------------------------------------------------------------
+# PBA MVP — scoring weights (adjustable live in the Config page)
+# Weights are re-normalised to sum to 1 at runtime.
+# ---------------------------------------------------------------
+class_score:
+  Diamond: 1.0
+  Platinum: 0.8
+  Gold: 0.6
+  Silver: 0.4
+  Bronze: 0.2
+  Unknown: 0.3
+
+mbp_priority:                  # MBP site priority (weights re-normalised to 100%)
+  class: 0.25                  # management factor
+  dependency: 0.15             # management factor (PROXY -> lower weight)
+  outage_frequency: 0.20       # management factor
+  travel_distance: 0.10        # management factor
+  eta_gap: 0.20                # MBP arrives after battery runs out (ETA - BBT)
+  site_condition: 0.10         # availability gap vs target (RAN, wall-clock)
+  vip: 0.0
+  outage_duration: 0.0
+  mbp_history: 0.0
+
+bbs_priority:
+  bbt_severity: 0.35           # gap vs BBT design
+  pln_exposure: 0.25           # historical PLN outage (freq + duration)
+  class: 0.15
+  dependency: 0.15
+  site_condition: 0.10         # availability gap vs target
+  vip: 0.0
+
+mbp_candidate:                 # how candidate MBPs are ranked for a site (lower cost wins)
+  eta: 0.70
+  familiarity: 0.20            # how often this MBP served this site before
+  workload: 0.10               # MBPs already loaded with many tickets rank lower

@@ -1,0 +1,81 @@
+# ---------------------------------------------------------------
+# PBA MVP — thresholds & physical assumptions (all adjustable)
+# ---------------------------------------------------------------
+scope:
+  area: AREA1
+  period_start: "2026-01-01"
+  period_end: "2026-06-30"
+
+bbt:
+  design_minutes: 120          # BBT design (PROXY: no per-site field; matches source Good/Bad cut at ~120 min)
+  ok_pct: 0.50                 # >= 50% of design  -> OK
+  degraded_pct: 0.25           # 25%..50%          -> Degraded ; below -> Critical
+  dead_max_minutes: 5          # <= 5 min backup   -> Dead (no effective backup)
+  min_exhaustion_events: 1     # events needed to call BBT "measured"
+  max_events_per_site_flag: 300  # above this in 6 months -> flagged as alarm flapping
+
+battery_age_replace_years:     # age at which replacement is recommended
+  VRLA: 4
+  LITHIUM: 8
+  OTHER: 5
+
+load_high_ampere: 45           # NE load considered "high" (upgrade capacity instead of like-for-like)
+
+mbp:
+  same_nop_only: true          # coverage + candidates restricted to MBP's own NOP
+  assignment_mode: history_then_nearest   # history_then_nearest | nearest
+  max_radius_km: 120           # beyond this a site is "uncovered"
+  rh_max_hours_per_ticket: 48  # RH meter diff above this = outlier
+
+travel:                        # ESTIMATED travel-time model (Sumatera roads)
+  road_factor: 1.35            # straight-line km -> road km
+  mobilization_minutes: 15     # prepare + load MBP before departure
+  speed_kmh:
+    urban: 25                  # KOTA ... (city traffic)
+    rural_short: 35            # rural, road km < 15 (village roads)
+    rural_long: 45             # rural, road km >= 15 (provincial / national road)
+  peak_hours: [7, 8, 16, 17, 18]   # local hour of departure
+  peak_multiplier_urban: 1.4
+  peak_multiplier_rural: 1.15
+  night_hours: [22, 23, 0, 1, 2, 3, 4]
+  night_multiplier: 1.2        # slower at night (visibility / safety)
+  island_eta: unavailable      # island sites: no road ETA
+
+dependency_children:           # PROXY: HUB Site bucket -> children estimate (editable)
+  end site: 0
+  endsite: 0
+  bts: 0
+  repeater: 0
+  simpul kecil: 2
+  simpul: 3
+  simpul sedang: 5
+  combat: 1
+  simpul besar: 8
+  simpul sangat besar: 12
+  bsc/simpul besar: 15
+  backbone: 15
+  bsc: 15
+  controller: 15
+  ttc: 15
+
+power:
+  max_pln_events_per_month: 200   # monthly 'Repetitive' above this = alarm flapping -> capped + flagged
+
+site_condition:
+  full_gap_pp: 3.0             # availability this many pp below target -> condition factor = 1
+
+priority_levels:               # MBP priority score (0..1) -> P1..P4
+  P1: 0.55
+  P2: 0.42
+  P3: 0.30
+
+bbs_priority_levels:           # BBS priority score -> P1..P4 (only sites needing action are scored)
+  P1: 0.63
+  P2: 0.54
+  P3: 0.45
+
+action_batches:                # execution batches by priority
+  P1: "Batch 1 — now (≤ 2 weeks)"
+  P2: "Batch 2 — this month"
+  P3: "Batch 3 — next PM cycle"
+  P4: "Batch 4 — next quarter"
