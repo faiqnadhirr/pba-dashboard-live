@@ -1,4 +1,4 @@
-# PBA — Power Backup Analytics (v2)
+# PBA — Power Backup Analytics (v3)
 
 PBA is a decision-support dashboard for Telkomsel **AREA1** power backup (ENOM). It covers the two areas in the management order:
 
@@ -126,30 +126,70 @@ npm test                                # browser logic == Python engine (parity
 
 ---
 
-## What changed in v2 (from the review)
+## v3 hardening pass (what changed)
 
-| Review point | v2 |
-|---|---|
-| MBP priority ignored BBT | Added **ETA − BBT gap** (20%) and **availability** (10%) as factors. The 4 management factors stay in: class 25 · outage freq 20 · dependency 15 · distance 10 |
-| MBP vs BBS contradicted each other (e.g. PBI027) | Added a **combined rule**. A hub that goes dark before the MBP arrives always gets *MBP standby + battery upgrade* |
-| Estimated BBT was mixed into the status counts | The Overview now separates **Measured vs Estimated**. Estimated values only ever lead to *Inspect & verify* |
-| BBT is censored | BBT now uses **Kaplan-Meier**, tested on unseen sites (Jan–Apr → May–Jun). The naive median was biased −22.6 min; KM is biased −3.9 min |
-| transport_down 755 h/month | RAN durations are NE-summed. They are now converted to **wall-clock** (÷ NE count, ≤ 24 h/day) |
-| PLN 803× / 2,952 h | **3,298 overlapping events merged** into intervals. PBI027 went from 261× / 1,153 h to 35× / 19 h |
-| PBI027 had 0 tickets | Matching is correct: the site is simply not in the ticket file. The drawer now says so |
-| Island sites "unserved" without explanation | Results now separate *unserved – island (sea logistics)* from *unserved – no free MBP* |
-| "Critical" meant two different things | **Priority P1–P4** is now a separate scale from **Battery: Dead / Critical / Degraded / OK** |
-| Inspect & verify had no execution plan | Actions are grouped into execution **batches** per priority (Batch 1 ≤ 2 weeks … Batch 4 next quarter) |
-| Inactive sites were on by default | They are now **off by default** |
-| Relocation coordinates had 1 decimal | Now shown with 5 decimals, plus a real anchor site |
-| Muara Enim (6 sites, 0 MBP) | Flagged, and given a cross-NOP nearest-MBP fallback |
-| Map was blank, display was raw, Streamlit was slow | Moved to Next.js + Leaflet with automatic offline fallback. No `None`/`nan`, counts shown as integers, all tables paginated with full CSV export |
-| Governance | Config is per-browser with JSON export/import and a clear note. Login, roles and audit trail belong in the Watson integration |
+- **Navigation follows the decision chain:**
+  1. Health & cause
+  2. Accountability
+  3. Impact
+  4. Trend
+  5. Response (MBP map, simulation)
+  6. Action list
+- **MBP rules.**
+  - The radius and battery survival are **hard constraints** in both coverage and simulation.
+  - The simulation runs in two passes, so a hopeless site cannot take an MBP that could save another site.
+- **Battery evidence precedence:** measured > inspection > ticket > derived > estimate. Conflicts are shown, and an estimate never leads to *Replace*.
+- **P1/P2 never get "Monitor".** A measured Dead/Critical site is never below P2.
+- **Availability, target and gap (pp)** are shown everywhere, together with the cause decomposition and power responsibility (Observed / Inferred / Unknown, each with a Why).
+- **Base camp matching.** PIC → base camp uses normalised and fuzzy matching with a confidence level. Ambiguous matches go to review, and duplicates are flagged, never merged.
+- **Access class.** Mainland / Island / Riverine-delta / Remote / Unknown, taken from Dapot only.
+- **Coordinates** are shown at source precision.
+- **Map:**
+  - distinct site and MBP icons
+  - independent toggles
+  - coverage layer and radius slider
+  - MBP selection shows its radius, assigned sites and workload
+  - clustering
+- **New analytics:** worst clusters, clusters getting worse (Q1 vs Q2), Top 15 worst sites, and the base-camp under-served signal. All are explainable.
+- **Labels.**
+  - Data is called a "Data snapshot" with a "Last pipeline refresh" time; nothing says "live".
+  - KPIs are labelled portfolio vs filtered.
+  - An empty filter shows "No active sites match this filter".
 
-Known limits:
-- Dependency is a PROXY (there is no topology list in the data).
-- Travel time is a speed model, not road routing.
+## Demo vs operational mode
+
+The app currently runs in **DEMO mode**:
+
+- Config changes stay in the viewer's browser (localStorage) for what-if analysis.
+- Export/import JSON lets the team agree a config, which is then committed to `engine/config/`.
+
+**OPERATIONAL mode** would add:
+
+- one approved, server-side config
+- roles
+- an audit/version trail
+- an "effective from" date
+
+## Ready for an API
+
+- All data access goes through `lib/data.js` (`loadAll`, `loadDetail`).
+- To move to an API, replace those two `fetch("/data/...")` calls with your endpoints that return the same JSON shapes (columnar `sites`, `mbps`, `meta`, `familiarity`, per-NOP `detail`).
+- No component reads files directly.
+- The pipeline (`engine/build.py`) can run on a schedule and publish the same JSON.
+
+## Tests
+
+```text
+npm test                     # 14 regression tests (scenarios A–K) on lib/logic.js
+python engine/validate.py    # 25 data/sanity checks, writes docs/VALIDATION_REPORT.md
+```
+
+**Known limits:**
+
+- Dependency is a PROXY.
+- ETA is a speed model, not routing.
 - MBP availability is a PROXY until FMC920 telemetry exists.
-- Scope is AREA1, H1-2026, built in batch.
+- Cause attribution is proportional, not causal.
+- Scope is AREA1, H1-2026.
 
 See `docs/METHOD.md`.

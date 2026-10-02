@@ -18,7 +18,7 @@ function parse(text) {
   return lines.filter(Boolean).map((l) => { const v = l.split(","); const o = {}; hd.forEach((k, i) => (o[k] = v[i]?.trim())); o.mbp_id = o.mbp_id.toUpperCase(); return o; });
 }
 
-export default function Telemetry({ scored }) {
+export default function Telemetry({ model: scored }) {
   const [rows, setRows] = useState(null), [err, setErr] = useState(null), [gf, setGf] = useState(0.3);
   const load = (t) => { try { setRows(parse(t)); setErr(null); } catch (e) { setErr(String(e)); setRows(null); } };
   const ses = rows ? deriveSessions(rows, scored, gf) : [];

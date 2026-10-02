@@ -3,7 +3,8 @@ import React, { useState } from "react";
 import { Card, Note, Slider } from "@/components/ui";
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
-const LBL = { class: "Site class", dependency: "Dependency (PROXY)", outage_frequency: "PLN outage frequency", travel_distance: "Travel distance",
+const LBL = { availability_gap: "Availability gap", power_downtime: "Power downtime", bbt_risk: "BBT risk", priority: "Priority", recurrence: "Recurrence (PLN outages)", criticality: "Criticality (class/dependency)",
+  share_dark: "Share of dark sites", power_downtime_per_site: "Power downtime per site", p1p2_dark_share: "Share P1/P2 dark sites", class: "Site class", dependency: "Dependency (PROXY)", outage_frequency: "PLN outage frequency", travel_distance: "Travel distance",
   eta_gap: "ETA > BBT (MBP arrives late)", site_condition: "Availability below target", vip: "VIP", outage_duration: "PLN outage duration",
   mbp_history: "MBP deployment history", bbt_severity: "BBT gap vs design", pln_exposure: "Historical PLN outage", eta: "ETA", familiarity: "Familiarity with site", workload: "MBP workload" };
 
@@ -28,7 +29,7 @@ export default function ConfigTab({ cfg, saveCfg, data }) {
   const upload = (f) => f.text().then((t) => { try { const j = JSON.parse(t); delete j.__exported; delete j.__built_at; setD(j); } catch { alert("Invalid config file"); } });
   return (
     <div className="space-y-4">
-      <Note tone="warn">Settings apply to <b>this browser only</b> (saved locally) and recalculate every priority, status and action instantly. There is no login/role/audit trail yet — to make a setting official, export it and agree it with the team (governance belongs in the Watson integration).</Note>
+      <Note tone="warn"><b>DEMO MODE.</b> Settings apply to <b>this browser only</b> (saved locally) and recalculate every priority, status and action instantly — use this for what-if analysis. <b>OPERATIONAL MODE</b> (not built yet) needs: one approved config stored server-side, role-based edit rights, version history / audit trail, and an "effective from" date so reports are reproducible. Until then, export the JSON, get it agreed, and commit it to <code>engine/config/</code> so the pipeline uses the same values.</Note>
       <div className="flex flex-wrap gap-2 sticky top-[92px] z-[400] bg-surface py-2">
         <button disabled={!dirty} onClick={() => saveCfg(d)} className="px-4 py-1.5 rounded-md bg-navy text-white text-[13px] font-semibold disabled:opacity-40">Apply</button>
         <button onClick={() => setD(clone(data.meta.config))} className="px-3 py-1.5 rounded-md border border-line bg-white text-[13px]">Reset to defaults</button>
@@ -68,6 +69,27 @@ export default function ConfigTab({ cfg, saveCfg, data }) {
             <Slider label="Coverage radius (uncovered beyond)" value={d.mbp.max_radius_km} min={20} max={300} step={10} onChange={(v) => set(["mbp", "max_radius_km"], v)} fmt={(v) => `${v} km`} />
           </div>
         </Card>
+        <Card title="Access, availability & severity rules">
+          <div className="grid sm:grid-cols-2 gap-4">
+            {["riverine_delta", "remote"].map((k) => <Slider key={k} label={`ETA multiplier — ${k.replace("_", " / ")}`} value={d.travel.access_multiplier[k]} min={1} max={4} step={0.1} onChange={(v) => set(["travel", "access_multiplier", k], v)} fmt={(v) => `×${v.toFixed(1)}`} />)}
+            <Slider label="Trend: change counted as worse/better" value={d.availability.trend_pp} min={0.05} max={2} step={0.05} onChange={(v) => set(["availability", "trend_pp"], v)} fmt={(v) => `${v.toFixed(2)} pp`} />
+            <Slider label="Trend: min. sites per cluster" value={d.availability.min_cluster_sites} min={1} max={30} onChange={(v) => set(["availability", "min_cluster_sites"], v)} />
+            <Slider label="'Dark' site = power downtime ≥" value={d.availability.dark_power_h} min={0.1} max={24} step={0.1} onChange={(v) => set(["availability", "dark_power_h"], v)} fmt={(v) => `${v} h`} />
+            <label className="flex flex-col gap-1 text-[12px] text-mut">Measured Dead/Critical priority floor
+              <select value={d.severity_floor.measured_dead_critical} onChange={(e) => set(["severity_floor", "measured_dead_critical"], e.target.value)} className="border border-line rounded-md px-2 py-1 text-[12.5px] text-ink">{["P1", "P2", "P3", "P4"].map((p) => <option key={p}>{p}</option>)}</select></label>
+          </div>
+        </Card>
+        <Card title="Base camp signal (under-served rule)" sub="Under-served when at least N criteria are met.">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Slider label="Criteria needed (of 4)" value={d.basecamp_signal.criteria_needed} min={1} max={4} onChange={(v) => set(["basecamp_signal", "criteria_needed"], v)} />
+            <Slider label="P1/P2 sites ≥" value={d.basecamp_signal.p1p2_sites_min} min={1} max={60} onChange={(v) => set(["basecamp_signal", "p1p2_sites_min"], v)} />
+            <Slider label="Share dark before MBP ≥" value={d.basecamp_signal.reach_risk_share_min} min={0.05} max={1} step={0.05} onChange={(v) => set(["basecamp_signal", "reach_risk_share_min"], v)} fmt={(v) => `${Math.round(v * 100)}%`} />
+            <Slider label="Average ETA ≥" value={d.basecamp_signal.avg_eta_min} min={15} max={240} step={5} onChange={(v) => set(["basecamp_signal", "avg_eta_min"], v)} fmt={(v) => `${v} min`} />
+            <Slider label="Workload ≥ percentile" value={d.basecamp_signal.workload_quantile} min={0.5} max={0.99} step={0.01} onChange={(v) => set(["basecamp_signal", "workload_quantile"], v)} fmt={(v) => `p${Math.round(v * 100)}`} />
+          </div>
+        </Card>
+        <Weights title="Top 15 worst sites — weights" note="Composite of availability gap, power downtime, BBT risk, priority, recurrence and criticality." obj={d.top15_weights} onChange={(v) => set(["top15_weights"], v)} />
+        <Weights title="Worst clusters — severity weights" note="Share of dark sites, power downtime per site, availability gap, share of P1/P2 dark sites." obj={d.worst_cluster_weights} onChange={(v) => set(["worst_cluster_weights"], v)} />
         <Card title="Dependency proxy (HUB Site bucket → children)" sub="No parent→child topology in the data — adjust these numbers to your network knowledge.">
           <div className="grid sm:grid-cols-3 gap-2">
             {Object.entries(d.dependency_children).map(([k, v]) => (

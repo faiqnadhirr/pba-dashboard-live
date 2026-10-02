@@ -8,12 +8,13 @@ const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 const OUT = {
   saved: { label: "saved — MBP arrives before battery runs out", c: "#0ca30c" },
   late: { label: "late — site dark until MBP arrives", c: "#ec835a" },
-  unserved_busy: { label: "unserved — no free MBP", c: "#d03b3b" },
+  unserved_busy: { label: "unserved — all MBPs in radius busy", c: "#d03b3b" },
+  unserved_no_coverage: { label: "unserved — no MBP within coverage radius", c: "#7a1414" },
   unserved_island: { label: "unserved — island (needs sea logistics, not modelled)", c: "#4a3aa7" },
   no_need: { label: "no MBP needed — battery covers the outage", c: "#A3ABB9" },
 };
 
-export default function SimTab({ scored, data, cfg, nop: gNop, setPick }) {
+export default function SimTab({ model: scored, data, cfg, nop: gNop, setPick, setRadius }) {
   const nops = useMemo(() => [...new Set(scored.map((s) => s.nop).filter(Boolean))].sort(), [scored]);
   const [nop, setNop] = useState(gNop !== "All NOPs" ? gNop : "NOP PALEMBANG");
   const inNop = useMemo(() => scored.filter((s) => s.nop === nop && s.site_active === 1), [scored, nop]);
@@ -53,10 +54,12 @@ export default function SimTab({ scored, data, cfg, nop: gNop, setPick }) {
         movedMbps: data.mbps.map((m) => (m.mbp_id === moveMbp ? { ...m, lat: t.lat, lon: t.lon } : m)) });
     }
     if (addN > 0) {
-      const need = base.rows.filter((r) => r.outcome === "late" || r.outcome === "unserved_busy");
-      const pts = need.map((r) => scored.find((s) => s.site_id === r.site_id)).filter((s) => s && isNum(s.lat) && s.is_island === 0).map((s) => ({ lat: s.lat, lon: s.lon, w: s.mbp_priority_score }));
-      const cen = kmeans(pts, addN);
-      const extra = cen.map((c, i) => ({ mbp_id: `NEW-MBP-${i + 1}`, lat: c[0], lon: c[1], nop, is_new: true, mbp_tickets_h1: 0 }));
+      const need = base.rows.filter((r) => r.outcome === "late" || r.outcome === "unserved_busy" || r.outcome === "unserved_no_coverage");
+      const pts = need.map((r) => scored.find((s) => s.site_id === r.site_id)).filter((s) => s && isNum(s.lat) && s.access_class !== "island").map((s) => ({ lat: s.lat, lon: s.lon, w: s.mbp_priority_score }));
+      // priority-weighted centres, snapped to the nearest site that needs an MBP (a real, reachable location — not a calculated point)
+      const cen = kmeans(pts, addN).map((c) => pts.reduce((b, p) => ((p.lat - c[0]) ** 2 + (p.lon - c[1]) ** 2 < (b.lat - c[0]) ** 2 + (b.lon - c[1]) ** 2 ? p : b), pts[0]));
+      const uniq = [...new Map(cen.map((p) => [p.lat + "," + p.lon, p])).values()];
+      const extra = uniq.map((c, i) => ({ mbp_id: `NEW-MBP-${i + 1}`, lat: c.lat, lon: c.lon, nop, is_new: true, mbp_tickets_h1: 0 }));
       if (extra.length) out[`C · +${extra.length} MBP pre-positioned`] = { ...simulate(scored, affected, hours, data.mbps, ctx, cfg, { departHour: hour, busy: b, extra }), extra };
     }
     out[`D · outage ${altH} h`] = simulate(scored, affected, altH, data.mbps, ctx, cfg, { departHour: hour, busy: b });
@@ -69,7 +72,7 @@ export default function SimTab({ scored, data, cfg, nop: gNop, setPick }) {
 
   return (
     <div className="space-y-4">
-      <Note>Scenario-based allocation, not autonomous optimisation. Sites are served in priority order; each picks the best free MBP (ETA, then familiarity with the site, then workload). One MBP serves one site per run. ETA is ESTIMATED (road factor × speed × traffic); MBP availability is PROXY — all available unless you mark them busy. Island sites have no road ETA and are reported separately.</Note>
+      <Note>Scenario-based allocation, not autonomous optimisation. Sites are served in priority order. For each site: (1) MBPs within the coverage radius, (2) <b>hard constraint</b> — keep only MBPs that arrive before the battery runs out, (3) among those prefer ETA, familiarity with the site, workload, (4) if none can arrive in time, fallback = earliest arrival and the site is flagged “late”. One MBP serves one site per run. ETA is ESTIMATED (road factor × speed × traffic); MBP availability is PROXY — all available unless you mark them busy. Island sites have no road ETA and are reported separately.</Note>
       <div className="grid xl:grid-cols-[360px_minmax(0,1fr)] gap-4">
         <Card title="Scenario inputs">
           <div className="space-y-3">
@@ -105,11 +108,11 @@ export default function SimTab({ scored, data, cfg, nop: gNop, setPick }) {
             <Card title="Scenario comparison" sub="Priority-weighted coverage = share of affected-site priority that is saved or needs no MBP.">
               <div className="overflow-x-auto">
                 <table className="w-full text-[12.5px] tabular">
-                  <thead><tr className="text-slate">{["Scenario", "Affected", "Need MBP", "Saved", "Late", "Unserved (no MBP)", "Unserved (island)", "Avg ETA", "Max ETA", "Expected downtime", "Priority-weighted coverage"].map((h) => <th key={h} className="px-2 py-1.5 border-b border-line text-right first:text-left whitespace-nowrap">{h}</th>)}</tr></thead>
+                  <thead><tr className="text-slate">{["Scenario", "Affected", "Need MBP", "Saved", "Late", "No feasible MBP", "Unserved (busy)", "Unserved (no coverage)", "Unserved (island)", "Avg ETA", "Max ETA", "Expected downtime", "Priority-weighted coverage"].map((h) => <th key={h} className="px-2 py-1.5 border-b border-line text-right first:text-left whitespace-nowrap">{h}</th>)}</tr></thead>
                   <tbody>{kRows.map((r) => (
                     <tr key={r.scenario} onClick={() => setShow(r.scenario)} className={`border-b border-line/60 cursor-pointer ${show === r.scenario ? "bg-s1/10" : "hover:bg-s1/5"}`}>
                       <td className="px-2 py-1.5 font-semibold">{r.scenario}</td><td className="text-right px-2">{r.sites_affected}</td><td className="text-right px-2">{r.sites_need_mbp}</td>
-                      <td className="text-right px-2 text-good font-semibold">{r.saved}</td><td className="text-right px-2">{r.late}</td><td className="text-right px-2 text-crit">{r.unserved_busy}</td>
+                      <td className="text-right px-2 text-good font-semibold">{r.saved}</td><td className="text-right px-2">{r.late}</td><td className="text-right px-2 text-warn">{r.no_feasible}</td><td className="text-right px-2 text-crit">{r.unserved_busy}</td><td className="text-right px-2 text-crit">{r.unserved_no_coverage}</td>
                       <td className="text-right px-2 text-s7">{r.unserved_island}</td><td className="text-right px-2">{fMin(r.avg_eta_min)}</td><td className="text-right px-2">{fMin(r.max_eta_min)}</td>
                       <td className="text-right px-2">{fH(r.expected_downtime_h)}</td><td className="text-right px-2 font-semibold">{fPct(r.priority_weighted_coverage_pct, 0)}</td>
                     </tr>))}</tbody>
@@ -118,11 +121,11 @@ export default function SimTab({ scored, data, cfg, nop: gNop, setPick }) {
               {kRows[0]?.unserved_island > 0 && <div className="mt-2"><Note tone="warn">{kRows[0].unserved_island} affected site(s) are island sites: road travel time is UNAVAILABLE, so extra land MBPs (scenario C) cannot reduce them. They need sea / crossing logistics or a permanent backup (battery upgrade / fixed genset).</Note></div>}
             </Card>
             <Card title={`Recommended allocation — ${show}`} right={<Select value={show} onChange={setShow} options={Object.keys(res)} />}>
-              <MapView fitKey={show} onPick={setPick}
+              <MapView fitKey={show} onPickSite={setPick} cfg={cfg} onRadius={setRadius} compact
                 sites={cur.rows.map((r) => ({ ...siteMap.get(r.site_id), _o: r.outcome }))}
-                colorOf={(s) => OUT[s._o].c} sizeOf={() => 6}
-                mbps={[...data.mbps.filter((m) => cur.rows.some((r) => r.mbp === m.mbp_id)), ...(cur.extra || [])]}
-                legend={Object.values(OUT).map((o) => ({ label: o.label, c: o.c }))} height={380} />
+                colorOverride={(s) => OUT[s._o].c}
+                mbps={data.mbps.filter((m) => cur.rows.some((r) => r.mbp === m.mbp_id))} extraMbps={cur.extra || []}
+                legendOverride={Object.values(OUT).map((o) => ({ label: o.label, c: o.c }))} height={380} />
               <div className="mt-3">
                 <DataTable rows={cur.rows} filename={`pba_simulation_${show}.csv`.replace(/[^\w.]+/g, "_")} onRowClick={(r) => setPick(siteMap.get(r.site_id))} columns={[
                   { key: "priority", label: "Priority", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center"><LevelTag v={r.priority_level} />{f2(r.priority)}</span>, csv: (r) => `${r.priority_level} ${f2(r.priority)}` },
@@ -130,6 +133,7 @@ export default function SimTab({ scored, data, cfg, nop: gNop, setPick }) {
                   { key: "bbt_min", label: "BBT", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center">{fMin(r.bbt_min)}<EvTag v={String(r.bbt_evidence).split(" ")[0]} /></span> },
                   { key: "mbp", label: "Recommended MBP", render: (r) => r.mbp || "—" }, { key: "km", label: "Distance", num: true, render: (r) => fKm(r.km) },
                   { key: "eta_min", label: "ETA", num: true, render: (r) => fMin(r.eta_min) }, { key: "served_before", label: "Served before", num: true },
+                  { key: "feasible", label: "Arrives before BBT?", render: (r) => (r.feasible === true ? <Tag tone="good">✔ yes</Tag> : r.feasible === false ? <Tag tone="crit">✖ no (fallback)</Tag> : "—"), csv: (r) => (r.feasible == null ? "" : r.feasible ? "yes" : "no") },
                   { key: "outcome", label: "Outcome", render: (r) => <Tag tone={r.outcome === "saved" ? "good" : r.outcome === "no_need" ? "mut" : "crit"}>{OUT[r.outcome].label.split(" — ")[0]}</Tag>, csv: (r) => OUT[r.outcome].label },
                   { key: "expected_down_min", label: "Expected down", num: true, render: (r) => fMin(r.expected_down_min) },
                   { key: "reasons", label: "Why", wrap: true },

@@ -21,9 +21,10 @@ from src.common import load_config, norm_id
 from src.ingestion import load as L
 from src.normalization import clean as C
 from src.analytics import kpi as K
-from src.analytics.site_table import assemble, apply_scoring
+from src.analytics.site_table import assemble
 from src.mbp import engine as M
-from src.mbp.basecamp import basecamp_summary, suggest_new_basecamps
+from src.mbp.matching import match_pics, duplicate_basecamps
+from src.common import haversine_km
 from src.bbs import model as B
 from src.bbs import survival as S
 
@@ -82,6 +83,17 @@ def read_raw(cache: str | None):
     return out
 
 
+def source_status():
+    out = []
+    for label, pat in [("Dapot site master", "*Dapot*ALL*Site*.xlsx"), ("MBP tickets + base camps", "*Tracking*Ticket*MBP*.xlsx"),
+                       ("New_BBT site attributes", "*New*BBT*.xlsx"), ("BBT monthly", "*BBT*Site*Details*.csv"),
+                       ("BBT events", "*BBT*Export*monthly*.xlsx"), ("RAN availability", "*Avail*RAN*")]:
+        f = L._find(pat, required=False)
+        out.append(dict(source=label, files=len(f), status="OK" if f else "MISSING",
+                        latest_file_time=max(pd.Timestamp(p.stat().st_mtime, unit="s", tz="UTC").tz_convert("Asia/Jakarta") for p in f).strftime("%d %b %Y %H:%M WIB") if f else None))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw", default=None, help="folder with raw files (default engine/data/raw)")
@@ -97,7 +109,26 @@ def main():
     log("cleaning")
     sites, q = C.clean_sites(dapot, newbbt, cfg["scope"]["area"]); qa.update(q)
     mbps = C.clean_mbp(team)
+    sites["access_class"], sites["access_basis"] = C.access_class(sites["kepulauan"], sites["city"])
+    sites["is_island"] = (sites["access_class"] == "island").astype(int)       # only true islands lose road ETA
+    d1 = dapot[dapot["Area"].astype(str).str.upper().str.replace(" ", "") == cfg["scope"]["area"]].copy()
+    d1["sid"] = norm_id(d1["Site ID"])
+    dec = d1.drop_duplicates("sid").set_index("sid")["Lat"].astype(str).str.split(".").str[1].str.len()
+    sites["coord_decimals"] = sites["site_id"].map(dec).fillna(0).clip(upper=6).astype(int)
+    qa["access_class"] = sites["access_class"].value_counts().to_dict()
     tickets, q = C.clean_tickets(track, set(mbps["mbp_id"]), cfg["mbp"]["rh_max_hours_per_ticket"]); qa.update(q)
+    # ---- MBP identity: fuzzy / normalised matching of ticket PIC -> base camp (never blind-merged)
+    pic = tickets.dropna(subset=["mbp_id"]).groupby("mbp_id").agg(
+        n=("site_id", "size"), nop=("nop", lambda x: x.mode().iloc[0] if len(x.mode()) else None)).reset_index().rename(columns={"mbp_id": "pic"})
+    pm = match_pics(pic, mbps[["mbp_id", "nop"]]).merge(pic, on="pic", how="left")
+    pmap = dict(zip(pm.loc[pm["status"] == "MATCHED", "pic"], pm.loc[pm["status"] == "MATCHED", "mbp_id"]))
+    tickets["pic_raw"] = tickets["mbp_id"]
+    tickets["mbp_id"] = tickets["mbp_id"].map(lambda x: pmap.get(x, x) if isinstance(x, str) else x)
+    tickets["mbp_matched"] = tickets["mbp_id"].isin(set(mbps["mbp_id"])).astype(int)
+    qa["ticket_mbp_match_rate_exact"] = qa["ticket_mbp_match_rate"]
+    qa["ticket_mbp_match_rate"] = round(float(tickets["mbp_matched"].mean()), 4)
+    qa["pic_match_status"] = pm["status"].value_counts().to_dict()
+    dups = duplicate_basecamps(mbps, haversine_km)
     events, q = C.clean_bbt_events(events_raw); qa.update(q)
     monthly = C.clean_bbt_monthly(monthly_raw)
     o25 = C.clean_outage_2025(out25)
@@ -112,8 +143,11 @@ def main():
         u = sorted(set(ids.dropna()) - SID)
         qa[f"unmatched_{name}"] = len(u)
         unmatched += [dict(source=name, id=x, n=None) for x in u]
-    pics = tickets[tickets["mbp_matched"] == 0]["mbp_id"].fillna("(blank)").value_counts()
-    unmatched += [dict(source="ticket PIC without MBP base camp", id=k, n=int(v)) for k, v in pics.items()]
+    for _, r in pm[pm["status"] != "MATCHED"].iterrows():
+        unmatched.append(dict(source=f"ticket PIC — {r['status']}", id=r["pic"], n=int(r["n"]), note=f"{r['basis']} {r['candidates']}".strip()))
+    blank = int(tickets["pic_raw"].isna().sum())
+    if blank:
+        unmatched.append(dict(source="ticket PIC — blank", id="(blank)", n=blank, note=""))
     tk = tickets[tickets["site_id"].isin(SID)]
     ev = events[events["site_id"].isin(SID)]
     mo = monthly[monthly["site_id"].isin(SID)]
@@ -132,6 +166,21 @@ def main():
     wl = K.mbp_workload(tk)
     fam = K.familiarity(tk)
     vendor = ran.sort_values("ym").groupby("site_id")["vendor"].last().reset_index()
+    # availability decomposition inputs (wall-clock hours) + two periods for trend (Q1 = Jan–Mar, Q2 = Apr–Jun)
+    rq = ran.assign(q=np.where(ran["ym"] <= "202603", "q1", "q2"), hrs=ran["days"] * 24.0)
+    agg = rq.groupby("site_id").agg(ran_hours=("hrs", "sum"), ran_ran_down_h=("ran_sec", lambda x: x.sum() / 3600),
+                                    ran_other_down_h=("other_sec", lambda x: x.sum() / 3600))
+    for qq in ("q1", "q2"):
+        g_ = rq[rq["q"] == qq].groupby("site_id")
+        agg[f"{qq}_hours"] = g_["hrs"].sum()
+        agg[f"{qq}_outage_h"] = g_["outage_sec"].sum() / 3600
+        agg[f"{qq}_power_h"] = g_["power_sec"].sum() / 3600
+    pwr = pwr.merge(agg.reset_index(), on="site_id", how="left")
+    # responsibility evidence: ticket root-cause classes per site (OBSERVED)
+    rc = tk[tk["status"].str.upper() != "CANCELED"].pivot_table(index="site_id", columns="resp_class", values="ticket_inap",
+                                                                 aggfunc="count", fill_value=0)
+    rc.columns = [f"rc_{c}" for c in rc.columns]
+    pwr = pwr.merge(rc.reset_index(), on="site_id", how="left")
 
     log("BBT: Kaplan-Meier (censoring-aware)")
     km = S.site_km(ev)
@@ -240,29 +289,32 @@ def main():
     t = B.build_features(t)
     t["in_ticket_file"] = t["site_id"].isin(tk_sites).astype(int)
     assert len(t) == len(sites) and t["site_id"].is_unique, "row multiplication!"
-    log("scoring + actions")
-    t = apply_scoring(t, cfg)
+    # decision logic (coverage, survival, status, priority, action, cause, responsibility) lives in ONE place:
+    # lib/logic.js — the dashboard, simulation, map, exports and tests all use it. Python only prepares evidence.
 
     # ------------------------------------------------------------------ export
     log("writing JSON")
     for old in OUT.glob("**/*.json"):
         old.unlink()
+    rc_cols = [c for c in t.columns if c.startswith("rc_") and c != "rc_owner"]
     site_cols = [
-        "site_id", "site_name", "site_class", "nop", "nop_flag", "cluster_to", "city", "type_site", "kepulauan", "is_island",
-        "is_urban", "site_active", "vip", "lat", "lon", "hub_site", "dependency_children",
-        "battery_type", "battery_age_y", "battery_banks", "load_a", "genset_active",
-        "bbt_value_min", "bbt_value_evidence", "bbt_value_basis", "bbt_is_lower_bound", "bbt_measured_min",
+        # identity & context
+        "site_id", "site_name", "site_class", "nop", "nop_flag", "cluster_to", "city", "site_active", "vip",
+        "lat", "lon", "coord_decimals", "is_urban", "access_class", "access_basis", "hub_site",
+        # battery evidence
+        "battery_type", "battery_age_y", "load_a", "bbt_value_min", "bbt_value_evidence", "bbt_value_basis", "bbt_measured_min",
         "bbt_lower_bound_min", "bbt_est_confidence", "bbt_est_low_min", "bbt_est_high_min", "bbt_trend_min",
-        "evt_total", "evt_exhaustion", "evt_censored", "evt_flapping",
-        "pln_freq", "pln_total_h", "pln_avg_h", "pln_max_event_h", "pln_source", "pln_alarm_count_monthly", "pln_anomaly_months",
-        "outage_2025_h", "avail_wc_pct", "ran_target_pct", "avail_gap_pp", "ran_power_down_h", "ran_transport_down_h",
-        "ran_outage_h", "ne_count", "tk_pln_off", "tk_no_battery", "in_ticket_file",
-        "mbp_assigned", "km_assigned", "assignment_basis", "uncovered", "mbp_primary_hist",
-        "mbp_deployments", "mbp_backup_h", "mbp_distinct", "hist_takeover_to_checkin_h",
-        # build-time defaults (dashboard recomputes these live)
-        "eta_min", "eta_gap_min", "reach_risk", "mbp_priority_score", "mbp_priority_level", "bbt_status",
-        "bbs_priority_score", "bbs_priority_level", "recommended_action", "reason", "mbp_standby_flag", "action_batch",
-    ]
+        "evt_total", "evt_exhaustion", "evt_censored", "evt_flapping", "tk_no_battery",
+        # power / PLN
+        "pln_freq", "pln_total_h", "pln_source", "pln_anomaly_months", "outage_2025_h",
+        # availability (RAN, wall-clock) incl. cause decomposition + trend periods
+        "avail_wc_pct", "ran_target_pct", "ran_hours", "ran_outage_h", "ran_power_down_h", "ran_transport_down_h",
+        "ran_ran_down_h", "ran_other_down_h", "q1_hours", "q1_outage_h", "q1_power_h", "q2_hours", "q2_outage_h", "q2_power_h",
+        # MBP history
+        "in_ticket_file", "mbp_primary_hist", "mbp_deployments", "mbp_backup_h",
+    ] + rc_cols
+    for c in rc_cols:
+        t[c] = t[c].fillna(0).astype(int)
     sz = {}
     sz["sites.json"] = dump(columnar(t[site_cols]), "sites.json")
     mbp_out = mbps.merge(wl, on="mbp_id", how="left")
@@ -305,16 +357,25 @@ def main():
             step = max(1, len(tt) // 60)
             curves_out.append(dict(by=keys[0], group=str(k), n=len(gg), median=jclean(S.km_median(tt, sv)),
                                    pts=[[round(float(a_), 1), round(float(b_), 3)] for a_, b_ in zip(tt[::step], sv[::step])]))
-    bc = basecamp_summary(t, mbps, tk, pairs)
-    sug = suggest_new_basecamps(t, min_sites=5)
+    # monthly portfolio series per NOP (small) for the Health / Trend charts
+    rm = ran.merge(t[["site_id", "nop", "site_active", "ran_target_pct"]], on="site_id", how="left")
+    rm["hrs"] = rm["days"].astype(float) * 24.0
+    rm["tgt_h"] = rm["ran_target_pct"] * rm["hrs"]
+    monthly_nop = rm.groupby(["nop", "site_active", "ym"]).agg(sites=("site_id", "nunique"), hours=("hrs", "sum"), target_h=("tgt_h", "sum"),
+                                                             outage=("outage_sec", lambda x: x.sum() / 3600), power=("power_sec", lambda x: x.sum() / 3600),
+                                                             transport=("transport_sec", lambda x: x.sum() / 3600), ran=("ran_sec", lambda x: x.sum() / 3600),
+                                                             other=("other_sec", lambda x: x.sum() / 3600)).reset_index()
     meta = {
-        "built_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
+        "built_at": pd.Timestamp.now(tz="Asia/Jakarta").strftime("%Y-%m-%d %H:%M WIB"),
+        "snapshot": {"period_start": cfg["scope"]["period_start"], "period_end": cfg["scope"]["period_end"],
+                     "refreshed_at": pd.Timestamp.now(tz="Asia/Jakarta").strftime("%d %b %Y %H:%M WIB"),
+                     "sources": source_status()},
         "scope": cfg["scope"], "config": cfg, "qa": qa,
         "bbs": {"correlation": records(corr), "category_medians": records(cat), "time_split": records(ts),
                 "chosen_estimator": chosen, "estimator_mae_min": mae, "km_curves": curves_out,
                 "naive_vs_km": {"naive_median_all": jclean(km["naive_exhausted_median_min"].median()),
                                 "km_median_all": jclean(km["km_median_min"].median())}},
-        "mbp": {"basecamp_summary": records(bc), "suggestions": records(sug)},
+        "mbp": {"pic_matches": records(pm), "duplicates": records(dups)},
         "dq": {"unmatched": unmatched,
                "sources": [
                    dict(source="Dapot ALL Site (AREA1)", raw=qa["dapot_rows_area"], clean=len(sites), grain="site"),
@@ -326,6 +387,7 @@ def main():
                    dict(source="RAN availability", raw=None, clean=len(ran_m), grain="site-month (wall-clock)"),
                    dict(source="New_BBT master", raw=len(newbbt), clean=int(t["hub_site"].notna().sum()), grain="site")],
                "mbp_coords": mbps["coord_status"].value_counts().to_dict()},
+        "monthly_nop": records(monthly_nop),
         "sizes": sz,
     }
     sz["meta.json"] = dump(meta, "meta.json")

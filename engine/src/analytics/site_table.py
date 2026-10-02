@@ -48,38 +48,8 @@ def assemble(sites, bbt_kpi, pwr_kpi, mbp_kpi, cov, est, ran_vendor, cfg) -> pd.
     return t
 
 
-def apply_scoring(t: pd.DataFrame, cfg: dict, with_actions: bool = True) -> pd.DataFrame:
-    t = t.copy()
-    t["bbt_design_min"] = cfg["bbt"]["design_minutes"]
-    t["dependency_children"] = dependency_children(t["hub_site"], cfg["dependency_children"])
-    t["eta_min"] = travel_minutes(t["km_assigned"], t["is_urban"].fillna(0), t["is_island"].fillna(0), cfg)
-    t["uncovered"] = (t["km_assigned"].isna() | (t["km_assigned"] > cfg["mbp"]["max_radius_km"])).astype(int)
-    t["eta_gap_min"] = t["eta_min"] - t["bbt_value_min"].fillna(0)
-    # combined MBP-BBS rule: site has PLN outages and goes dark before the MBP can arrive (or cannot be reached by road)
-    t["reach_risk"] = (((t["eta_gap_min"] > 0) | t["eta_min"].isna()) & (t["pln_freq"].fillna(0) > 0)).astype(int)
-    # MBP priority
-    mf = mbp_factor_matrix(t, cfg)
-    ms = score(mf, cfg["mbp_priority"], MBP_FACTOR_LABEL, cfg["priority_levels"])
-    t["mbp_priority_score"], t["mbp_priority_level"], t["mbp_priority_drivers"] = ms["score"], ms["level"], ms["drivers"]
-    # BBS: battery status (Dead/Critical/Degraded/OK/Unknown) + priority P1..P4 for sites needing action
-    t["bbt_status"] = bbt_status(t, cfg)
-    t["bbt_pct_design"] = (100 * t["bbt_value_min"] / cfg["bbt"]["design_minutes"]).round(0)
-    bf = bbs_factor_matrix(t, cfg)
-    bs = score(bf, cfg["bbs_priority"], BBS_LABEL, cfg["bbs_priority_levels"])
-    need = needs_action(t)
-    t["bbs_priority_score"] = np.where(need, bs["score"], np.nan)
-    t["bbs_priority_level"] = np.where(need, bs["level"], None)
-    t["bbs_priority_drivers"] = np.where(need, bs["drivers"], None)
-    t["action_batch"] = t["bbs_priority_level"].map(cfg["action_batches"])
-    if with_actions:
-        a = recommend_actions(t[need], cfg)
-        t = t.drop(columns=[c for c in ("recommended_action", "reason", "mbp_standby_flag") if c in t]).merge(
-            a, on="site_id", how="left")
-        t["recommended_action"] = t["recommended_action"].fillna(pd.Series(
-            np.where(t["bbt_status"] == "OK", "No action", "Collect data (no BBT info)"), index=t.index))
-        t["mbp_standby_flag"] = t["mbp_standby_flag"].fillna(0).astype(int)
-    t["site_status_flag"] = np.where(t["site_active"] == 1, "Active", "Inactive")
-    return t
+# Scoring, statuses and actions were moved to lib/logic.js (single rule engine, used by every tab and tested by `npm test`).
+# The Python engine prepares evidence only.
 
 
 def site14_view(t: pd.DataFrame) -> pd.DataFrame:

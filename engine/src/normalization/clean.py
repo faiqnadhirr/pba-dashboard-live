@@ -116,6 +116,7 @@ def clean_tickets(track: pd.DataFrame, mbp_ids: set, rh_max: float = 48) -> tupl
         "severity": t["Severity"].astype("string"),
         "ticket_type": t["Type Ticket"].astype("string"),
         "nop": norm_nop(t["NOP"]),
+        "rc_owner": t["RC Owner"].astype("string").str.strip(),
         "rc_category": t["RC Category"].astype("string"),
         "rc1": t["RC 1"].astype("string"), "rc2": t["RC 2"].astype("string"),
         "resolution": t["Resolution Action"].astype("string"),
@@ -140,6 +141,7 @@ def clean_tickets(track: pd.DataFrame, mbp_ids: set, rh_max: float = 48) -> tupl
     out["is_no_battery"] = out["rc2"].str.contains("Tidak Ada Baterai", case=False, na=False).astype(int)
     out["is_pln_off"] = out["rc1"].str.contains("PLN", case=False, na=False).astype(int)
     out["month"] = out["occurred_at"].dt.month
+    out["resp_class"] = responsibility_class(out)
     qa["ticket_rows_clean"] = len(out)
     qa["ticket_mbp_match_rate"] = round(float(out["mbp_matched"].mean()), 4)
     qa["ticket_rh_valid_rate"] = round(float(out["rh_valid"].mean()), 4)
@@ -203,3 +205,47 @@ def clean_outage_2025(o: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=["site_id", "outage_2025_h"])
     out = pd.DataFrame({"site_id": norm_id(o["site_id"]), "outage_2025_h": to_num(o["total_outage_sec"]) / 3600})
     return out.dropna(subset=["site_id"]).drop_duplicates("site_id")
+
+
+# ----------------------------------------------------------------- responsibility (OBSERVED from ticket root cause)
+RESP_CLASSES = ["utility", "internal", "battery", "generator", "vendor", "operational", "non_power", "unclassified"]
+RESP_LABEL = {"utility": "PLN / Utility", "internal": "Site / internal power system", "battery": "Battery",
+              "generator": "Generator", "vendor": "Vendor / maintenance (power lease)", "operational": "Operational / response",
+              "non_power": "Not power (transmission / activity)", "unclassified": "Power, root cause not classified"}
+
+
+def responsibility_class(t: pd.DataFrame) -> pd.Series:
+    """Deterministic mapping of the ticket's own root-cause fields (RC Owner / RC Category / RC 1 / RC 2)."""
+    own = t["rc_owner"].fillna("").str.upper(); cat = t["rc_category"].fillna("").str.upper()
+    r1 = t["rc1"].fillna("").str.upper(); r2 = t["rc2"].fillna("").str.upper()
+    conds = [
+        cat.ne("POWER"),
+        own.isin(["TI", "TP"]) | r1.str.contains("SEWA DAYA"),
+        r1.str.contains("BATERAI") & r2.str.contains("TIDAK ADA BATERAI"),
+        r1.str.contains("BATERAI"),                                   # e.g. 'Sekering NH Rusak' (battery fuse)
+        r1.str.contains("GENSET"),
+        r2.str.contains("TOKEN"),
+        r1.str.contains("PLN") & r2.str.contains("PLN OFF|EAS|TRAFO"),
+        r1.str.contains("PLN") & r2.str.contains("MCB|KWH|KABEL"),
+        r1.str.contains("RECTIFIER"),
+        r1.str.contains("AKTIVITAS"),
+    ]
+    vals = ["non_power", "vendor", "battery", "internal", "generator", "operational", "utility", "internal", "internal", "operational"]
+    return pd.Series(np.select(conds, vals, default="unclassified"), index=t.index)
+
+
+# ----------------------------------------------------------------- access classification (PROXY from Dapot 'Kepulauan' + regency)
+ISLAND_REGENCY = r"KEPULAUAN|NATUNA|LINGGA|KARIMUN|BINTAN|BATAM|TANJUNG ?PINANG|BELITUNG|BANGKA|NIAS|SIMEULUE|SABANG|MENTAWAI|ANAMBAS|MERANTI|PULAU"
+DELTA_REGENCY = r"INDRAGIRI HILIR|BANYUASIN|OGAN KOMERING ILIR|TANJUNG JABUNG|PELALAWAN|ROKAN HILIR|SIAK|MESUJI"
+
+
+def access_class(kepulauan: pd.Series, city: pd.Series) -> tuple[pd.Series, pd.Series]:
+    k = kepulauan.astype("string").str.upper().fillna("")
+    c = city.astype("string").str.upper().fillna("")
+    flag = k.eq("KEPULAUAN")
+    cls = np.select([k.eq(""), ~flag, flag & c.str.contains(ISLAND_REGENCY), flag & c.str.contains(DELTA_REGENCY)],
+                    ["unknown", "mainland", "island", "riverine_delta"], default="remote")
+    basis = np.select([k.eq(""), ~flag, flag & c.str.contains(ISLAND_REGENCY), flag & c.str.contains(DELTA_REGENCY)],
+                      ["Dapot 'Kepulauan' field empty", "Dapot: Daratan", "Dapot: Kepulauan + island regency",
+                       "Dapot: Kepulauan + delta/riverine regency"], default="Dapot: Kepulauan, regency not island/delta")
+    return pd.Series(cls, index=kepulauan.index), pd.Series(basis, index=kepulauan.index)

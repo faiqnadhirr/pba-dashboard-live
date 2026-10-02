@@ -1,6 +1,6 @@
 # Validation report
 
-Built 2026-10-01 22:47 · Result: **ALL CHECKS PASSED** (29/29)
+Built 2026-10-02 15:06 WIB · Result: **ALL CHECKS PASSED** (25/25)
 
 ## Data
 
@@ -23,6 +23,8 @@ Built 2026-10-01 22:47 · Result: **ALL CHECKS PASSED** (29/29)
 | PLN outage intervals do not overlap after merge | ✅ | 3,298 overlapping events merged into neighbours |
 | PLN outage hours ≤ period hours (4,344 h) for every site | ✅ | max 1088 h |
 | BBT values within 0–720 min | ✅ |  |
+| RAN cause buckets (wall-clock) non-negative | ✅ |  |
+| Q1 + Q2 hours ≈ total RAN hours | ✅ |  |
 
 ## Analytics
 
@@ -31,22 +33,16 @@ Built 2026-10-01 22:47 · Result: **ALL CHECKS PASSED** (29/29)
 | event totals preserved | ✅ | 227,155 |
 | MBP deployments preserved | ✅ | 46,996 |
 | MBP backup hours preserved | ✅ | 146,637 h |
-| mbp_priority_score not degenerate | ✅ | n=20,227 p10=0.13 p50=0.27 p90=0.44 |
-| bbs_priority_score not degenerate | ✅ | n=4,520 p10=0.31 p50=0.48 p90=0.60 |
-| KM estimator less biased than naive median (censoring) | ✅ | {'KM comparable-site (censoring-aware)': {'mae_min': 36.9, 'bias_min': -3.9, 'status_accuracy': 0.692}, 'Naive median of exhausted events': {'mae_min': 40.2, 'bias_min': -22.6, 'status_accuracy': 0.623}, 'Own-site history Jan–Apr (KM)': {'mae_min': 30.3, 'bias_min': 1.2, 'status_accuracy': 0.699}, 'Gradient boosting (AI, site features)': {'mae_min': 38.1, 'bias_min': -9.1, 'status_accuracy': 0.589}} |
+| KM estimator less biased than naive median (censoring) | ✅ | {'KM comparable-site (censoring-aware)': {'mae_min': 36.9, 'bias_min': -3.9, 'status_accuracy': 0.692}, 'Naive median of exhausted events': {'mae_min': 40.2, 'bias_min': -22.6, 'status_accuracy': 0.623}, 'Own-site history Jan–Apr (KM)': {'mae_min': 30.3, 'bias_min': 1.2, 'status_accuracy': 0.699}, 'Gradient boosting (AI, site features)': {'mae_min': 38.1, 'bias_min': -9.3, 'status_accuracy': 0.587}} |
 
 ## Decision
 
 | Check | Result | Detail |
 |---|---|---|
-| every mbp_priority_level=P1 has drivers | ✅ | 706 |
-| every bbs_priority_level=P1 has drivers | ✅ | 256 |
-| every site needing action has action + reason + batch | ✅ | 4,520 sites |
-| combined rule: no hub with ETA > BBT left at 'No action' | ✅ | 591 hubs |
+| access class from Dapot/regency only (every site has a basis) | ✅ | {'mainland': 18311, 'unknown': 1229, 'riverine_delta': 330, 'island': 286, 'remote': 71} |
+| PIC matching: uncertain matches not merged | ✅ | {'MATCHED': 337, 'UNMATCHED': 22, 'NEEDS REVIEW': 2} |
 | estimated BBT never labelled ACTUAL/DERIVED | ✅ |  |
 | measured BBT never labelled ESTIMATED | ✅ |  |
 | estimates carry confidence + method | ✅ | 8,058 |
 | estimate ≥ the site's survived-outage lower bound | ✅ |  |
-| estimated-only problem sites → Inspect & verify (or Replenishment / MBP standby) | ✅ | {'Inspect & verify (capacity test) — BBT is estimated': 814, 'MBP standby + battery upgrade (hub goes dark before MBP arrives)': 97, 'Replenishment (battery missing / no battery)': 3} |
-| no road ETA for island sites | ✅ | 687 island sites |
-| dependency evidence = PROXY/UNAVAILABLE only | ✅ |  |
+| no road ETA basis for island sites (access class = island only from Dapot) | ✅ | 286 island sites |

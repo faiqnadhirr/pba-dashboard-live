@@ -51,35 +51,22 @@ def main():
     dep = tk[tk["is_deployment"] == 1]
     check("analytics", "MBP deployments preserved", int(t["mbp_deployments"].sum()) == len(dep), f"{len(dep):,}")
     check("analytics", "MBP backup hours preserved", abs(t["mbp_backup_h"].sum() - dep["rh_hours"].sum()) < 1, f"{dep['rh_hours'].sum():,.0f} h")
-    for c in ("mbp_priority_score", "bbs_priority_score"):
-        s = t[c].dropna()
-        check("analytics", f"{c} not degenerate", s.std() > 0.03 and s.between(0, 1).all(),
-              f"n={len(s):,} p10={s.quantile(.1):.2f} p50={s.median():.2f} p90={s.quantile(.9):.2f}")
     tsplit = pd.DataFrame(meta["bbs"]["time_split"]).set_index("method")
     check("analytics", "KM estimator less biased than naive median (censoring)",
           abs(tsplit.loc["KM comparable-site (censoring-aware)", "bias_min"]) < abs(tsplit.loc["Naive median of exhausted events", "bias_min"]),
           tsplit[["mae_min", "bias_min", "status_accuracy"]].to_dict("index"))
 
-    # ---------------- decision
-    for lvl, drv in (("mbp_priority_level", "mbp_priority_drivers"), ("bbs_priority_level", "bbs_priority_drivers")):
-        p1 = t[t[lvl] == "P1"]
-        check("decision", f"every {lvl}=P1 has drivers", p1[drv].fillna("").str.len().gt(0).all(), f"{len(p1):,}")
-    need = t[t["bbs_priority_score"].notna()]
-    check("decision", "every site needing action has action + reason + batch",
-          need["recommended_action"].ne("No action").all() and need["reason"].fillna("").str.len().gt(0).all() and need["action_batch"].notna().all(),
-          f"{len(need):,} sites")
-    hub_reach = t[(t["reach_risk"] == 1) & (t["dependency_children"].fillna(0) > 0)]
-    check("decision", "combined rule: no hub with ETA > BBT left at 'No action'", hub_reach["recommended_action"].ne("No action").all(), f"{len(hub_reach):,} hubs")
+    # ---------------- evidence (decision rules live in lib/logic.js and are tested by `npm test`)
+    check("decision", "access class from Dapot/regency only (every site has a basis)", t["access_basis"].notna().all(), t["access_class"].value_counts().to_dict())
+    check("decision", "PIC matching: uncertain matches not merged", all(m["mbp_id"] is None for m in meta["mbp"]["pic_matches"] if m["status"] != "MATCHED"), qa.get("pic_match_status"))
     check("decision", "estimated BBT never labelled ACTUAL/DERIVED", not (t["bbt_measured_min"].isna() & t["bbt_value_evidence"].isin(["ACTUAL", "DERIVED"])).any())
     check("decision", "measured BBT never labelled ESTIMATED", not (t["bbt_measured_min"].notna() & (t["bbt_value_evidence"] == "ESTIMATED")).any())
     e = t[t["bbt_value_evidence"] == "ESTIMATED"]
     check("decision", "estimates carry confidence + method", e[["bbt_est_confidence", "bbt_est_method"]].notna().all().all(), f"{len(e):,}")
     check("decision", "estimate ≥ the site's survived-outage lower bound", (e["bbt_value_min"] + 1e-6 >= e["bbt_lower_bound_min"].fillna(0)).all())
-    pe = need[need["bbt_value_evidence"] == "ESTIMATED"]
-    okp = pe["recommended_action"].str.startswith(("Inspect", "Replenishment", "MBP standby"))
-    check("decision", "estimated-only problem sites → Inspect & verify (or Replenishment / MBP standby)", okp.all(), pe["recommended_action"].value_counts().to_dict())
-    check("decision", "no road ETA for island sites", t.loc[t["is_island"] == 1, "eta_min"].isna().all(), f"{int(t['is_island'].sum())} island sites")
-    check("decision", "dependency evidence = PROXY/UNAVAILABLE only", set(t["dependency_evidence"].unique()) <= {"PROXY", "UNAVAILABLE"})
+    check("decision", "no road ETA basis for island sites (access class = island only from Dapot)", set(t.loc[t["is_island"] == 1, "access_class"]) <= {"island"}, f"{int(t['is_island'].sum())} island sites")
+    check("sanity", "RAN cause buckets (wall-clock) non-negative", (t[["ran_power_down_h", "ran_transport_down_h", "ran_ran_down_h", "ran_other_down_h"]].fillna(0) >= 0).all().all())
+    check("sanity", "Q1 + Q2 hours ≈ total RAN hours", ((t["q1_hours"].fillna(0) + t["q2_hours"].fillna(0) - t["ran_hours"].fillna(0)).abs() < 1).all())
 
     ok = all(c[2] for c in checks)
     lines = ["# Validation report", "", f"Built {meta['built_at']} · Result: **{'ALL CHECKS PASSED' if ok else 'FAILURES PRESENT'}** "
