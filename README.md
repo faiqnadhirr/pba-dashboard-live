@@ -1,6 +1,6 @@
 # PBA — Power Backup Analytic (v3.1)
 
-PBA is a decision-support dashboard for Telkomsel **AREA1** power backup (ENOM). It covers the two areas in the management order:
+PBA is a decision-support dashboard for T **AREA1** power backup (ENOM). It covers the two areas in the management order:
 
 - **MBP (Mobile Backup Power).** Every MBP base camp has its own coverage area. Each coverage area shows a site list with the **14 mandatory columns**, sorted by priority. From there you can run a simulation that recommends **where to deploy MBPs** during a PLN outage.
 - **BBS (Battery Backup System).** This part covers four things:
