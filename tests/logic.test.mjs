@@ -264,3 +264,77 @@ test("D1 · placement: monotonic marginal gain, anchors are real sites, target r
     if (p.needed != null) assert.ok(p.steps[p.needed].share >= cfg.placement.target_share);
   }
 });
+
+/* ================= third pass: navigation / i18n / data consistency ================= */
+import { coverageBreakdown, configHash } from "../lib/logic.js";
+import path from "node:path";
+
+test("i18n · EN and ID dictionaries have the same keys; every literal t('key') used in the code exists", () => {
+  const en = JSON.parse(fs.readFileSync("i18n/en.json", "utf8")), id = JSON.parse(fs.readFileSync("i18n/id.json", "utf8"));
+  assert.deepEqual(Object.keys(en).sort(), Object.keys(id).sort());
+  const files = ["app/page.jsx", "components/ui.jsx", "components/MapView.jsx", "components/SiteDrawer.jsx", ...fs.readdirSync("components/tabs").map((f) => path.join("components/tabs", f))];
+  const missing = [];
+  for (const f of files) {
+    const src = fs.readFileSync(f, "utf8");
+    for (const m of src.matchAll(/\bt\("([a-z0-9_.']+[a-z0-9_]?)"/gi)) if (!(m[1] in en)) missing.push(`${f}: ${m[1]}`);
+    for (const m of src.matchAll(/label: "([a-z0-9_]+\.[a-z0-9_.]+)"/g)) if (!(m[1] in en)) missing.push(`${f}: label ${m[1]}`);
+  }
+  assert.deepEqual(missing, []);
+  // number format follows the language
+  assert.equal((19771).toLocaleString("id-ID"), "19.771");
+  assert.equal((97.98).toLocaleString("id-ID", { minimumFractionDigits: 2 }), "97,98");
+  assert.equal((19771).toLocaleString("en-US"), "19,771");
+});
+
+test("3b · unknown PLN data / MBP history is not zero: neutral rank, flagged", () => {
+  const unk = M.filter((s) => !s.pln_known);
+  assert.ok(unk.length > 1000);
+  const v = new Set(unk.map((s) => s.mbp_parts.outage_frequency.toFixed(9)));
+  assert.equal(v.size, 1, "all unknown-PLN sites get the same neutral contribution");
+  const w = cfg.mbp_priority, tot = Object.values(w).reduce((a, x) => a + (x > 0 ? x : 0), 0);
+  assert.ok(close(unk[0].mbp_parts.outage_frequency, (cfg.unknown_handling.neutral_rank * w.outage_frequency) / tot, 1e-9));
+  assert.equal(M.filter((s) => !s.mbp_hist_known && s.in_ticket_file).length, 0);
+});
+
+test("3a · column 7 = design used by the criteria; computed design kept separately", () => {
+  for (const s of M.slice(0, 5000)) {
+    assert.equal(s.bbt_criteria_design_min, cfg.bbt.criteria_basis === "site" ? s.bbt_design_min : cfg.bbt.design_minutes);
+    if (s.battery.display.value != null) assert.equal(s.bbt_pct_design, Math.round((100 * s.battery.display.value) / s.bbt_criteria_design_min));
+  }
+});
+
+test("3e · coverage breakdown segments add up to the scope", () => {
+  for (const nop of [null, "NOP BATAM", "NOP PALEMBANG"]) {
+    const sc = active.filter((s) => !s.offair && (!nop || s.nop === nop));
+    const b = coverageBreakdown(sc);
+    assert.equal(b.arrive + b.late_dark + b.late_other + b.bbt_unknown + b.beyond, sc.length);
+    assert.equal(b.within, sc.filter((s) => s.covered).length);
+  }
+});
+
+test("3f · relocation candidates are cumulative and capped", () => {
+  const p = placementPlan(M.filter((s) => s.nop === "NOP PALEMBANG"), mbps, cfg);
+  assert.ok(p.relocation.length <= cfg.placement.relocation_max_candidates);
+  for (let i = 1; i < p.relocation.length; i++) assert.ok(p.relocation[i].lost_cumulative >= p.relocation[i - 1].lost_cumulative);
+  assert.ok(p.relocation.every((r) => r.loss_pp < cfg.placement.relocation_max_loss_pp));
+});
+
+test("4 · simulation 'Why' uses the same dark minutes as Expected down", () => {
+  const aff = active.filter((s) => s.nop === "NOP PALEMBANG").sort((a, b) => (b.pln_freq || 0) - (a.pln_freq || 0)).slice(0, 20).map((s) => s.site_id);
+  const r = simulate(M, aff, 4, mbps, { fam }, cfg, { departHour: 17 });
+  for (const x of r.rows) { const m = x.reasons.match(/site dark ~(\d+) min/); if (m) assert.ok(Math.abs(+m[1] - Math.round(x.expected_down_min)) <= 1, x.site_id); }
+});
+
+test("4 · config hash is stable and key-order independent", () => {
+  const h = configHash(cfg), shuffled = Object.fromEntries(Object.entries(cfg).reverse());
+  assert.equal(configHash(shuffled), h);
+  assert.notEqual(configHash({ ...cfg, mbp: { ...cfg.mbp, max_radius_km: cfg.mbp.max_radius_km + 5 } }), h);
+});
+
+test("1 · navigation: 4 groups in order Overview · MBP · BBS · Data & Config, landing = overview.health, view in URL", () => {
+  const src = fs.readFileSync("app/page.jsx", "utf8");
+  const order = [...src.matchAll(/^\s+\["(overview|mbp|bbs|data)", \[/gm)].map((m) => m[1]);
+  assert.deepEqual(order, ["overview", "mbp", "bbs", "data"]);
+  assert.ok(src.includes('DEFAULT_TAB = "health"') && src.includes('searchParams.set("view"') && src.includes("popstate"));
+  assert.ok(/\["bbs", \[\["bbs", "bbs.actions"\]/.test(src), "BBS opens on the action list");
+});

@@ -1,7 +1,8 @@
 "use client";
 import React, { useMemo, useState } from "react";
-import { Card, Kpi, Note, DataTable, Chips, LevelTag, BbtCell, bbtCsv, StatusTag, EvTag, Tag, EvidenceTable, AvailTriple, Bar100, STATUS, fInt, fMin, fH, fPct, isNum } from "@/components/ui";
+import { Card, Kpi, Note, DataTable, Chips, LevelTag, BbtCell, bbtCsv, StatusTag, Tag, EvidenceTable, AvailTriple, Bar100, Gloss, fInt, fH, fPct, isNum } from "@/components/ui";
 import { STATUS_ORDER } from "@/lib/logic";
+import { t, tv } from "@/lib/i18n";
 
 const LV = ["P1", "P2", "P3", "P4"];
 const PROB = ["Dead", "Critical", "Degraded"];
@@ -23,61 +24,62 @@ export default function BbsActions({ scope, cfg, setPick }) {
     none: scope.filter((s) => s.bbt_status === k && !s.battery.measured && !s.battery.unverified && !["ESTIMATED", "TICKET"].includes(s.battery.source)).length,
   })), [scope]);
   const sources = [...new Set(all.map((s) => s.battery.source))].sort();
+  const P = (v) => fPct(v * 100, 0);
 
   return (
     <div className="space-y-4">
       <Note>
-        <b>Battery vs design</b> ({b.design_minutes} min, editable in Config): ✔ Meets design ≥ 100% · ◐ Below design {b.ok_pct * 100}–100% · ◆ Degraded {b.degraded_pct * 100}–{b.ok_pct * 100}% · ▲ Critical &lt; {b.degraded_pct * 100}% · ✖ Dead ≤ {b.dead_max_minutes} min.
-        <b> Evidence precedence:</b> measured BBT &gt; validated inspection &gt; ticket &gt; derived &gt; estimate — an estimate can only trigger <i>Inspect &amp; verify</i>, never a replacement.
-        <b> BBS priority</b> BBS-P1…P4 (separate from MBP-P1…P4) = BBT gap · PLN history · class · dependency · availability gap; measured Dead/Critical (ACTUAL, or DERIVED backed by site downtime) cannot be lower than BBS-{cfg.severity_floor.measured_dead_critical}. BBS-P1/P2 never get “Monitor”. A ticket-based status shows “no battery per ticket” instead of a number.
+        <b>{t("bbs.note.criteria")}<Gloss k="bbt_design" /></b> {t("bbs.note.criteria_body", { d: b.design_minutes, ok: P(b.ok_pct), dg: P(b.degraded_pct), dead: b.dead_max_minutes })}
+        {" "}<b>{t("bbs.note.precedence")}</b> {t("bbs.note.precedence_body")}
+        {" "}<b>{t("bbs.note.priority")}</b> {t("bbs.note.priority_body", { f: cfg.severity_floor.measured_dead_critical })}
       </Note>
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-        <Kpi scope="filtered" label="Sites needing action" value={fInt(rows.length)} sub={`of ${fInt(scope.length)} in scope`} />
-        {LV.map((l, i) => <Kpi key={l} scope="filtered" label={`BBS-${l} · Batch ${i + 1}`} value={fInt(c((s) => s.bbs_priority_level === l))} sub={cfg.action_batches[l]?.split(" — ")[1]} tone={["crit", "warn", "navy", "slate"][i]} />)}
-        <Kpi scope="filtered" label="Inspect & verify" value={fInt(c((s) => s.rule?.startsWith("R2")))} sub={`${fInt(c((s) => s.rule === "R2b" || s.rule?.startsWith("R2b")))} unverified derived · rest estimated`} tone="warn" />
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        <Kpi scope="filtered" label={t("bbs.kpi.need")} value={fInt(rows.length)} sub={t("common.of_in_scope", { n: fInt(scope.length) })} />
+        {LV.map((l, i) => <Kpi key={l} scope="filtered" label={t("bbs.kpi.batch", { p: `BBS-${l}`, n: i + 1 })} value={fInt(c((s) => s.bbs_priority_level === l))} sub={t(`batch.${l}.when`)} tone={["crit", "warn", "navy", "slate"][i]} />)}
+        <Kpi scope="filtered" label={t("bbs.kpi.inspect")} value={fInt(c((s) => s.rule?.startsWith("R2")))} sub={t("bbs.kpi.inspect_sub", { n: fInt(c((s) => s.rule?.startsWith("R2b"))) })} tone="warn" help={t("gloss.derived_unverified")} />
       </div>
 
-      <Card title="Battery vs design — evidence basis" sub="All sites in scope. Measured (ACTUAL/DERIVED) is kept apart from ESTIMATED and ticket-based status, so estimates never look like measurements.">
+      <Card title={t("bbs.dist.title")} sub={t("bbs.dist.sub")}>
         <div className="overflow-x-auto">
           <table className="w-full text-[12.5px] tabular min-w-[620px]">
-            <thead><tr className="text-slate text-left">{["Status", "Measured", "Ticket", "Derived — unverified", "Estimated", "No evidence", "Distribution"].map((h) => <th key={h} className="py-1 pr-2 border-b border-line">{h}</th>)}</tr></thead>
+            <thead><tr className="text-slate text-left">{["status", "measured", "ticket", "unverified", "estimated", "none", "distribution"].map((h) => <th key={h} className="py-1 pr-2 border-b border-line">{t(`bbs.dist.${h}`)}</th>)}</tr></thead>
             <tbody>{dist.map((d) => { const tot = d.measured + d.ticket + d.unverified + d.estimated + d.none; return (
               <tr key={d.k} className="border-b border-line/60"><td className="py-1 pr-2"><StatusTag v={d.k} /></td><td>{fInt(d.measured)}</td><td>{fInt(d.ticket)}</td><td>{fInt(d.unverified)}</td><td>{fInt(d.estimated)}</td><td>{fInt(d.none)}</td>
-                <td className="w-[40%] py-1">{tot > 0 && <Bar100 height={10} parts={[{ label: "measured", c: "#2a78d6", v: d.measured }, { label: "ticket", c: "#55627A", v: d.ticket }, { label: "unverified", c: "#f3c3a5", v: d.unverified }, { label: "estimated", c: "#eb6834", v: d.estimated }, { label: "none", c: "#C9CFD9", v: d.none }].filter((p) => p.v)} />}</td></tr>); })}</tbody>
+                <td className="w-[40%] py-1">{tot > 0 && <Bar100 height={10} parts={[["measured", "#2a78d6", d.measured], ["ticket", "#55627A", d.ticket], ["unverified", "#f3c3a5", d.unverified], ["estimated", "#eb6834", d.estimated], ["none", "#C9CFD9", d.none]].filter((p) => p[2]).map(([k, col, v]) => ({ label: t(`bbs.dist.${k}`).toLowerCase(), c: col, v }))} />}</td></tr>); })}</tbody>
           </table>
         </div>
       </Card>
 
-      <Card title="Action list" sub="Sorted by priority. Expand ▸ for Metric → Value → Threshold → Rule → Action. Click a site ID for full detail. CSV exports all filtered rows with the full explanation.">
+      <Card title={t("bbs.list.title")} sub={t("bbs.list.sub")}>
         <div className="flex flex-wrap gap-4 mb-3">
-          <Chips label="BBS priority" options={LV} value={lv} onChange={setLv} />
-          <Chips label="Battery status" options={PROB} value={st} onChange={setSt} />
-          <Chips label="Status basis" options={sources} value={ev} onChange={setEv} />
+          <Chips label={t("col.bbs_priority")} options={LV} value={lv} onChange={setLv} fmt={(o) => `BBS-${o}`} />
+          <Chips label={t("bbs.f.status")} options={PROB} value={st} onChange={setSt} fmt={(o) => tv("status", o)} />
+          <Chips label={t("bbs.f.basis")} options={sources} value={ev} onChange={setEv} />
         </div>
-        <div className="mb-3"><Chips label="Action" options={actions} value={ac} onChange={setAc} /></div>
-        {!rows.length ? <Note>No sites match these filters.</Note> : (
+        <div className="mb-3"><Chips label={t("col.action")} options={actions} value={ac} onChange={setAc} fmt={(o) => tv("action", o)} /></div>
+        {!rows.length ? <Note>{t("bbs.list.none")}</Note> : (
           <DataTable rows={rows} filename="pba_bbs_action_list.csv" initialSort={{ key: "bbs_priority_score", dir: -1 }}
             expand={(r) => (
               <div className="space-y-2">
-                {r.battery.conflict && <Note tone="warn"><b>Evidence conflict:</b> {r.battery.conflict}</Note>}
-                <div className="text-[12px] text-slate">Status basis: <b className="text-ink">{r.battery.precedence}</b> · Rule {r.rule} · {r.action_batch}{r.priority_floor ? ` · score level ${r.priority_floor} raised to ${r.bbs_priority_level} (severity floor)` : ""}</div>
+                {r.battery.conflict && <Note tone="warn"><b>{t("bbs.conflict")}:</b> {r.battery.conflict}</Note>}
+                <div className="text-[12px] text-slate">{t("bbs.basis")}: <b className="text-ink">{r.battery.precedence}</b> · {t("ev.rule")} {r.rule} · {t(`batch.${r.bbs_priority_level}`)}{r.priority_floor ? ` · ${t("bbs.floor", { a: `BBS-${r.priority_floor}`, b: `BBS-${r.bbs_priority_level}` })}` : ""}</div>
                 <EvidenceTable rows={r.evidence} action={r.recommended_action} />
-                <button className="text-[12px] text-s1 underline" onClick={() => setPick(r)}>open site detail</button>
+                <button className="text-[12px] text-s1 underline" onClick={() => setPick(r)}>{t("common.open_detail")}</button>
               </div>
             )}
             columns={[
-              { key: "site_id", label: "Site", render: (r) => <span><span className="font-semibold text-navy">{r.site_id}</span> <span className="text-slate">{r.site_name}</span></span>, csv: (r) => r.site_id },
-              { key: "nop", label: "NOP" },
-              { key: "avail_delta_pp", label: "Availability · target · gap", num: true, render: (r) => <AvailTriple a={r.avail_wc_pct} t={r.ran_target_pct} g={r.avail_delta_pp} compact />, csv: (r) => (isNum(r.avail_wc_pct) ? `${r.avail_wc_pct.toFixed(2)} / ${r.ran_target_pct.toFixed(2)} / ${r.avail_delta_pp.toFixed(2)}` : "") },
-              { key: "bbt_value_min", label: "BBT", num: true, sortVal: (r) => r.battery.display.value, render: (r) => <BbtCell r={r} showStatus />, csv: (r) => `${bbtCsv(r)} ${r.bbt_status}` },
-              { key: "ran_power_down_h", label: "Power downtime", num: true, render: (r) => fH(r.ran_power_down_h) },
-              { key: "bbs_priority_score", label: "BBS priority", num: true, render: (r) => <LevelTag kind="BBS" v={r.bbs_priority_level} />, csv: (r) => `BBS-${r.bbs_priority_level} ${r.bbs_priority_score?.toFixed(3)}` },
-              { key: "recommended_action", label: "Action", wrap: true, render: (r) => <span className="font-medium">{r.recommended_action}{r.mbp_standby_flag ? <> <Tag tone="warn">MBP standby</Tag></> : null}</span> },
+              { key: "site_id", label: "col.site", render: (r) => <span className="inline-block max-w-[230px] truncate align-bottom" title={r.site_name}><span className="font-semibold text-navy">{r.site_id}</span> <span className="text-slate">{r.site_name}</span></span>, csv: (r) => r.site_id },
+              { key: "nop", label: "col.nop" },
+              { key: "bbs_priority_score", label: "col.bbs_priority", num: true, render: (r) => <span title={t("bbs.cutoffs", { p1: cfg.bbs_priority_levels.P1, p2: cfg.bbs_priority_levels.P2, p3: cfg.bbs_priority_levels.P3, s: r.bbs_priority_score?.toFixed(3) })}><LevelTag kind="BBS" v={r.bbs_priority_level} /></span>, csv: (r) => `BBS-${r.bbs_priority_level} ${r.bbs_priority_score?.toFixed(3)}` },
+              { key: "recommended_action", label: "col.action", wrap: true, render: (r) => <span className="font-medium">{tv("action", r.recommended_action)}{r.mbp_standby_flag ? <> <Tag tone="warn">{t("bbs.standby")}</Tag></> : null}</span>, csv: (r) => r.recommended_action },
+              { key: "bbt_value_min", label: "col.bbt", num: true, sortVal: (r) => r.battery.display.value, render: (r) => <BbtCell r={r} showStatus />, csv: (r) => `${bbtCsv(r)} ${r.bbt_status}` },
+              { key: "ran_power_down_h", label: "col.power_downtime", num: true, render: (r) => fH(r.ran_power_down_h), csv: (r) => r.ran_power_down_h?.toFixed(1) },
+              { key: "avail_delta_pp", label: "col.avail_triple", num: true, render: (r) => <AvailTriple a={r.avail_wc_pct} t={r.ran_target_pct} g={r.avail_delta_pp} compact />, csv: (r) => (isNum(r.avail_wc_pct) ? `${r.avail_wc_pct.toFixed(2)} / ${r.ran_target_pct.toFixed(2)} / ${r.avail_delta_pp.toFixed(2)}` : "") },
             ]}
             extraCsv={[
               { key: "site_name", label: "Site name" }, { key: "site_class", label: "Class" }, { key: "rule", label: "Rule" }, { key: "action_batch", label: "Batch" },
               { key: "precedence", label: "Status basis", csv: (r) => r.battery.precedence }, { key: "conflict", label: "Evidence conflict", csv: (r) => r.battery.conflict || "" },
-              { key: "reason", label: "Why" }, { key: "pln_freq", label: "PLN outages" }, { key: "dependency_children", label: "Dependency (PROXY)" },
+              { key: "reason", label: "Why" }, { key: "pln_freq", label: "PLN outages", csv: (r) => (r.pln_known ? r.pln_freq : "") }, { key: "dependency_children", label: "Dependency (PROXY)" },
               { key: "eta_min", label: "MBP ETA (min)", csv: (r) => (isNum(r.eta_min) ? Math.round(r.eta_min) : "") }, { key: "can_arrive_before_bbt", label: "MBP arrives before BBT" },
             ]} />
         )}

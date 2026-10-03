@@ -193,3 +193,29 @@ python engine/validate.py    # 25 data/sanity checks, writes docs/VALIDATION_REP
 - Scope is AREA1, H1-2026.
 
 See `docs/METHOD.md`.
+
+## v3.2 — navigation, language, consistency
+
+- **Navigation**
+  - Two levels:
+    1. Overview (Health, Accountability, Impact, Trend)
+    2. MBP (Coverage & map, Site list, Simulation, Placement & fleet size, Telemetry pilot)
+    3. BBS (Problem criteria & actions, BBT estimation, Correlation)
+    4. Data & Config (Data quality, Config)
+  - The page opens on Overview › Health.
+  - The view is kept in the URL (`?view=mbp.sitelist`), so it can be shared or bookmarked and the Back button works.
+  - The filter bar stays fixed at the top and shows a scope chip with a **Reset filter** button.
+- **Language (EN | ID)**
+  - Default is ID. The choice is remembered in the browser; `?lang=en` overrides it.
+  - All UI text lives in `i18n/en.json` and `i18n/id.json`, read through `t()` in `lib/i18n.js`.
+  - CSV exports are always in English, with `.` as the decimal separator.
+  - Tooltips marked ⓘ explain technical terms in plain language.
+- **Column 7 (BBT Design)** is the design value the criteria actually use. The per-site computed design is shown separately as "Computed design (unvalidated)".
+- **Missing data shows "—", not 0.**
+  - This applies when there is no PLN data or the site is not in the MBP ticket file.
+  - In priority scores these sites get a neutral rank, set in `unknown_handling.neutral_rank`.
+- **Coordinates** are published at the precision of the source (up to 6 decimals).
+- **Coverage breakdown:** the five segments always add up to the number of sites in scope.
+- **Relocation candidates** are tested cumulatively, with a maximum of 3 by default.
+- **Config** opens read-only; use **Edit (what-if)** to change it. A config version hash is shown in the header.
+- **Tests:** `npm test` runs 32 tests. `engine/build.py` runs them automatically after every refresh.

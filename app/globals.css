@@ -10,3 +10,11 @@ html, body { padding: 0; margin: 0; background: #F5F7FA; color: #141821; }
 ::-webkit-scrollbar-thumb { background: #C7CEDA; border-radius: 6px }
 .leaflet-container { background: #e9edf2; font: inherit; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important } }
+/* Form controls: always light, even when the OS / browser forces a dark or high-contrast scheme
+   (Windows contrast themes / Edge "page colors" turned the table search box and selects black on a light page). */
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), select, textarea {
+  background-color: #ffffff; color: #141821; color-scheme: light;
+}
+@media (forced-colors: active) {
+  input, select, textarea, button { forced-color-adjust: none; }
+}

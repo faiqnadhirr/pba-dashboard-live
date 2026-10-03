@@ -128,7 +128,8 @@ offair:                        # A5: suspected off-air / dismantled / data issue
 placement:                     # D1: fleet size & placement (ESTIMATED: straight-line x road factor)
   target_share: 0.90           # add MBPs until >= this share of MBP-P1/P2 sites is reached before BBT expires
   max_new: 15
-  relocation_max_loss_pp: 0.5  # a base camp is a relocation candidate if removing it loses < this many pp of P1/P2 reach
+  relocation_max_loss_pp: 0.5  # cumulative loss allowed for the whole relocation set (pp of MBP-P1/P2 reach)
+  relocation_max_candidates: 3 # 3f: at most this many relocation candidates, tested cumulatively
 
 severity_floor:                # escalation: measured Dead/Critical battery can never be below this priority
   measured_dead_critical: P2
@@ -154,3 +155,7 @@ worst_cluster_weights:
   power_downtime_per_site: 0.25
   availability_gap: 0.30
   p1p2_dark_share: 0.15
+
+unknown_handling:              # 3b: missing data is NOT zero
+  neutral_rank: 0.5            # sites without PLN data (pln_source empty) / without MBP ticket history / without 2025 outage
+                               # get this percentile rank in priority scores (median) and are flagged; the table shows "—"

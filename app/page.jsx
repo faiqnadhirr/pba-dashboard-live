@@ -1,8 +1,9 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 import { loadAll } from "@/lib/data";
-import { buildModel, basecampSummary } from "@/lib/logic";
-import { Chips, Select, Toggle, Empty } from "@/components/ui";
+import { buildModel, basecampSummary, configHash } from "@/lib/logic";
+import { Toggle, Empty, fInt } from "@/components/ui";
+import { t, setLang, initialLang, persistLang } from "@/lib/i18n";
 import SiteDrawer from "@/components/SiteDrawer";
 import Health from "@/components/tabs/Health";
 import Accountability from "@/components/tabs/Accountability";
@@ -17,22 +18,47 @@ import Telemetry from "@/components/tabs/Telemetry";
 import Placement from "@/components/tabs/Placement";
 import ConfigTab from "@/components/tabs/ConfigTab";
 
-// C2 — grouped navigation (MBP · BBS · Overview · Data & Config)
+// Two-level navigation. Level 1 = group, level 2 = sub-tab. The active view lives in the URL (?view=group.sub) so it can be
+// shared / bookmarked and the browser Back button works.
 const GROUPS = [
-  ["MBP", [["mbp", "Coverage & map"], ["list", "Site list (14 cols)"], ["sim", "Simulation"], ["place", "Placement & fleet size"], ["tel", "Telemetry pilot"]]],
-  ["BBS", [["corr", "Correlation"], ["est", "BBT estimation"], ["bbs", "Problem criteria & actions"]]],
-  ["Overview", [["health", "Health"], ["acc", "Accountability"], ["impact", "Impact"], ["trend", "Trend"]]],
-  ["Data & Config", [["dq", "Data quality"], ["cfg", "Config"]]],
+  ["overview", [["health", "overview.health"], ["acc", "overview.accountability"], ["impact", "overview.impact"], ["trend", "overview.trend"]]],
+  ["mbp", [["mbp", "mbp.coverage"], ["list", "mbp.sitelist"], ["sim", "mbp.simulation"], ["place", "mbp.placement"], ["tel", "mbp.telemetry"]]],
+  ["bbs", [["bbs", "bbs.actions"], ["est", "bbs.estimation"], ["corr", "bbs.correlation"]]],
+  ["data", [["dq", "data.quality"], ["cfg", "data.config"]]],
 ];
-const groupOf = (t) => GROUPS.find(([, tabs]) => tabs.some(([k]) => k === t))[0];
+const VIEW_OF = Object.fromEntries(GROUPS.flatMap(([, tabs]) => tabs.map(([k, v]) => [k, v])));
+const TAB_OF = Object.fromEntries(Object.entries(VIEW_OF).map(([k, v]) => [v, k]));
+const groupOf = (tab) => GROUPS.find(([, tabs]) => tabs.some(([k]) => k === tab))[0];
+const DEFAULT_TAB = "health";
+const tabFromUrl = () => { try { return TAB_OF[new URLSearchParams(window.location.search).get("view")] || DEFAULT_TAB; } catch { return DEFAULT_TAB; } };
 const CLASSES = ["Diamond", "Platinum", "Gold", "Silver", "Bronze"];
 const LS_KEY = "pba.config.v3";
 
 export default function Page() {
   const [data, setData] = useState(null), [err, setErr] = useState(null), [cfg, setCfg] = useState(null);
-  const [tab, setTab] = useState("mbp"), [nop, setNop] = useState("All NOPs"), [classes, setClasses] = useState([]);
+  const [tab, setTabState] = useState(DEFAULT_TAB), [nop, setNop] = useState("All NOPs"), [classes, setClasses] = useState([]);
   const [inactive, setInactive] = useState(false), [pick, setPick] = useState(null), [offair, setOffair] = useState(false);
-  useEffect(() => { document.title = "PBA — Power Backup Analytic"; }, []);
+  const [lang, setLangState] = useState("id");
+  setLang(lang);                                   // module-level language for t() and number formatters (set before children render)
+  useEffect(() => {
+    document.title = "PBA — Power Backup Analytic";
+    setLangState(initialLang()); setTabState(tabFromUrl());
+    const onPop = () => setTabState(tabFromUrl());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  useEffect(() => { document.documentElement.lang = lang; }, [lang]);
+  const setTab = (k) => {
+    if (k === tab) return;
+    setTabState(k);
+    try { const u = new URL(window.location.href); u.searchParams.set("view", VIEW_OF[k]); window.history.pushState({}, "", u); } catch {}
+    window.scrollTo({ top: 0 });
+  };
+  const chooseLang = (l) => {
+    setLangState(l); persistLang(l);
+    try { const u = new URL(window.location.href); if (u.searchParams.has("lang")) { u.searchParams.set("lang", l); window.history.replaceState({}, "", u); } } catch {}
+  };
+  const resetFilters = () => { setNop("All NOPs"); setClasses([]); setInactive(false); setOffair(false); };
 
   useEffect(() => {
     loadAll().then((d) => {
@@ -56,48 +82,77 @@ export default function Page() {
   const mbpsScope = useMemo(() => (data ? data.mbps.filter((m) => nop === "All NOPs" || m.nop === nop) : []), [data, nop]);
   const mbpStats = useMemo(() => (data && cfg ? new Map(basecampSummary(model, data.mbps, cfg).map((r) => [r.mbp_id, r])) : new Map()), [model, data, cfg]);
 
-  if (err) return <div className="p-8 text-crit">Could not load data: {err}. Run <code>python engine/build.py</code> first (see README).</div>;
-  if (!data || !cfg) return <div className="min-h-screen flex items-center justify-center text-slate" role="status">Loading PBA data snapshot…</div>;
+  if (err) return <div className="p-8 text-crit">{t("app.load_error", { err })}</div>;
+  if (!data || !cfg) return <div className="min-h-screen flex items-center justify-center text-slate" role="status">{t("app.loading")}</div>;
   const snap = data.meta.snapshot || {};
   const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setPick, classes, inactive, offairSites, includeOffair: offair };
   const empty = scope.length === 0 && !["dq", "tel", "cfg", "corr", "est"].includes(tab);
 
+  const cfgH = configHash(cfg), cfgEdited = cfgH !== configHash(data.meta.config);
+  const activeGroup = groupOf(tab);
+  const filtered = nop !== "All NOPs" || classes.length > 0 || inactive || offair;
+  const scopeChip = [t("filter.scope_sites", { n: fInt(scope.length) }), nop === "All NOPs" ? t("filter.all_nops") : nop, classes.length ? classes.join(", ") : t("filter.all_classes")].join(" · ");
   return (
     <div className="min-h-screen">
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 bg-white p-2 z-[2000]">Skip to content</a>
-      <header className="sticky top-0 z-[500] bg-navy text-white shadow">
-        <div className="max-w-[1560px] mx-auto px-5 pt-3 pb-2 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <div className="text-[18px] font-bold leading-tight">PBA — Power Backup Analytic</div>
-            <div className="text-[11.5px] opacity-80">
-              Telkomsel AREA1 · <b>Data snapshot</b> {snap.period_start} → {snap.period_end} · Last pipeline refresh {snap.refreshed_at || data.meta.built_at} · not real-time
-              <span className="ml-2 px-1.5 py-[1px] rounded bg-warn text-ink font-semibold">DEMO MODE · local config</span>
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 bg-white p-2 z-[2000]">{t("app.skip")}</a>
+      <header className="sticky top-0 z-[500] shadow">
+        <div className="bg-navy text-white">
+          <div className="max-w-[1560px] mx-auto px-4 h-11 flex items-center gap-3">
+            <div className="flex items-center gap-2 min-w-0 shrink-0">
+              <span className="text-[16px] font-bold whitespace-nowrap">PBA — Power Backup Analytic</span>
+              <span className="hidden lg:inline px-1.5 py-[1px] rounded bg-white/15 text-[11px] whitespace-nowrap" title={t("header.snapshot_tip")}>{t("header.snapshot")} {snap.period_start} → {snap.period_end}</span>
+              <span className="px-1.5 py-[1px] rounded bg-warn text-ink text-[11px] font-semibold whitespace-nowrap" title={t("header.demo_tip")}>{t("header.demo")}</span>
+              <span className={`px-1.5 py-[1px] rounded text-[11px] tabular whitespace-nowrap ${cfgEdited ? "bg-crit text-white" : "bg-white/15"}`}
+                title={t("header.cfg_tip", { h: cfgH, s: t(cfgEdited ? "cfg.is_edited" : "cfg.is_default") })}>{t("header.cfg")} {cfgH}{cfgEdited ? " ✎" : ""}</span>
             </div>
-          </div>
-          <div className="flex flex-wrap items-end gap-3 text-ink">
-            <div className="w-64"><Select label={<span className="text-white/80">NOP</span>} value={nop} onChange={setNop}
-              options={[{ value: "All NOPs", label: `All NOPs (${active.length.toLocaleString()} sites)` },
-                ...allNops.map((n) => ({ value: n, label: `${n} (${(nopCounts.get(n) || 0).toLocaleString()}${inactive ? "" : " active"})`, disabled: !nopCounts.get(n) && n !== nop }))]} /></div>
-            <div className="[&_*]:text-[12px]"><Chips label={<span className="text-white/80">Class (none = all)</span>} options={CLASSES} value={classes} onChange={setClasses} /></div>
-            <div className="bg-white/10 rounded-md px-2 py-1 [&_label]:text-white flex flex-col gap-0.5"><Toggle label="Include inactive sites" checked={inactive} onChange={setInactive} />
-              <Toggle label={`Include suspected off-air (${offairSites.length})`} checked={offair} onChange={setOffair} /></div>
+            <nav className="flex items-stretch h-full ml-1" aria-label={t("nav.main")}>
+              {GROUPS.map(([g, tabs]) => (
+                <button key={g} onClick={() => activeGroup !== g && setTab(tabs[0][0])} aria-current={activeGroup === g ? "true" : undefined}
+                  className={`px-3 text-[13px] font-semibold border-b-[3px] whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn ${activeGroup === g ? "border-warn text-white" : "border-transparent text-white/70 hover:text-white"}`}>{t(`nav.${g}`)}</button>
+              ))}
+            </nav>
+            <div className="ml-auto flex items-center gap-3 text-[11.5px] text-white/80 shrink-0">
+              <span className="hidden xl:inline whitespace-nowrap" title={t("header.refresh_tip")}>{t("header.refresh")} {snap.refreshed_at || data.meta.built_at}</span>
+              <div className="flex rounded-md overflow-hidden border border-white/40" role="group" aria-label={t("header.language")}>
+                {["en", "id"].map((l) => (
+                  <button key={l} onClick={() => chooseLang(l)} aria-pressed={lang === l}
+                    className={`px-2 py-0.5 text-[12px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn ${lang === l ? "bg-white text-navy" : "text-white/80 hover:text-white"}`}>{l.toUpperCase()}</button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
-        <nav className="max-w-[1560px] mx-auto px-3 flex flex-wrap gap-x-5 pb-1" aria-label="Sections">
-          {GROUPS.map(([g, tabs]) => (
-            <div key={g} className="flex items-center" role="group" aria-label={g}>
-              <span className={`text-[11px] uppercase tracking-wide mr-1.5 font-bold ${groupOf(tab) === g ? "text-warn" : "text-white/50"}`}>{g}</span>
-              {tabs.map(([k, l]) => (
-                <button key={k} onClick={() => setTab(k)} aria-current={tab === k ? "page" : undefined}
-                  className={`px-2 py-2 text-[12.5px] whitespace-nowrap border-b-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn ${tab === k ? "border-warn text-white font-semibold" : "border-transparent text-white/75 hover:text-white"}`}>{l}</button>
-              ))}
+        <div className="bg-[#2a3655] text-white">
+          <nav className="max-w-[1560px] mx-auto px-3 flex overflow-x-auto" aria-label={t(`nav.${activeGroup}`)}>
+            {GROUPS.find(([g]) => g === activeGroup)[1].map(([k, v]) => (
+              <button key={k} onClick={() => setTab(k)} aria-current={tab === k ? "page" : undefined}
+                className={`px-3 py-1.5 text-[12.5px] whitespace-nowrap border-b-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn ${tab === k ? "border-warn text-white font-semibold" : "border-transparent text-white/75 hover:text-white"}`}>{t(`nav.${v}`)}</button>
+            ))}
+          </nav>
+        </div>
+        <div className="bg-white border-b border-line">
+          <div className="max-w-[1560px] mx-auto px-4 py-1.5 flex flex-nowrap items-center gap-x-3 overflow-hidden">
+            <label className="flex items-center gap-1.5 text-[12px] text-mut">{t("filter.nop")}
+              <select value={nop} onChange={(e) => setNop(e.target.value)} className="border border-line rounded-md px-2 py-1 text-[12.5px] text-ink bg-white w-48 focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1">
+                <option value="All NOPs">{t("filter.all_nops")} ({fInt(active.length)})</option>
+                {allNops.map((n) => <option key={n} value={n} disabled={!nopCounts.get(n) && n !== nop}>{n} ({fInt(nopCounts.get(n) || 0)})</option>)}
+              </select></label>
+            <div className="flex items-center gap-1 text-[12px] text-mut shrink-0" role="group" aria-label={t("filter.class")}>{t("filter.class")}
+              {CLASSES.map((c) => { const on = classes.includes(c); return (
+                <button key={c} aria-pressed={on} onClick={() => setClasses(on ? classes.filter((x) => x !== c) : [...classes, c])}
+                  className={`px-1.5 py-[3px] rounded-md border text-[12px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1 ${on ? "bg-navy text-white border-navy" : "bg-white text-slate border-line hover:border-slate"}`}>{on ? "✓ " : ""}{c}</button>); })}
             </div>
-          ))}
-        </nav>
+            <Toggle label={t("filter.inactive")} checked={inactive} onChange={setInactive} />
+            <Toggle label={t("filter.offair", { n: fInt(offairSites.length) })} checked={offair} onChange={setOffair} />
+            <div className="ml-auto flex items-center gap-2 min-w-0">
+              <span className="px-2 py-[3px] rounded-full bg-surface border border-line text-[12px] text-ink tabular truncate max-w-[330px]" title={`${scopeChip} — ${t("filter.scope_tip", { r: cfg.mbp.max_radius_km })}`}>{t("filter.scope")}: <b>{scopeChip}</b></span>
+              <button onClick={resetFilters} disabled={!filtered} className="px-2 py-[3px] rounded-md border border-line text-[12px] text-slate bg-white hover:border-slate disabled:opacity-40 whitespace-nowrap shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1">{t("filter.reset")}</button>
+            </div>
+          </div>
+        </div>
       </header>
       <main id="main" className="max-w-[1560px] mx-auto p-5">
-        <div className="text-[12px] text-mut mb-3">Scope: <b className="text-ink">{scope.length.toLocaleString()}</b> sites · {nop} · {classes.length ? classes.join(", ") : "all classes"} · {inactive ? "incl." : "excl."} inactive · {offair ? "incl." : "excl."} {offairSites.length} suspected off-air · MBP coverage radius <b className="text-ink">{cfg.mbp.max_radius_km} km</b></div>
-        {empty ? <Empty /> : <>
+        {empty ? <Empty>{t("empty.no_sites")}</Empty> : <div key={lang}>
           {tab === "health" && <Health {...ctx} />}
           {tab === "acc" && <Accountability {...ctx} />}
           {tab === "impact" && <Impact {...ctx} />}
@@ -112,12 +167,9 @@ export default function Page() {
           {tab === "dq" && <DataQuality {...ctx} />}
           {tab === "tel" && <Telemetry {...ctx} />}
           {tab === "cfg" && <ConfigTab {...ctx} />}
-        </>}
+        </div>}
       </main>
-      <footer className="max-w-[1560px] mx-auto px-5 pb-6 text-[11px] text-mut">
-        Evidence: ACTUAL = observed · DERIVED = calculated · ESTIMATED = modelled · PROXY = assumption · UNAVAILABLE = not in data. Two priority scales: MBP-P1…P4 (response) and BBS-P1…P4 (battery action); P1 = highest.
-        Battery vs design (Dead / Critical / Degraded / Below design / Meets design) is a separate scale from priority. Availability gaps in percentage points (pp).
-      </footer>
+      <footer className="max-w-[1560px] mx-auto px-5 pb-6 text-[11px] text-mut">{t("footer.legend")}</footer>
       <SiteDrawer site={pick} cfg={cfg} onClose={() => setPick(null)} />
     </div>
   );

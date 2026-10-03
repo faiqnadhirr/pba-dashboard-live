@@ -3,8 +3,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import L from "leaflet";
 import { MapContainer, TileLayer, CircleMarker, Circle, Marker, Polyline, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { LEVEL_KIND, STATUS, fInt, fKm, fMin, fPct, fPP, isNum } from "./ui";
-import { ACCESS_LABEL, RESP } from "@/lib/logic";
+import { LEVEL_KIND, STATUS, fInt, fKm, fMin, fPct, fPP, fH, isNum } from "./ui";
+import { t, tv } from "@/lib/i18n";
 
 const MAX_POINTS = 4000;
 const TRUCK = (sel, isNew) => L.divIcon({
@@ -14,7 +14,7 @@ const TRUCK = (sel, isNew) => L.divIcon({
 });
 const CLUSTER = (n, c) => L.divIcon({
   className: "", iconSize: [34, 34], iconAnchor: [17, 17],
-  html: `<div style="width:34px;height:34px;border-radius:50%;background:#fff;border:3px solid ${c};display:flex;align-items:center;justify-content:center;font:600 11px Inter,system-ui;color:#141821" aria-label="${n} sites">${n > 999 ? Math.round(n / 100) / 10 + "k" : n}</div>`,
+  html: `<div style="width:34px;height:34px;border-radius:50%;background:#fff;border:3px solid ${c};display:flex;align-items:center;justify-content:center;font:600 11px Inter,system-ui;color:#141821" aria-label="${n}">${n > 999 ? Math.round(n / 100) / 10 + "k" : n}</div>`,
 });
 
 function Fit({ pts, sig }) {
@@ -36,10 +36,10 @@ function ViewWatch({ onView }) {
 }
 
 export const COLOR_MODES = {
-  priority: { label: "MBP priority", of: (s) => LEVEL_KIND.MBP[s.mbp_priority_level]?.c, legend: ["P1", "P2", "P3", "P4"].map((k) => ({ label: `${LEVEL_KIND.MBP[k].i} MBP-${k}`, c: LEVEL_KIND.MBP[k].c })) },
-  design: { label: "Battery vs design", of: (s) => STATUS[s.bbt_status]?.c, legend: Object.entries(STATUS).map(([k, v]) => ({ label: `${v.i} ${k}`, c: v.c })) },
-  survival: { label: "MBP arrives before BBT?", of: (s) => (!s.covered ? "#7a1414" : s.can_arrive_before_bbt ? "#0ca30c" : "#ec835a"),
-    legend: [{ label: "✔ arrives in time", c: "#0ca30c" }, { label: "▲ arrives after battery runs out", c: "#ec835a" }, { label: "✖ no MBP within radius", c: "#7a1414" }] },
+  priority: { label: () => t("map.mode.priority"), of: (s) => LEVEL_KIND.MBP[s.mbp_priority_level]?.c, legend: () => ["P1", "P2", "P3", "P4"].map((k) => ({ label: `${LEVEL_KIND.MBP[k].i} MBP-${k}`, c: LEVEL_KIND.MBP[k].c })) },
+  design: { label: () => t("map.mode.design"), of: (s) => STATUS[s.bbt_status]?.c, legend: () => Object.entries(STATUS).map(([k, v]) => ({ label: `${v.i} ${tv("status", k)}`, c: v.c })) },
+  survival: { label: () => t("map.mode.survival"), of: (s) => (!s.covered ? "#7a1414" : s.bbt_status === "Unknown" ? "#A3ABB9" : s.can_arrive_before_bbt ? "#0ca30c" : "#ec835a"),
+    legend: () => [{ label: `✔ ${t("map.leg.in_time")}`, c: "#0ca30c" }, { label: `▲ ${t("map.leg.late")}`, c: "#ec835a" }, { label: `? ${t("mbp.seg.bbt_unknown")}`, c: "#A3ABB9" }, { label: `✖ ${t("map.leg.no_mbp")}`, c: "#7a1414" }] },
 };
 
 export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSite, mbpStats, fitKey = "", height = 520, colorOverride, legendOverride, defaultMode = "priority", extraMbps = [], compact = false }) {
@@ -77,23 +77,23 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
   const inRadiusOfSel = useMemo(() => (selMbp ? new Set(located.filter((s) => s.coverage?.inRadius?.some((x) => x.mbp_id === selMbp.mbp_id)).map((s) => s.site_id)) : null), [selMbp, located]);
   const offline = tileFail > 3 && tileOk === 0;
   const st = selMbp && mbpStats ? mbpStats.get(selMbp.mbp_id) : null;
-  const legend = legendOverride || COLOR_MODES[mode].legend;
-  if (!fitPts.length) return <div className="text-mut text-sm p-6 border border-line rounded-md">No coordinates for this selection.</div>;
+  const legend = legendOverride || COLOR_MODES[mode].legend();
+  if (!fitPts.length) return <div className="text-mut text-sm p-6 border border-line rounded-md">{t("map.no_coords")}</div>;
 
   return (
     <div>
       {!compact && (
-        <div className="flex flex-wrap items-end gap-x-4 gap-y-2 mb-2 text-[12px]" role="toolbar" aria-label="Map layers">
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-2 mb-2 text-[12px]" role="toolbar" aria-label={t("map.layers")}>
           <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={showSites} onChange={(e) => setShowSites(e.target.checked)} className="accent-navy" />
-            <span className="inline-block w-3 h-3 rounded-full border-2 border-white" style={{ background: "#55627A", boxShadow: "0 0 0 1px #55627A" }} aria-hidden /> Sites</label>
+            <span className="inline-block w-3 h-3 rounded-full border-2 border-white" style={{ background: "#55627A", boxShadow: "0 0 0 1px #55627A" }} aria-hidden /> {t("map.sites")}</label>
           <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={showMbps} onChange={(e) => setShowMbps(e.target.checked)} className="accent-navy" />
-            <span className="inline-flex w-4 h-4 rounded bg-navy items-center justify-center text-white text-[9px]" aria-hidden>🚚</span> MBP base camps</label>
-          <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={coverage} onChange={(e) => setCoverage(e.target.checked)} className="accent-navy" /> Coverage layer</label>
-          <label className="flex items-center gap-2 text-mut">Coverage radius
-            <input type="range" min={20} max={200} step={5} value={R} onChange={(e) => onRadius?.(Number(e.target.value))} className="accent-navy w-36" aria-label="MBP coverage radius km" />
+            <span className="inline-flex w-4 h-4 rounded bg-navy items-center justify-center text-white text-[9px]" aria-hidden>🚚</span> {t("map.basecamps")}</label>
+          <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={coverage} onChange={(e) => setCoverage(e.target.checked)} className="accent-navy" /> {t("map.coverage_layer")}</label>
+          <label className="flex items-center gap-2 text-mut">{t("map.radius")}
+            <input type="range" min={20} max={200} step={5} value={R} onChange={(e) => onRadius?.(Number(e.target.value))} className="accent-navy w-36" aria-label={t("map.radius")} />
             <span className="text-ink font-semibold tabular w-14">{R} km</span></label>
-          {!colorOverride && <label className="flex items-center gap-2 text-mut">Colour sites by
-            <select value={mode} onChange={(e) => setMode(e.target.value)} className="border border-line rounded px-1.5 py-1 text-ink">{Object.entries(COLOR_MODES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></label>}
+          {!colorOverride && <label className="flex items-center gap-2 text-mut">{t("map.colour_by")}
+            <select value={mode} onChange={(e) => setMode(e.target.value)} className="border border-line rounded px-1.5 py-1 text-ink bg-white">{Object.entries(COLOR_MODES).map(([k, v]) => <option key={k} value={k}>{v.label()}</option>)}</select></label>}
         </div>
       )}
       <div className="relative">
@@ -106,7 +106,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             {selMbp && coverage && <Circle center={[selMbp.lat, selMbp.lon]} radius={R * 1000} pathOptions={{ color: "#eda100", weight: 2, dashArray: "6 6", fillOpacity: 0.05 }} />}
             {showSites && clustered && clusters.map((c, i) => (
               <Marker key={"c" + i} position={[c.lat, c.lon]} icon={CLUSTER(c.n, LEVEL_KIND.MBP[c.worst]?.c || "#55627A")}>
-                <Tooltip direction="top">{c.n} sites · worst MBP-{c.worst}{c.unc ? ` · ${c.unc} beyond MBP radius` : ""}<br />zoom in for detail</Tooltip>
+                <Tooltip direction="top">{t("map.cluster_tip", { n: fInt(c.n), w: c.worst })}{c.unc ? ` · ${t("map.cluster_beyond", { n: fInt(c.unc) })}` : ""}<br />{t("map.zoom_in")}</Tooltip>
               </Marker>
             ))}
             {selMbp && coverage && !clustered && mbpSites.slice(0, 400).map((s) => (
@@ -118,49 +118,49 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
                 <CircleMarker key={s.site_id} center={[s.lat, s.lon]} radius={s.mbp_priority_level === "P1" ? 6 : 4.5}
                   pathOptions={{ color: cov ? "#ffffff" : c, weight: cov ? 0.8 : 2.2, fillColor: cov ? c : "#ffffff", fillOpacity: dim ? 0.15 : 0.95, opacity: dim ? 0.3 : 1 }}
                   eventHandlers={{ click: () => { setSelSite(s); setSelMbp(null); } }}>
-                  <Tooltip direction="top"><b>{s.site_id}</b> · {s.site_name}<br />MBP-{s.mbp_priority_level} · {s.bbt_status} · {cov ? `MBP ${s.mbp_assigned}` : `nearest MBP ${s.nearest_mbp || "—"} ${s.nearest_mbp_km ? Math.round(s.nearest_mbp_km) + " km" : ""} (beyond radius)`}</Tooltip>
+                  <Tooltip direction="top"><b>{s.site_id}</b> · {s.site_name}<br />MBP-{s.mbp_priority_level} · {tv("status", s.bbt_status)} · {cov ? `MBP ${s.mbp_assigned}` : t("map.nearest_beyond", { m: s.nearest_mbp || "—", km: fKm(s.nearest_mbp_km) })}</Tooltip>
                 </CircleMarker>
               );
             })}
             {showMbps && mbpsLoc.map((m) => (
               <Marker key={"m" + m.mbp_id} position={[m.lat, m.lon]} icon={TRUCK(selMbp?.mbp_id === m.mbp_id, m.is_new)} keyboard
                 eventHandlers={{ click: () => { setSelMbp(m); setSelSite(null); } }}>
-                <Tooltip direction="top"><b>{m.is_new ? "NEW (scenario) " : ""}MBP</b> {m.mbp_id}</Tooltip>
+                <Tooltip direction="top"><b>{m.is_new ? t("map.new_scenario") + " " : ""}MBP</b> {m.mbp_id}</Tooltip>
               </Marker>
             ))}
             {selSite && <CircleMarker center={[selSite.lat, selSite.lon]} radius={12} pathOptions={{ color: "#141821", weight: 3, fillOpacity: 0 }} />}
           </MapContainer>
         </div>
         {(selMbp || selSite) && (
-          <div className="absolute top-2 right-2 z-[400] w-[300px] bg-white/95 border border-line rounded-lg shadow p-3 text-[12px]" role="dialog" aria-label="Selection details">
-            <button onClick={() => { setSelMbp(null); setSelSite(null); }} className="absolute top-1.5 right-2 text-slate text-[16px]" aria-label="Close">×</button>
+          <div className="absolute top-2 right-2 z-[400] w-[300px] bg-white/95 border border-line rounded-lg shadow p-3 text-[12px]" role="dialog" aria-label={t("map.selection")}>
+            <button onClick={() => { setSelMbp(null); setSelSite(null); }} className="absolute top-1.5 right-2 text-slate text-[16px]" aria-label={t("common.close")}>×</button>
             {selMbp && (
               <div>
                 <div className="font-semibold text-navy text-[13px] pr-4">🚚 {selMbp.mbp_id}</div>
-                <div className="text-mut mb-1">Base camp · NOP {selMbp.nop || "—"} · location {selMbp.coord_status === "REPAIRED" ? "repaired" : selMbp.is_new ? "scenario" : "as recorded"}</div>
-                <div className="text-[11px] text-[#8a5a00] mb-1">Radius = operational coverage assumption ({R} km), not a fixed boundary — MBPs move.</div>
+                <div className="text-mut mb-1">{t("map.camp_line", { nop: selMbp.nop || "—", loc: selMbp.coord_status === "REPAIRED" ? t("mbp.coord.REPAIRED") : selMbp.is_new ? t("map.scenario") : t("mbp.as_recorded") })}{selMbp.pic_name ? ` · PIC ${selMbp.pic_name}` : ""}</div>
+                <div className="text-[11px] text-[#8a5a00] mb-1">{t("map.radius_note", { r: R })}</div>
                 {st ? (
                   <table className="w-full"><tbody>
-                    {[["Sites assigned", fInt(st.sites_covered)], ["MBP-P1/P2 assigned", fInt(st.p1_p2)], ["Sites within radius", fInt(inRadiusOfSel?.size)],
-                      ["Avg distance", fKm(st.avg_km)], ["Avg ETA (ESTIMATED)", fMin(st.avg_eta_min)], ["Dark before MBP", `${fInt(st.at_risk_sites)} (${Math.round(100 * st.risk_share)}%)`],
-                      ["Workload (H1 deployments)", fInt(st.deployments_h1)], ["Signal", st.load_signal]].map(([k, v]) => <tr key={k}><td className="text-mut py-0.5">{k}</td><td className="text-right font-medium">{v}</td></tr>)}
-                  </tbody></table>) : <div className="text-mut">No statistics (scenario MBP).</div>}
+                    {[[t("col.sites_assigned"), fInt(st.sites_covered)], [t("col.p1p2"), fInt(st.p1_p2)], [t("map.sites_in_radius"), fInt(inRadiusOfSel?.size)],
+                      [t("map.avg_distance"), fKm(st.avg_km)], [t("map.avg_eta_est"), fMin(st.avg_eta_min)], [t("col.dark_before_mbp"), `${fInt(st.at_risk_sites)} (${fPct(100 * st.risk_share, 0)})`],
+                      [t("map.workload"), fInt(st.deployments_h1)], [t("col.signal"), tv("signal", st.load_signal)]].map(([k, v]) => <tr key={k}><td className="text-mut py-0.5">{k}</td><td className="text-right font-medium">{v}</td></tr>)}
+                  </tbody></table>) : <div className="text-mut">{t("map.no_stats")}</div>}
                 {st && <div className="text-[11px] text-slate mt-1">{st.signal_why}</div>}
               </div>
             )}
             {selSite && (
               <div>
                 <div className="font-semibold text-navy text-[13px] pr-4">● {selSite.site_id} · {selSite.site_name}</div>
-                <div className="text-mut mb-1">{selSite.site_class} · {selSite.nop} · {ACCESS_LABEL[selSite.access_class]}</div>
+                <div className="text-mut mb-1">{selSite.site_class} · {selSite.nop} · {tv("access", selSite.access_class)}</div>
                 <table className="w-full"><tbody>
-                  {[["Availability", fPct(selSite.avail_wc_pct)], ["Target", fPct(selSite.ran_target_pct)], ["Gap", fPP(selSite.avail_delta_pp)],
-                    ["BBT", selSite.battery?.display?.text || `${fMin(selSite.battery?.display?.value)} · ${selSite.battery?.display?.evidence}`], ["Battery vs design", selSite.bbt_status],
-                    ["Power downtime", isNum(selSite.ran_power_down_h) ? `${fInt(selSite.ran_power_down_h * 60)} min` : "—"], ["Responsible (power)", selSite.resp?.primary ? `${RESP[selSite.resp.primary]} (${selSite.resp.kind})` : "—"],
-                    ["MBP (assigned / nearest)", `${selSite.dist_mbp || "—"}${selSite.within_radius ? "" : " — beyond radius"}`], ["Distance · ETA", `${fKm(selSite.dist_km)} · ${fMin(selSite.dist_eta_min)}${selSite.access_class === "island" ? " (sea access)" : ""}`],
-                    ["Inside MBP coverage", selSite.covered ? `yes (${selSite.mbps_in_radius} MBP ≤ ${R} km)` : `no — nearest ${fKm(selSite.nearest_mbp_km)}`],
-                    ["Arrives before BBT", selSite.can_arrive_before_bbt ? "✔ yes" : "✖ no"]].map(([k, v]) => <tr key={k}><td className="text-mut py-0.5 pr-2">{k}</td><td className="text-right font-medium">{v}</td></tr>)}
+                  {[[t("health.kpi.avail"), fPct(selSite.avail_wc_pct)], [t("common.target"), fPct(selSite.ran_target_pct)], [t("common.gap"), fPP(selSite.avail_delta_pp)],
+                    ["BBT", selSite.battery?.display?.text ? t("bbt.no_battery_ticket") : `${fMin(selSite.battery?.display?.value)} · ${selSite.battery?.display?.evidence}`], [t("status.tip"), tv("status", selSite.bbt_status)],
+                    [t("col.power_downtime"), fH(selSite.ran_power_down_h)], [t("map.responsible"), selSite.resp?.primary ? `${tv("resp", selSite.resp.primary)} (${selSite.resp.kind})` : "—"],
+                    [t("col.mbp_assigned_nearest"), `${selSite.dist_mbp || "—"}${selSite.within_radius ? "" : " — " + t("mbp.seg.beyond").toLowerCase()}`], [t("map.dist_eta"), `${fKm(selSite.dist_km)} · ${fMin(selSite.dist_eta_min)}${selSite.access_class === "island" ? ` (${t("site.sea_access")})` : ""}`],
+                    [t("map.inside_cov"), selSite.covered ? t("map.inside_yes", { n: selSite.mbps_in_radius, r: R }) : t("map.inside_no", { km: fKm(selSite.nearest_mbp_km) })],
+                    [t("col.arrives_before_bbt"), selSite.bbt_status === "Unknown" ? `? ${t("eta.bbt_unknown_short")}` : selSite.can_arrive_before_bbt ? `✔ ${t("common.yes")}` : `✖ ${t("common.no")}`]].map(([k, v]) => <tr key={k}><td className="text-mut py-0.5 pr-2">{k}</td><td className="text-right font-medium">{v}</td></tr>)}
                 </tbody></table>
-                {onPickSite && <button onClick={() => onPickSite(selSite)} className="mt-2 w-full bg-navy text-white rounded py-1 text-[12px]">Open site detail</button>}
+                {onPickSite && <button onClick={() => onPickSite(selSite)} className="mt-2 w-full bg-navy text-white rounded py-1 text-[12px]">{t("map.open_detail")}</button>}
               </div>
             )}
           </div>
@@ -168,11 +168,11 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11.5px] text-slate">
         {legend.map((l) => <span key={l.label} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: l.c }} />{l.label}</span>)}
-        <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block border-2" style={{ borderColor: "#55627A", background: "#fff" }} /> hollow ring = no MBP within {R} km</span>
-        <span className="inline-flex items-center gap-1"><span className="inline-flex w-4 h-4 rounded bg-navy items-center justify-center text-white text-[9px]">🚚</span> MBP base camp (click: radius + covered sites)</span>
-        {clustered && <span className="text-mut">sites grouped — zoom in for individual sites</span>}
-        {!clustered && inView.length > MAX_POINTS && <span className="text-mut">showing {MAX_POINTS.toLocaleString()} of {inView.length.toLocaleString()} sites in view — zoom in</span>}
-        {offline && <span className="text-[#8a5a00]">Basemap tiles unreachable — points shown on a plain background.</span>}
+        <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block border-2" style={{ borderColor: "#55627A", background: "#fff" }} /> {t("map.leg.hollow", { r: R })}</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-flex w-4 h-4 rounded bg-navy items-center justify-center text-white text-[9px]">🚚</span> {t("map.leg.camp")}</span>
+        {clustered && <span className="text-mut">{t("map.grouped")}</span>}
+        {!clustered && inView.length > MAX_POINTS && <span className="text-mut">{t("map.showing", { a: fInt(MAX_POINTS), b: fInt(inView.length) })}</span>}
+        {offline && <span className="text-[#8a5a00]">{t("map.offline")}</span>}
       </div>
     </div>
   );

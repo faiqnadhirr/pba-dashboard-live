@@ -94,7 +94,8 @@ def clean_mbp(team: pd.DataFrame) -> pd.DataFrame:
         lon, rl = _repair(to_num(pd.Series([r["Longitude"]])).iloc[0], *BBOX["lon"])
         lat, ra = _repair(to_num(pd.Series([r["Latitude"]])).iloc[0], *BBOX["lat"])
         status = "MISSING" if pd.isna(lon) or pd.isna(lat) else ("REPAIRED" if (rl or ra) else "ACTUAL")
-        rows.append(dict(mbp_id=r["mbp_id"], mbp_name=str(r["MBP"]).strip(), lat=lat, lon=lon,
+        dec = min([len(str(v).split(".")[1].rstrip()) if isinstance(v, (str, float)) and "." in str(v) else 0 for v in (r["Latitude"], r["Longitude"])])
+        rows.append(dict(mbp_id=r["mbp_id"], mbp_name=str(r["MBP"]).strip(), lat=lat, lon=lon, coord_decimals=None if status == "MISSING" else int(min(dec, 6)),
                          coord_status=status, coord_evidence={"ACTUAL": "ACTUAL", "REPAIRED": "DERIVED",
                                                               "MISSING": "UNAVAILABLE"}[status]))
     m = pd.DataFrame(rows)

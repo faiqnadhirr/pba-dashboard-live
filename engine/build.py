@@ -59,12 +59,28 @@ def jclean(v):
 
 
 def records(df: pd.DataFrame) -> list[dict]:
-    return [{k: jclean(v) for k, v in r.items()} for r in df.to_dict("records")]
+    return [{k: (_coord(v) if k in COORD_COLS else jclean(v)) for k, v in r.items()} for r in df.to_dict("records")]
+
+
+COORD_COLS = {"lat", "lon", "anchor_lat", "anchor_lon"}
+
+
+def _coord(v):
+    """coordinates keep the source precision (up to 6 decimals) — jclean's 3-decimal rounding (≈ ±110 m) must not apply"""
+    try:
+        if v is None or pd.isna(v):
+            return None
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if math.isinf(f) else round(f, 6)
 
 
 def columnar(df: pd.DataFrame) -> dict:
     """{'cols': [...], 'rows': [[...], ...]} — ~60% smaller than records."""
-    return {"cols": list(df.columns), "rows": [[jclean(v) for v in r] for r in df.itertuples(index=False, name=None)]}
+    cols = list(df.columns)
+    isc = [c in COORD_COLS for c in cols]
+    return {"cols": cols, "rows": [[_coord(v) if c else jclean(v) for v, c in zip(r, isc)] for r in df.itertuples(index=False, name=None)]}
 
 
 def dump(obj, name):
@@ -155,6 +171,8 @@ def sanity(t, corr, f, mbps, tickets, merge_map, qa):
     chk("A2 monthly power series has 6 months", ok)
     bad = sum(1 for h, p in zip(t["m_hours"], t["m_pw"]) if h and p and any(pp is not None and hh is not None and pp > hh + 1e-6 for pp, hh in zip(p, h)))
     chk("A2 monthly power downtime <= hours in month", bad == 0, bad)
+    lat_dec = t["lat"].dropna().map(lambda v: len(f"{round(float(v), 6):.6f}".rstrip("0").split(".")[1]))
+    chk("3c coordinates published with more than 3 decimals where the source has them", (lat_dec > 3).mean() > 0.5, f"{(lat_dec > 3).mean():.0%} of sites")
     qa["build_sanity"] = SANITY
     for c in SANITY:
         print(("  PASS " if c["ok"] else "  FAIL ") + c["check"] + ("" if c["ok"] else "  — " + c["detail"]), flush=True)
