@@ -4,11 +4,15 @@ import { Card, Note, DataTable, EvTag, Tag, Gloss, fInt, fPct, fNum, precisionNo
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { EVCOLS } from "@/lib/drill";
+import MapHero, { useMapLegend, LegendChip } from "@/components/MapHero";
 
 const EV = ["ACTUAL", "DERIVED", "ESTIMATED", "PROXY", "UNAVAILABLE"];
 const pct = (n, d) => fPct((100 * n) / Math.max(1, d), 1);
 
-export default function DataQuality({ scope, data, offairSites = [], mbpStats, cfg, setPick, openDrill }) {
+export default function DataQuality(props) {
+  const { scope: scopeAll, data, offairSites = [], mbpStats, cfg, setPick, openDrill: od0 } = props;
+  const L = useMapLegend(scopeAll, "dq"), scope = L.vis;
+  const openDrill = (id, f) => od0(id, f, L.hidden.length ? scope : undefined);
   const snap = data.meta.snapshot || {}, mb = data.meta.mbp || {}, m = data.meta, qa = m.qa;
   const prec = useMemo(() => { const c = {}; scope.forEach((x) => { const d = x.lat == null ? "none" : x.coord_decimals ?? "none"; c[d] = (c[d] || 0) + 1; }); return Object.entries(c).sort((a, b) => String(b[0]).localeCompare(String(a[0]))); }, [scope]);
   const acc = useMemo(() => { const c = {}; scope.forEach((x) => { c[x.access_class] = (c[x.access_class] || 0) + 1; }); return c; }, [scope]);
@@ -29,6 +33,8 @@ export default function DataQuality({ scope, data, offairSites = [], mbpStats, c
     return { n: r.length, med: r.length ? r[Math.floor(r.length / 2)] : null, capped: scope.filter((x) => x.bbt_design_min >= (cfg.bbt.design_from_battery?.max_minutes ?? 480)).length }; }, [scope, cfg]);
   return (
     <div className="space-y-4">
+      <LegendChip L={L} />
+      <MapHero L={L} ctx={props} modes={["dq"]} height={400} title={t("hero.dq.title")} sub={t("hero.dq.sub")} />
       <div className="grid xl:grid-cols-2 gap-4">
         <Card title={t("dq.sources.title")} sub={t("dq.sources.sub")}>
           <DataTable rows={m.dq.sources} pageSize={20} filename="pba_dq_sources.csv" columns={[

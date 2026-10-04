@@ -4,6 +4,7 @@ import { Card, Kpi, Note, DataTable, Bar100, EvTag, fInt, fH, fPct, RESP_COLOR }
 import { aggregateResponsibility, RESP_POWER } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
+import MapHero, { useMapLegend, LegendChip } from "@/components/MapHero";
 
 const ORDER = [...RESP_POWER, "utility_inferred", "unknown"];
 // rule text names the ticket fields exactly as they appear in the source (RC 1 / RC 2 values stay in Indonesian)
@@ -11,7 +12,10 @@ const MAPPING = [["utility", "OBSERVED"], ["internal", "OBSERVED"], ["battery", 
   ["operational", "OBSERVED"], ["utility_inferred", "INFERRED"], ["unknown", "UNKNOWN"]];
 const pctOf = (v, tot) => fPct((100 * v) / (tot || 1), 0);
 
-export default function Accountability({ scope, setPick, openDrill, navigate }) {
+export default function Accountability(props) {
+  const { scope: scopeAll, setPick, openDrill: od0, navigate } = props;
+  const L = useMapLegend(scopeAll, "resp"), scope = L.vis;
+  const openDrill = (id, f) => od0(id, f, L.hidden.length ? scope : undefined);
   const agg = useMemo(() => aggregateResponsibility(scope), [scope]);
   const obs = RESP_POWER.reduce((a, k) => a + agg.hours[k], 0), inf = agg.hours.utility_inferred, unk = agg.hours.unknown;
   const tot = agg.total || 1;
@@ -23,6 +27,7 @@ export default function Accountability({ scope, setPick, openDrill, navigate }) 
   }, [scope]);
   return (
     <div className="space-y-4">
+      <LegendChip L={L} />
       <Note>
         <b>{t("acc.note.title")}</b> {t("acc.note.body")}
       </Note>
@@ -32,6 +37,7 @@ export default function Accountability({ scope, setPick, openDrill, navigate }) 
         <Kpi scope="filtered" label={t("acc.kpi.inferred")} value={pctOf(inf, tot)} sub={t("acc.kpi.inferred_sub", { h: fH(inf) })} tone="warn" />
         <Kpi scope="filtered" label={t("acc.kpi.unknown")} value={pctOf(unk, tot)} sub={t("acc.kpi.unknown_sub", { h: fH(unk) })} tone="slate" />
       </div>
+      <MapHero L={L} ctx={props} modes={["resp"]} title={t("hero.acc.title")} sub={t("hero.acc.sub")} />
       <Card title={t("acc.party.title")} sub={t("acc.party.sub")}>
         <Bar100 height={20} onSeg={(p) => navigate({ view: "mbp.sitelist", sel: `resp~${p.k}` })} parts={ORDER.map((k) => ({ k, label: tv("resp", k), c: RESP_COLOR[k], v: agg.hours[k], txt: `${pctOf(agg.hours[k], tot)} · ${fH(agg.hours[k])}` }))} />
         <div className="grid lg:grid-cols-2 gap-4 mt-4">

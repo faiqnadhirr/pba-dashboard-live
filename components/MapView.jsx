@@ -6,7 +6,10 @@ import "leaflet/dist/leaflet.css";
 import { LEVEL_KIND, STATUS, fInt, fKm, fMin, fPct, fPP, fH, isNum } from "./ui";
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
-import { MAP_KEYS } from "@/lib/drill";
+import { MAP_MODES } from "@/lib/mapmodes";
+import { rollup } from "@/lib/rollup";
+import { modeColor, modeLegend, siteWhy, keyColor } from "./mapModes";
+import RollupPanel from "./RollupPanel";
 
 // far zoom: a small square per base camp so the trucks do not cover the sites; full truck icon from zoom 8
 const CAMP_DOT = (sel, isNew) => L.divIcon({ className: "", iconSize: [10, 10], iconAnchor: [5, 5],
@@ -38,16 +41,17 @@ function ZoomWatch({ onZoom }) {
   return null;
 }
 
-/** colour modes: key(s) = legend category (shared with KPIs / Site list via lib/drill MAP_KEYS) */
-export const COLOR_MODES = {
-  priority: { label: () => t("map.mode.priority"), key: MAP_KEYS.priority, of: (s) => LEVEL_KIND.MBP[MAP_KEYS.priority(s)]?.c,
-    legend: () => ["P1", "P2", "P3", "P4"].map((k) => ({ k, label: `${LEVEL_KIND.MBP[k].i} MBP-${k}`, c: LEVEL_KIND.MBP[k].c })) },
-  design: { label: () => t("map.mode.design"), key: MAP_KEYS.design, of: (s) => STATUS[MAP_KEYS.design(s)]?.c,
-    legend: () => Object.entries(STATUS).map(([k, v]) => ({ k, label: `${v.i} ${tv("status", k)}`, c: v.c })) },
-  survival: { label: () => t("map.mode.survival"), key: MAP_KEYS.survival,
-    of: (s) => ({ beyond: "#7a1414", unknown: "#A3ABB9", arrive: "#0ca30c", late: "#ec835a" })[MAP_KEYS.survival(s)],
-    legend: () => [{ k: "arrive", label: `✔ ${t("map.leg.in_time")}`, c: "#0ca30c" }, { k: "late", label: `▲ ${t("map.leg.late")}`, c: "#ec835a" },
-      { k: "unknown", label: `? ${t("mbp.seg.bbt_unknown")}`, c: "#A3ABB9" }, { k: "beyond", label: `✖ ${t("map.leg.no_mbp")}`, c: "#7a1414" }] },
+/* v3.5 — pie bubble for a roll-up unit (cluster / NOP): slices = site categories in legend order, size ∝ √sites */
+const PIE = (u, keys, colorOfKey, label, center) => {
+  const d = Math.round((u.level === "nop" ? 24 : 16) + Math.min(u.level === "nop" ? 26 : 20, Math.sqrt(u.n) * 0.8)), r = d / 2, cx = r, cy = r;
+  let a0 = -Math.PI / 2, paths = "";
+  for (const k of keys) { const v = u.counts[k] || 0; if (!v) continue; const a1 = a0 + (2 * Math.PI * v) / u.n;
+    if (v === u.n) paths += `<circle cx="${cx}" cy="${cy}" r="${r - 1}" fill="${colorOfKey(k)}"/>`;
+    else paths += `<path d="M${cx},${cy} L${cx + (r - 1) * Math.cos(a0)},${cy + (r - 1) * Math.sin(a0)} A${r - 1},${r - 1} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${cx + (r - 1) * Math.cos(a1)},${cy + (r - 1) * Math.sin(a1)} Z" fill="${colorOfKey(k)}"/>`;
+    a0 = a1; }
+  return L.divIcon({ className: "", iconSize: [d, d + 14], iconAnchor: [r, r],
+    html: `<div style="position:relative;width:${d}px"><svg width="${d}" height="${d}" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">${paths}<circle cx="${cx}" cy="${cy}" r="${r - 1}" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="${cx}" cy="${cy}" r="${Math.max(7, r * 0.42)}" fill="#fff"/><text x="${cx}" y="${cy + 3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="#141821" font-family="Inter,system-ui">${center}</text></svg>`
+      + (label ? `<div style="position:absolute;left:50%;top:${d}px;transform:translateX(-50%);white-space:nowrap;font:600 10.5px Inter,system-ui;color:#141821;text-shadow:0 0 3px #fff,0 0 3px #fff">${label}</div>` : "") + `</div>` });
 };
 const PRIO_Z = { P4: 0, P3: 1, P2: 2, P1: 3 };
 
@@ -55,7 +59,7 @@ const PRIO_Z = { P4: 0, P3: 1, P2: 2, P1: 3 };
  * All sites are drawn on ONE canvas layer (no clustering, no "zoom in to click"): ~20k points stay fast, and a 7-px click
  * tolerance makes every dot clickable at AREA zoom. Dot size grows with power downtime (site went dark on power).
  */
-function SiteLayer({ sites, colorOf, sizeOf, selId, inRadiusOfSel, onPick, zoom }) {
+function SiteLayer({ sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, onPick, zoom, ttLine }) {
   const map = useMap();
   const layer = useRef(null);
   const renderer = useMemo(() => L.canvas({ tolerance: 7, padding: 0.3 }), []);
@@ -65,24 +69,25 @@ function SiteLayer({ sites, colorOf, sizeOf, selId, inRadiusOfSel, onPick, zoom 
     // draw low priority first so P1 sits on top
     const order = [...sites].sort((a, b) => (PRIO_Z[a.mbp_priority_level] ?? 0) - (PRIO_Z[b.mbp_priority_level] ?? 0));
     for (const s of order) {
-      const c = colorOf(s) || "#55627A", cov = s.covered, dim = inRadiusOfSel && !inRadiusOfSel.has(s.site_id);
+      const c = colorOf(s) || "#55627A", cov = !hollowOf(s), dim = inRadiusOfSel && !inRadiusOfSel.has(s.site_id);
       const m = L.circleMarker([s.lat, s.lon], { renderer, radius: base + sizeOf(s) * (zoom <= 7 ? 3 : 4), color: cov ? "#ffffff" : c, weight: cov ? 0.6 : 1.8,
         fillColor: cov ? c : "#ffffff", fillOpacity: dim ? 0.12 : 0.9, opacity: dim ? 0.25 : 1, bubblingMouseEvents: false });
       m.on("click", () => onPick(s));
       m.on("mouseover", () => {
-        if (!m.getTooltip()) m.bindTooltip(`<b>${s.site_id}</b> · ${s.site_name || ""}<br/>MBP-${s.mbp_priority_level} · ${tv("status", s.bbt_status)} · ${fH(s.ran_power_down_h)} ${t("map.tt_power")}<br/><span style="color:#55627A">${t("map.tt_click")}</span>`, { direction: "top", offset: [0, -4] });
+        if (!m.getTooltip()) m.bindTooltip(`<b>${s.site_id}</b> · ${s.site_name || ""}<br/>${ttLine(s)}<br/><span style="color:#55627A">${t("map.tt_click")}</span>`, { direction: "top", offset: [0, -4] });
         m.openTooltip();
       });
       g.addLayer(m);
     }
     g.addTo(map); layer.current = g;
     return () => { g.remove(); };
-  }, [sites, colorOf, sizeOf, inRadiusOfSel, zoom, map, renderer]); // eslint-disable-line
+  }, [sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, zoom, map, renderer]); // eslint-disable-line
   return null;
 }
 
 export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSite, mbpStats, fitKey = "", height = 520, colorOverride, legendOverride, keyOverride,
-  defaultMode = "priority", extraMbps = [], compact = false, mode: modeProp, onMode, hidden: hiddenProp, onHidden }) {
+  defaultMode = "priority", extraMbps = [], compact = false, mode: modeProp, onMode, hidden: hiddenProp, onHidden, modes = ["priority", "design", "survival"],
+  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true }) {
   const [tileFail, setTileFail] = useState(0), [tileOk, setTileOk] = useState(0);
   const [showSites, setShowSites] = useState(true), [showMbps, setShowMbps] = useState(true), [coverage, setCoverage] = useState(false);
   const [modeL, setModeL] = useState(defaultMode), [hiddenL, setHiddenL] = useState([]);
@@ -93,17 +98,26 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
   const [selMbp, setSelMbp] = useState(null), [selSite, setSelSite] = useState(null);
   const [zoom, setZoom] = useState(6);
   const R = cfg.mbp.max_radius_km;
-  const colorOf = useMemo(() => colorOverride || COLOR_MODES[mode].of, [colorOverride, mode]);
-  const keyOf = keyOverride || (colorOverride ? null : COLOR_MODES[mode].key);
-  const legend = legendOverride || COLOR_MODES[mode].legend();
+  const MM = colorOverride ? null : MAP_MODES[mode];
+  const colorOf = useMemo(() => colorOverride || modeColor(mode), [colorOverride, mode]);
+  const keyOf = keyOverride || (MM ? MM.key : null);
+  const legend = legendOverride || modeLegend(mode);
+  const hollowOf = useMemo(() => (MM ? MM.hollow || (() => false) : (s) => !s.covered), [MM]);
+  const ttLine = useMemo(() => (MM ? (s) => siteWhy(mode, s) : (s) => `MBP-${s.mbp_priority_level} · ${tv("status", s.bbt_status)}`), [MM, mode]);
+  // v3.5 — roll-up level: site dots, or one pie bubble per cluster / NOP (every bubble = its sites)
+  const [level, setLevel] = useState(defaultLevel), [unit, setUnit] = useState(null);
+  const canRoll = !!MM && !compact;
   const located = useMemo(() => sites.filter((s) => isNum(s.lat) && isNum(s.lon)), [sites]);
   const shown = useMemo(() => (keyOf && hidden.length ? located.filter((s) => !hidden.includes(keyOf(s))) : located), [located, keyOf, hidden]);
   const counts = useMemo(() => { const c = {}; if (keyOf) located.forEach((s) => { const k = keyOf(s); c[k] = (c[k] || 0) + 1; }); return c; }, [located, keyOf]);
   const mbpsLoc = useMemo(() => [...mbps, ...extraMbps].filter((m) => isNum(m.lat)), [mbps, extraMbps]);
   const fitPts = useMemo(() => [...located.map((s) => [s.lat, s.lon]), ...mbpsLoc.map((m) => [m.lat, m.lon])], [located, mbpsLoc]);
   // dot size = power downtime (sqrt scale, p95 = full size)
-  const p95 = useMemo(() => { const v = located.map((s) => s.ran_power_down_h || 0).sort((a, b) => a - b); return v[Math.floor(v.length * 0.95)] || 1; }, [located]);
-  const sizeOf = useMemo(() => (s) => Math.sqrt(Math.min(1, (s.ran_power_down_h || 0) / p95)), [p95]);
+    const sizeFn = MM?.size || ((s) => s.ran_power_down_h);
+  const p95s = useMemo(() => { const v = located.map((s) => sizeFn(s) || 0).sort((a, b) => a - b); return v[Math.floor(v.length * 0.95)] || 1; }, [located, mode]); // eslint-disable-line
+  const sizeOf = useMemo(() => (MM && !MM.size ? () => 0.25 : (s) => Math.sqrt(Math.min(1, (sizeFn(s) || 0) / p95s))), [p95s, MM]); // eslint-disable-line
+  const visAll = useMemo(() => (keyOf && hidden.length ? sites.filter((s) => !hidden.includes(keyOf(s))) : sites), [sites, keyOf, hidden]);
+  const units = useMemo(() => (canRoll && level !== "site" ? rollup(shown, level, mode).filter((u) => u.lat != null) : []), [canRoll, level, shown, mode]);
   const mbpSites = useMemo(() => (selMbp ? located.filter((s) => s.mbp_assigned === selMbp.mbp_id) : []), [selMbp, located]);
   const inRadiusOfSel = useMemo(() => (selMbp ? new Set(located.filter((s) => s.coverage?.inRadius?.some((x) => x.mbp_id === selMbp.mbp_id)).map((s) => s.site_id)) : null), [selMbp, located]);
   const offline = tileFail > 3 && tileOk === 0;
@@ -116,6 +130,11 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
     <div>
       {!compact && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 text-[12px]" role="toolbar" aria-label={t("map.layers")}>
+          {canRoll && <div className="flex rounded-md overflow-hidden border border-line" role="group" aria-label={t("map.level")}>
+            {["site", "cluster", "nop"].map((lv) => <button key={lv} aria-pressed={level === lv} onClick={() => { setLevel(lv); setUnit(null); }} title={t(`map.level_tip.${lv}`)}
+              className={`px-2.5 py-1 text-[12px] ${level === lv ? "bg-navy text-white" : "bg-white text-slate hover:text-navy"}`}>{t(`map.level.${lv}`)}</button>)}
+          </div>}
+          {showMbpLayers && <>
           <label className="inline-flex items-center gap-1.5 font-medium"><input type="checkbox" checked={coverage} onChange={(e) => setCoverage(e.target.checked)} className="accent-navy" />
             {t("map.cov_toggle")}</label>
           <span className="text-mut -ml-2">{t("map.cov_note", { r: R })}</span>
@@ -124,9 +143,10 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             <span className="text-ink font-semibold tabular w-14">{R} km</span></label>
           <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={showMbps} onChange={(e) => setShowMbps(e.target.checked)} className="accent-navy" />
             <span className="inline-flex w-4 h-4 rounded bg-navy items-center justify-center text-white text-[9px]" aria-hidden>🚚</span> {t("map.basecamps")}</label>
+          </>}
           <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={showSites} onChange={(e) => setShowSites(e.target.checked)} className="accent-navy" /> {t("map.sites")}</label>
           {!colorOverride && <label className="flex items-center gap-2 text-mut ml-auto">{t("map.colour_by")}
-            <select value={mode} onChange={(e) => setMode(e.target.value)} className="border border-line rounded px-1.5 py-1 text-ink bg-white">{Object.entries(COLOR_MODES).map(([k, v]) => <option key={k} value={k}>{v.label()}</option>)}</select></label>}
+            <select value={mode} onChange={(e) => setMode(e.target.value)} className="border border-line rounded px-1.5 py-1 text-ink bg-white">{modes.map((k) => <option key={k} value={k}>{t(`map.mode.${k}`)}</option>)}</select></label>}
         </div>
       )}
       <div className="relative">
@@ -136,7 +156,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
               eventHandlers={{ tileerror: () => setTileFail((n) => n + 1), tileload: () => setTileOk((n) => n + 1) }} />}
             <Fit pts={fitPts} sig={fitKey + ":" + fitPts.length} />
             <ZoomWatch onZoom={setZoom} />
-            {coverage && showMbps && mbpsLoc.map((m) => (
+            {showMbpLayers && coverage && showMbps && mbpsLoc.map((m) => (
               <Circle key={"r" + m.mbp_id} center={[m.lat, m.lon]} radius={R * 1000} interactive={false}
                 pathOptions={{ color: "#2a78d6", weight: 0.8, opacity: 0.5, fillColor: "#2a78d6", fillOpacity: 0.025 }} />
             ))}
@@ -145,8 +165,14 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             {selMbp && mbpSites.slice(0, 400).map((s) => (
               <Polyline key={"l" + s.site_id} positions={[[selMbp.lat, selMbp.lon], [s.lat, s.lon]]} pathOptions={{ color: "#eda100", weight: 1, opacity: 0.6 }} interactive={false} />
             ))}
-            {showSites && <SiteLayer sites={shown} colorOf={colorOf} sizeOf={sizeOf} inRadiusOfSel={inRadiusOfSel} onPick={pick} zoom={Math.round(zoom)} />}
-            {showMbps && mbpsLoc.map((m) => (
+            {showSites && (level === "site" || !canRoll) && <SiteLayer sites={shown} colorOf={colorOf} sizeOf={sizeOf} hollowOf={hollowOf} inRadiusOfSel={inRadiusOfSel} onPick={pick} zoom={Math.round(zoom)} ttLine={ttLine} />}
+            {showSites && canRoll && level !== "site" && units.map((u) => (
+              <Marker key={"u" + u.id} position={[u.lat, u.lon]} icon={PIE(u, MM.keys, (k) => keyColor(mode, k), level === "nop" || zoom >= 7.5 ? String(u.id).replace(/^(NOP|TO) /, "") : "",
+                mode === "trend" ? ({ Deteriorating: "▼", Mixed: "◆", Improving: "▲", Stable: "=" })[MM.keys.find((k) => u.counts[k])] || "?" : `${Math.round(100 * u.badShare)}%`)} keyboard
+                eventHandlers={{ click: () => setUnit({ level, id: u.id }) }}>
+                <Tooltip direction="top" offset={[0, -10]}><b>{u.id}</b> · {fInt(u.n)} {t("map.sites").toLowerCase()}<br />{t("map.unit_tip", { p: fPct(100 * u.badShare, 0), b: fInt(u.bad) })}<br /><span className="text-mut">{t("map.unit_click")}</span></Tooltip>
+              </Marker>))}
+            {showMbpLayers && showMbps && mbpsLoc.map((m) => (
               <Marker key={"m" + m.mbp_id} position={[m.lat, m.lon]} icon={(zoom >= 8 ? TRUCK : CAMP_DOT)(selMbp?.mbp_id === m.mbp_id, m.is_new)} keyboard
                 eventHandlers={{ click: () => { setSelMbp(m); setSelSite(null); } }}>
                 <Tooltip direction="top"><b>{m.is_new ? t("map.new_scenario") + " " : ""}MBP</b> {m.mbp_id}<br />{t("map.tt_camp_click", { r: R })}</Tooltip>
@@ -176,6 +202,10 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
               <div>
                 <div className="font-semibold text-navy text-[13px] pr-4">● {selSite.site_id} · {selSite.site_name}</div>
                 <div className="text-mut mb-1">{selSite.site_class} · {selSite.nop} · {tv("access", selSite.access_class)}</div>
+                {MM && <div className="text-[11.5px] text-ink bg-surface border border-line rounded px-2 py-1 mb-1"><b>{t("map.why_title")}:</b> {siteWhy(mode, selSite)}</div>}
+                {canRoll && <div className="text-[11px] text-slate mb-1">{t("map.rollup_to")}{" "}
+                  <button className="text-s1 underline" onClick={() => setUnit({ level: "cluster", id: selSite.cluster_to })}>{selSite.cluster_to}</button> ›{" "}
+                  <button className="text-s1 underline" onClick={() => setUnit({ level: "nop", id: selSite.nop })}>{selSite.nop}</button></div>}
                 <table className="w-full"><tbody>
                   {[[t("health.kpi.avail"), fPct(selSite.avail_wc_pct)], [t("common.target"), fPct(selSite.ran_target_pct)], [t("common.gap"), fPP(selSite.avail_delta_pp)],
                     ["BBT", selSite.battery?.display?.text ? t("bbt.no_battery_ticket") : `${fMin(selSite.battery?.display?.value)} · ${selSite.battery?.display?.evidence}`], [t("status.tip"), tv("status", selSite.bbt_status)],
@@ -201,9 +231,11 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             </button>) : <span key={l.label} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: l.c }} />{l.label}</span>;
         })}
         {keyOf && hidden.length > 0 && <button onClick={() => (onHidden || setHiddenL)([])} className="text-s1 underline">{t("map.leg_all")}</button>}
-        <span className="text-mut">· {t("map.leg.size")} · {t("map.leg.hollow", { r: R })} · {t("map.leg.click")}</span>
+        <span className="text-mut">· {level !== "site" && canRoll ? t("map.leg.pie") : <>{MM?.size || !MM ? t("map.leg.size_m", { m: MM ? t(`map.size.${mode}`) : t("map.tt_power") }) : ""}{(MM ? MM.hollow : true) ? ` · ${MM ? t(`map.hollow.${mode}`) : t("map.leg.hollow", { r: R })}` : ""}</>} · {t("map.leg.click")}</span>
         {offline && <span className="text-[#8a5a00]">{t("map.offline")}</span>}
       </div>
+      {canRoll && <RollupPanel unit={unit} sites={visAll} mode={mode} onOpen={setUnit} onClose={() => setUnit(null)} periodText={periodText}
+        onPickSite={(s) => { setUnit(null); onPickSite?.(s); }} onFilterNop={onFilterNop} />}
     </div>
   );
 }

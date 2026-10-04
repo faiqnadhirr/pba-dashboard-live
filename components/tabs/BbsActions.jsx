@@ -5,11 +5,15 @@ import { STATUS_ORDER } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { coverageGap } from "@/lib/view";
+import MapHero, { useMapLegend, LegendChip } from "@/components/MapHero";
 
 const LV = ["P1", "P2", "P3", "P4"];
 const PROB = ["Dead", "Critical", "Degraded"];
 
-export default function BbsActions({ scope, cfg, setPick, openDrill, period }) {
+export default function BbsActions(props) {
+  const { scope: scopeAll, cfg, setPick, openDrill: od0, period } = props;
+  const L = useMapLegend(scopeAll, "batch"), scope = L.vis;
+  const openDrill = (id, f) => od0(id, f, L.hidden.length ? scope : undefined);
   const fx = !!period && period.gran !== "h1";
   const all = useMemo(() => scope.filter((s) => s.bbs_priority_level).sort((a, b) => b.bbs_priority_score - a.bbs_priority_score), [scope]);
   const [lv, setLv] = useState([]), [st, setSt] = useState([]), [ev, setEv] = useState([]), [ac, setAc] = useState([]);
@@ -35,6 +39,7 @@ export default function BbsActions({ scope, cfg, setPick, openDrill, period }) {
 
   return (
     <div className="space-y-4">
+      <LegendChip L={L} />
       <Note>
         <b>{t("bbs.note.criteria")}<Gloss k="bbt_design" /></b> {t("bbs.note.criteria_body", { d: b.design_minutes, ok: P(b.ok_pct), dg: P(b.degraded_pct), dead: b.dead_max_minutes })}
         {" "}<b>{t("bbs.note.precedence")}</b> {t("bbs.note.precedence_body")}
@@ -46,6 +51,7 @@ export default function BbsActions({ scope, cfg, setPick, openDrill, period }) {
         <Kpi scope="filtered" fixed={fx} label={t("bbs.kpi.inspect")} value={fInt(c((s) => s.rule?.startsWith("R2")))} sub={t("bbs.kpi.inspect_sub", { n: fInt(c((s) => s.rule?.startsWith("R2b"))) })} tone="warn" help={t("gloss.derived_unverified")} />
       </div>
 
+      <MapHero L={L} ctx={props} modes={["batch", "bbsstatus"]} title={t("hero.bbs.title")} sub={t("hero.bbs.sub")} />
       <Card title={t("bbs.dist.title")} sub={t("bbs.dist.sub")}>
         <div className="overflow-x-auto">
           <table className="w-full text-[12.5px] tabular min-w-[620px]">

@@ -5,16 +5,22 @@ import { clusterTable } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { TrendTag } from "@/components/tabs/Impact";
+import MapHero, { useMapLegend, LegendChip } from "@/components/MapHero";
 
-export default function Trend({ scope, cfg }) {
+export default function Trend(props) {
+  const { scope, cfg } = props;
   const cl = useMemo(() => clusterTable(scope, cfg), [scope, cfg]);
+  // v3.5 hero map: each site carries its cluster's trend label; roll-up to cluster / NOP; legend hides trend classes from the table
+  const sitesT = useMemo(() => { const m = new Map(cl.map((c) => [c.cluster, c.trend])); return scope.map((s) => ({ ...s, _trend: m.get(s.cluster_to) || "Insufficient data" })); }, [scope, cl]);
+  const L = useMapLegend(sitesT, "trend");
   const order = { Deteriorating: 0, Mixed: 1, Stable: 2, Improving: 3, "Insufficient data": 4 };
   const vn = (x) => cl.filter((c) => c.vs_network === x).length;
   const rows = [...cl].sort((a, b) => order[a.trend] - order[b.trend] || (a.delta_pp ?? 0) - (b.delta_pp ?? 0));
   const n = (x) => cl.filter((c) => c.trend === x).length;
   const A = cfg.availability;
   const [only, setOnly] = useState(null);   // 2c: cluster picked in the dumbbell chart → table filtered to it
-  const shown = only ? rows.filter((r) => r.cluster === only) : rows;
+  const rowsL = L.hidden.length ? rows.filter((r) => !L.hidden.includes(r.trend)) : rows;
+  const shown = only ? rowsL.filter((r) => r.cluster === only) : rowsL;
   return (
     <div className="space-y-4">
       <Note>{t("trend.note", { tp: fNum(A.trend_pp, 2), qm: A.dark_quarter_min_months, h: A.dark_month_h, ts: A.trend_dark_share_pp, min: A.min_cluster_sites })}<Gloss k="dark_site" /></Note>
@@ -24,7 +30,9 @@ export default function Trend({ scope, cfg }) {
         <Tag tone="good">▲ {tv("trend", "Improving")} {n("Improving")}</Tag><Tag tone="mut">{tv("trend", "Insufficient data")} {n("Insufficient data")}</Tag>
         <span className="text-slate ml-2">{t("trend.vs_network")}:</span><Tag tone="crit">{t("trend.worse")} {vn("Worse than network")}</Tag><Tag tone="mut">{t("trend.inline")} {vn("In line with network")}</Tag><Tag tone="good">{t("trend.better")} {vn("Better than network")}</Tag>
       </div>
-      <Dumbbell rows={cl} only={only} onPick={(c) => setOnly(c === only ? null : c)} />
+      <MapHero L={L} ctx={props} modes={["trend"]} defaultLevel="cluster" title={t("hero.trend.title")} sub={t("hero.trend.sub")} />
+      <LegendChip L={L} />
+      <Dumbbell rows={L.hidden.length ? cl.filter((r) => !L.hidden.includes(r.trend)) : cl} only={only} onPick={(c) => setOnly(c === only ? null : c)} />
       <Card title={t("trend.table.title")} sub={t("trend.table.sub")}>
         {only && <div className="mb-2 text-[12.5px]" role="status"><span className="inline-flex items-center gap-1.5 bg-s1/10 border border-s1/40 text-navy rounded-full pl-3 pr-1 py-0.5">
           <b>{t("col.cluster")}:</b> {only}<button onClick={() => setOnly(null)} aria-label={t("drill.chip.clear")} title={t("drill.chip.clear")} className="w-5 h-5 rounded-full hover:bg-s1/20 leading-none">×</button></span></div>}

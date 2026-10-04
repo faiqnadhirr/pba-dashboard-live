@@ -133,7 +133,7 @@ export default function Page() {
   if (err) return <div className="p-8 text-crit">{t("app.load_error", { err })}</div>;
   if (!data || !cfg) return <div className="min-h-screen flex items-center justify-center text-slate" role="status">{t("app.loading")}</div>;
   const snap = data.meta.snapshot || {};
-  const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setNop, setPick, classes, inactive, offairSites, includeOffair: offair, sel, setSel, navigate, hrefFor, per, period: P, periodText: periodLabel(P), openDrill: (id, focus) => setDrill({ id, focus }) };
+  const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setNop, setPick, classes, inactive, offairSites, includeOffair: offair, sel, setSel, navigate, hrefFor, per, period: P, periodText: periodLabel(P), openDrill: (id, focus, sites) => setDrill({ id, focus, sites }) };
   const empty = scope.length === 0 && !["dq", "tel", "cfg", "corr", "est"].includes(tab);
 
   const cfgH = configHash(cfg), cfgEdited = cfgH !== configHash(data.meta.config);
@@ -226,7 +226,7 @@ export default function Page() {
       </main>
       <footer className="max-w-[1560px] mx-auto px-5 pb-6 text-[11px] text-mut">{t("footer.legend")}</footer>
       <SiteDrawer site={pick} cfg={cfg} onClose={() => setPick(null)} />
-      <DrillPanel drill={drill} scope={scope} nop={nop} cfg={cfg} onClose={() => setDrill(null)} />
+      <DrillPanel drill={drill} scope={drill?.sites || scope} nop={nop} cfg={cfg} onClose={() => setDrill(null)} />
     </div>
     </NavCtx.Provider>
   );

@@ -1,4 +1,4 @@
-# PBA — Power Backup Analytic (v3.4)
+# PBA — Power Backup Analytic (v3.5)
 
 PBA is a decision-support dashboard for Telkomsel **AREA1** power backup (ENOM). It covers the two areas in the management order:
 
@@ -236,3 +236,11 @@ See `docs/METHOD.md`.
 - **Data:** `engine/build.py` writes `public/data/period/YYYYMM.json` (sparse site-day series, seconds, ~1 MB gzip per month), loaded only when a period other than H1 is chosen. Sites whose PLN data is the monthly summary are prorated inside a month. Test `v3.4` checks that H1 re-summed from the daily files equals the snapshot, Q1 + Q2 = H1, and the days of May add up to May.
 - **Map:** every site on one canvas layer (no "zoom in to click"), 7-px click tolerance, dot size = power downtime, small base-camp squares at far zoom. **Legend chips are toggles** with counts; on Coverage & map the KPIs and breakdown follow the legend, with "View N sites" (`?sel=map_<mode>~keys`). **MBP coverage** checkbox draws the radius around every base camp, labelled with the km from Config.
 - New env var for faster rebuilds: `PBA_DAILY_CACHE=/path/daily.pkl` (cache of the daily RAN read).
+
+## v3.5 — hero map on every menu, justified site → cluster → NOP
+
+- **One hero map per menu**, same behaviour everywhere (click any dot without zooming, legend chips = toggles, card with the site's own reason):
+  Health (availability vs target / main cause; follows the period), Accountability (responsible party; ring = not confirmed by a ticket), MBP (unchanged), BBS actions (BBS batch / battery status; ring = status not measured), Trend (cluster trend, default level Cluster), Data quality (first missing input).
+- **Legend filters the whole tab**: hiding a category removes those sites from the tab's KPIs, charts and tables; a chip says how many sites are used and links to the same sites in the Site list (`?sel=map_<mode>~keys`).
+- **Level switch Site · Cluster · NOP.** Bubbles are pies of the site categories; every number is a count or sum over the unit's sites (`lib/rollup.js`). Click a bubble → justification panel: AREA › NOP › cluster breadcrumb, share of problem sites and the hours they carry, clusters of the NOP (worst first, click to drill down), and the top problem sites with their **own one-line reason** (click → site drawer). "View N problem sites" and "Filter dashboard to NOP".
+- Test `v3.5` checks, for every map mode, that NOP = Σ clusters = Σ sites (counts, problem sites, hours) and that the drivers listed are that NOP's problem sites.

@@ -458,3 +458,26 @@ test("v3.4 · map legend filter = Site-list filter (?sel=map_<mode>~keys)", asyn
     assert.equal(r.weight, null, "no hours column for a legend filter");
   }
 });
+
+/* ---------- v3.5 site → cluster → NOP roll-up ---------- */
+test("v3.5 · roll-up: NOP = Σ its clusters = Σ its sites, for every map mode; drivers are the NOP's problem sites", async () => {
+  const { MAP_MODES } = await import("../lib/mapmodes.js");
+  const { rollup, justify } = await import("../lib/rollup.js");
+  const scope = M.filter((s) => s.site_active === 1 && !s.offair);
+  for (const mode of Object.keys(MAP_MODES)) {
+    const K = MAP_MODES[mode];
+    const S = mode === "trend" ? scope.map((s) => ({ ...s, _trend: "Stable" })) : scope;
+    for (const s of S.slice(0, 500)) assert.ok(K.keys.includes(K.key(s)), `${mode}: key ${K.key(s)} not in legend`);
+    const nops = rollup(S, "nop", mode), cls = rollup(S, "cluster", mode);
+    assert.equal(nops.reduce((a, u) => a + u.n, 0), S.length, mode);
+    for (const u of nops) {
+      const mine = cls.filter((c) => c.nop === u.nop);
+      assert.equal(mine.reduce((a, c) => a + c.bad, 0), u.bad, `${mode} ${u.id} bad`);
+      const sz = S.filter((s) => s.nop === u.id).reduce((a, s) => a + (K.size ? Math.max(0, K.size(s) || 0) : 0), 0);
+      assert.ok(Math.abs(sz - u.size) < 1e-6, `${mode} ${u.id} size`);
+      for (const k of K.keys) assert.equal(u.counts[k] || 0, S.filter((s) => s.nop === u.id && K.key(s) === k).length);
+    }
+    const J = justify(S, "nop", nops[0].id, mode);
+    assert.equal(J.nDrivers, nops[0].bad); assert.ok(J.drivers.every((s) => K.bad.includes(K.key(s)) && s.nop === nops[0].id));
+  }
+});

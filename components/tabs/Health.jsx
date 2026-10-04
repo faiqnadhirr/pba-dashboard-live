@@ -2,6 +2,7 @@
 import React, { useMemo } from "react";
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceArea, ReferenceLine } from "recharts";
 import { isFull, monthsOf } from "@/lib/period";
+import MapHero, { useMapLegend, LegendChip } from "@/components/MapHero";
 import { Card, Kpi, Note, DataTable, Bar100, AvailTriple, GapTag, Gloss, fInt, fPct, fPP, fH, fNum, CAUSE_COLOR, isNum, monthName } from "@/components/ui";
 import { t, tv } from "@/lib/i18n";
 import { aggregateAvailability } from "@/lib/logic";
@@ -19,7 +20,11 @@ function groupAvail(sites, key) {
   }).filter((r) => r.available);
 }
 
-export default function Health({ scope, data, nop, inactive, cfg, openDrill, navigate, setNop, period }) {
+export default function Health(props) {
+  const { scope: scopeAll, data, nop, inactive, cfg, openDrill: od0, navigate, setNop, period } = props;
+  // v3.5 hero map: the legend filters the whole tab
+  const L = useMapLegend(scopeAll, "gap"), scope = L.vis;
+  const openDrill = (id, f) => od0(id, f, L.hidden.length ? scope : undefined);
   const pm = period && !isFull(period) ? monthsOf(period) : [];
   // a single month has no width on a line chart → mark it with a vertical band line instead
   const shadeLine = pm.length === 1 ? <ReferenceLine x={monthName(pm[0].m - 1)} stroke="#2a78d6" strokeOpacity={0.35} strokeWidth={14} /> : null;
@@ -38,6 +43,7 @@ export default function Health({ scope, data, nop, inactive, cfg, openDrill, nav
 
   return (
     <div className="space-y-4">
+      <LegendChip L={L} />
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Kpi scope="filtered" label={t("health.kpi.avail")} value={fPct(a.avail)} sub={t("health.kpi.avail_sub", { t: fPct(a.target), n: fInt(a.sitesWithData) })} />
         <Kpi scope="filtered" label={t("health.kpi.gap")} help={t("gloss.pp")} value={fPP(a.gap)} tone={a.gap < 0 ? "crit" : "good"} sub={t(a.gap < 0 ? "health.below_target" : "health.meets_target")} />
@@ -46,6 +52,8 @@ export default function Health({ scope, data, nop, inactive, cfg, openDrill, nav
         <Kpi scope="filtered" onClick={() => openDrill("downtime")} label={t("health.kpi.downtime")} value={fH(a.outage)} sub={t("health.kpi.downtime_sub")} />
         <Kpi scope="filtered" fixed={pm.length > 0} onClick={() => openDrill("bbt_measured")} label={t("health.kpi.bbt")} help={t("gloss.bbt")} value={fInt(measured)} sub={t("health.kpi.bbt_sub")} />
       </div>
+
+      <MapHero L={L} ctx={props} modes={["gap", "cause"]} title={t("hero.health.title")} sub={t("hero.health.sub", { g: 1 })} />
 
       <Card title={t("health.cause.title")} sub={t("health.cause.sub")}>
         {!a.available ? <Note tone="warn">{t("health.no_ran")}</Note> : a.gap >= 0 ? (
