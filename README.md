@@ -1,4 +1,4 @@
-# PBA — Power Backup Analytic (v3.3)
+# PBA — Power Backup Analytic (v3.4)
 
 PBA is a decision-support dashboard for Telkomsel **AREA1** power backup (ENOM). It covers the two areas in the management order:
 
@@ -228,3 +228,11 @@ See `docs/METHOD.md`.
 - **2b Clickable charts:** Health cause bar → Site list sorted by that cause's hours; Accountability bar → Site list for that party; Health per-NOP table row → NOP filter; BBS "Battery vs design" row/segment → Status + Status-basis chips of the action list.
 - **2c Trend:** Q1 → Q2 dumbbell for the 15 clusters with the worst change, above the table; click a cluster to filter the table.
 - **3 Minor:** unknown `?view=` falls back with a notice; `?lang=` persists and every link carries it; drawer separates *PLN outage duration (PLN records)* from *Power (RAN downtime)*; compact Site list / correlation table fit at 1350 px; compact mode has no column numbers.
+
+## v3.4 — period filter and hero map
+
+- **Period buttons** (second row of the filter bar): `Daily · Weekly · Monthly · Quarter · Full H1 · Custom`, with ◀ ▶ to step and two date fields for Custom. Stored in the URL (`?per=d:20260512`, `w:20260511`, `m:202605`, `q:2`, `r:20260501-20260520`).
+- **What follows the period:** availability and downtime by cause (RAN daily), power downtime, PLN outages (BBT event intervals), mains-fail events, power-ticket responsibility, MBP deployments/RH hours. **What stays full H1** (badge "H1 penuh"): BBT and battery status, MBP/BBS priority, actions, dark-site profile, off-air flag, MBP coverage/assignment. Trend, Simulation, Placement, Estimation, Correlation, Telemetry and Config show a note that they do not follow the period.
+- **Data:** `engine/build.py` writes `public/data/period/YYYYMM.json` (sparse site-day series, seconds, ~1 MB gzip per month), loaded only when a period other than H1 is chosen. Sites whose PLN data is the monthly summary are prorated inside a month. Test `v3.4` checks that H1 re-summed from the daily files equals the snapshot, Q1 + Q2 = H1, and the days of May add up to May.
+- **Map:** every site on one canvas layer (no "zoom in to click"), 7-px click tolerance, dot size = power downtime, small base-camp squares at far zoom. **Legend chips are toggles** with counts; on Coverage & map the KPIs and breakdown follow the legend, with "View N sites" (`?sel=map_<mode>~keys`). **MBP coverage** checkbox draws the radius around every base camp, labelled with the km from Config.
+- New env var for faster rebuilds: `PBA_DAILY_CACHE=/path/daily.pkl` (cache of the daily RAN read).

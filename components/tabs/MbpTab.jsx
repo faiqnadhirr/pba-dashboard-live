@@ -6,13 +6,16 @@ import { suggestBasecamps, coverageBreakdown } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { coverageGap } from "@/lib/view";
-import { applySel } from "@/lib/drill";
+import { applySel, MAP_KEYS } from "@/lib/drill";
+import { Go } from "@/lib/nav";
+import { COLOR_MODES_LEGEND } from "@/lib/maplegend";
 import { selLabel } from "@/components/DrillPanel";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
 const SEG = [["arrive", "#0ca30c"], ["late_dark", "#d03b3b"], ["late_other", "#ec835a"], ["bbt_unknown", "#A3ABB9"], ["beyond", "#7a1414"]];
 
-export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, setRadius, setPick, part = "map", openDrill, sel: drillSel, setSel: setDrillSel }) {
+export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, setRadius, setPick, part = "map", openDrill, sel: drillSel, setSel: setDrillSel, period }) {
+  const fx = !!period && period.gran !== "h1";
   const MAP = part === "map", LIST = part === "list";
   const R = cfg.mbp.max_radius_km;
   const [sel, setSel] = useState("ALL");
@@ -31,7 +34,11 @@ export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, set
     return DF.weight ? [...c, { key: "_w", label: "col.drill_hours", num: true, sortVal: DF.weight, render: (r) => fH(DF.weight(r)), csv: (r) => DF.weight(r).toFixed(1) }] : c; }, [cfg, mode, showComputed, DF]);
   const camp = sel === "ALL" ? null : data.mbps.find((m) => m.mbp_id === sel);
   const sug = useMemo(() => suggestBasecamps(scope), [scope]);
-  const bd = useMemo(() => coverageBreakdown(scope), [scope]);
+  // v3.4 — map legend toggles drive the KPIs / breakdown of this tab (and "View N sites")
+  const [mapMode, setMapMode] = useState("priority"), [mapHidden, setMapHidden] = useState([]);
+  const vis = useMemo(() => (mapHidden.length ? scope.filter((s) => !mapHidden.includes(MAP_KEYS[mapMode](s))) : scope), [scope, mapMode, mapHidden]);
+  const visKeys = COLOR_MODES_LEGEND[mapMode].filter((k) => !mapHidden.includes(k));
+  const bd = useMemo(() => coverageBreakdown(vis), [vis]);
   const avg = (f, L = cov) => { const v = L.map(f).filter(isNum); return v.length ? v.reduce((a, x) => a + x, 0) / v.length : null; };
   const pc = (v) => fPct((100 * v) / Math.max(1, bd.total), 0);
   const B = cfg.basecamp_signal;
@@ -39,12 +46,16 @@ export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, set
   return (
     <div className="space-y-4">
       {MAP && <>
+        {mapHidden.length > 0 && <div role="status" className="flex flex-wrap items-center gap-2 text-[12.5px] border border-s1/40 bg-s1/5 rounded-md px-3 py-1.5">
+          <b>{t("map.legfilter.title")}</b> {t("map.legfilter.body", { h: mapHidden.length, n: fInt(vis.length), N: fInt(scope.length) })}
+          <Go to={{ view: "mbp.sitelist", sel: `map_${mapMode}~${visKeys.join("+")}` }}>{t("drill.view_sites", { n: fInt(vis.length) })}</Go>
+          <button onClick={() => setMapHidden([])} className="ml-auto text-slate underline">{t("map.leg_all")}</button></div>}
         <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
-          <Kpi scope="filtered" onClick={() => openDrill("cov", "within")} label={t("mbp.kpi.within")} value={fInt(bd.within)} sub={t("mbp.kpi.within_sub", { r: R, n: fInt(bd.beyond) })} tone={bd.beyond ? "warn" : "good"} help={t("mbp.kpi.formula")} />
-          <Kpi scope="filtered" onClick={() => openDrill("cov", "arrive")} label={t("mbp.seg.arrive")} value={fInt(bd.arrive)} sub={t("mbp.kpi.pct_scope", { p: pc(bd.arrive) })} tone="good" help={t("mbp.kpi.formula")} />
-          <Kpi scope="filtered" onClick={() => openDrill("cov", "late_dark")} label={t("mbp.seg.late_dark")} value={fInt(bd.late_dark)} sub={t("mbp.kpi.late_dark_sub", { m: cfg.availability.dark_min_months })} tone="crit" help={t("mbp.kpi.formula")} />
-          <Kpi scope="filtered" onClick={() => openDrill("cov", "bbt_unknown")} label={t("mbp.seg.bbt_unknown")} value={fInt(bd.bbt_unknown)} sub={t("mbp.kpi.unknown_sub")} tone="slate" help={t("mbp.kpi.formula")} />
-          <Kpi scope="filtered" label={t("mbp.kpi.avg_eta")} value={fMin(avg((s) => s.eta_min, scope))} sub={t("mbp.kpi.avg_eta_sub")} />
+          <Kpi scope="filtered" fixed={fx} onClick={() => openDrill("cov", "within")} label={t("mbp.kpi.within")} value={fInt(bd.within)} sub={t("mbp.kpi.within_sub", { r: R, n: fInt(bd.beyond) })} tone={bd.beyond ? "warn" : "good"} help={t("mbp.kpi.formula")} />
+          <Kpi scope="filtered" fixed={fx} onClick={() => openDrill("cov", "arrive")} label={t("mbp.seg.arrive")} value={fInt(bd.arrive)} sub={t("mbp.kpi.pct_scope", { p: pc(bd.arrive) })} tone="good" help={t("mbp.kpi.formula")} />
+          <Kpi scope="filtered" fixed={fx} onClick={() => openDrill("cov", "late_dark")} label={t("mbp.seg.late_dark")} value={fInt(bd.late_dark)} sub={t("mbp.kpi.late_dark_sub", { m: cfg.availability.dark_min_months })} tone="crit" help={t("mbp.kpi.formula")} />
+          <Kpi scope="filtered" fixed={fx} onClick={() => openDrill("cov", "bbt_unknown")} label={t("mbp.seg.bbt_unknown")} value={fInt(bd.bbt_unknown)} sub={t("mbp.kpi.unknown_sub")} tone="slate" help={t("mbp.kpi.formula")} />
+          <Kpi scope="filtered" label={t("mbp.kpi.avg_eta")} value={fMin(avg((s) => s.eta_min, vis))} sub={t("mbp.kpi.avg_eta_sub")} />
           <Kpi scope="portfolio" label={t("mbp.kpi.underserved")} value={fInt([...mbpStats.values()].filter((b) => b.load_signal === "Under-served").length)} sub={t("mbp.kpi.underserved_sub", { n: B.criteria_needed })} />
         </div>
         <Card title={t("mbp.bd.title")} sub={t("mbp.bd.sub")}>
@@ -52,7 +63,7 @@ export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, set
           <div className="text-[11.5px] text-mut mt-1.5 tabular">{t("mbp.bd.sum", { a: fInt(bd.arrive), d: fInt(bd.late_dark), o: fInt(bd.late_other), u: fInt(bd.bbt_unknown), b: fInt(bd.beyond), n: fInt(bd.total) })}</div>
         </Card>
         <Card title={t("mbp.map.title")} sub={t("mbp.map.sub")}>
-          <MapView sites={scope} mbps={mbpsScope} cfg={cfg} onRadius={setRadius} onPickSite={setPick} mbpStats={mbpStats} fitKey={nop} />
+          <MapView sites={scope} mbps={mbpsScope} cfg={cfg} onRadius={setRadius} onPickSite={setPick} mbpStats={mbpStats} fitKey={nop} mode={mapMode} onMode={setMapMode} hidden={mapHidden} onHidden={setMapHidden} height={560} />
         </Card>
       </>}
 

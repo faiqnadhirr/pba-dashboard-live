@@ -124,9 +124,9 @@ export default function SimTab({ model: scored, data, cfg, nop: gNop, setPick, s
             <Card title={t("sim.alloc", { s: show })} right={<Select value={show} onChange={setShow} options={Object.keys(res)} />}>
               <MapView fitKey={show} onPickSite={setPick} cfg={cfg} onRadius={setRadius} compact
                 sites={cur.rows.map((r) => ({ ...siteMap.get(r.site_id), _o: r.outcome }))}
-                colorOverride={(s) => OUT[s._o]}
+                colorOverride={(s) => OUT[s._o]} keyOverride={(s) => s._o}
                 mbps={data.mbps.filter((m) => cur.rows.some((r) => r.mbp === m.mbp_id))} extraMbps={cur.extra || []}
-                legendOverride={Object.entries(OUT).map(([k, c]) => ({ label: t(`sim.out.${k}`), c }))} height={380} />
+                legendOverride={Object.entries(OUT).map(([k, c]) => ({ k, label: t(`sim.out.${k}`), c }))} height={380} />
               <div className="mt-3">
                 <DataTable rows={cur.rows} filename={`pba_simulation_${show}.csv`.replace(/[^\w.]+/g, "_")} onRowClick={(r) => setPick(siteMap.get(r.site_id))} columns={[
                   { key: "priority", label: "col.mbp_priority", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center"><LevelTag kind="MBP" v={r.priority_level} />{f3(r.priority)}</span>, csv: (r) => `MBP-${r.priority_level} ${r.priority.toFixed(3)}` },

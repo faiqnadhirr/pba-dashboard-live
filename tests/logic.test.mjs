@@ -423,3 +423,38 @@ test("2a · drilldown totals equal the Site-list filter; segments ≤ 5; per-NOP
   assert.equal(parseSel("nonsense"), null); assert.equal(applySel(scope, "nonsense").rows.length, scope.length);
   console.log("2a drills:", ids.map((id) => `${id}=${drillModel(id, scope).totalSites}`).join(" "));
 });
+
+/* ---------- v3.4 period filter ---------- */
+test("v3.4 · period: H1 re-summed from daily files = snapshot; Q1 + Q2 = H1; days add up; decisions unchanged", async () => {
+  const P = await import("../lib/period.js");
+  const files = {}; for (let m = 1; m <= 6; m++) files[`20260${m}`] = JSON.parse(fs.readFileSync(`public/data/period/20260${m}.json`, "utf8"));
+  const ids = sites.map((s) => s.site_id), n = sites.length;
+  const H = P.parsePeriod("h1"), A = P.periodAgg(files, H, n), X = P.applyPeriod(M, ids, A, H);
+  const bad = (k, tol) => X.filter((s, i) => Math.abs((s[k] ?? 0) - (M[i][k] ?? 0)) > tol).length;
+  for (const k of ["ran_hours", "ran_outage_h", "ran_power_down_h", "ran_transport_down_h", "ran_ran_down_h", "ran_other_down_h", "pln_total_h", "mbp_backup_h"]) assert.equal(bad(k, 0.05), 0, k);
+  for (const k of ["pln_freq", "mbp_deployments"]) assert.equal(bad(k, 1e-9), 0, k);
+  assert.equal(X.filter((s, i) => s.resp.primary !== M[i].resp.primary).length, 0, "responsibility");
+  // decisions are the snapshot's
+  assert.ok(X.every((s, i) => s.mbp_priority_level === M[i].mbp_priority_level && s.recommended_action === M[i].recommended_action && s.bbt_status === M[i].bbt_status));
+  const q1 = P.periodAgg(files, P.parsePeriod("q:1"), n), q2 = P.periodAgg(files, P.parsePeriod("q:2"), n);
+  let d = 0; for (let i = 0; i < n; i++) d = Math.max(d, Math.abs(q1.o[i] + q2.o[i] - A.o[i]), Math.abs(q1.hours[i] + q2.hours[i] - A.hours[i]));
+  assert.ok(d < 1e-6, `Q1+Q2 vs H1 ${d}`);
+  // a single day is ≤ 24 h per site and the days of May add up to the month
+  const may = P.periodAgg(files, P.parsePeriod("m:202605"), n);
+  let sum = new Float64Array(n); for (let dd = 1; dd <= 31; dd++) { const a = P.periodAgg(files, P.parsePeriod(`d:202605${String(dd).padStart(2, "0")}`), n); for (let i = 0; i < n; i++) { sum[i] += a.o[i]; assert.ok(a.o[i] <= 24.0001); } }
+  let e = 0; for (let i = 0; i < n; i++) e = Math.max(e, Math.abs(sum[i] - may.o[i])); assert.ok(e < 1e-6, `days vs month ${e}`);
+  // parsing / stepping
+  assert.equal(P.parsePeriod("w:20260101").b, 3); assert.equal(P.step(P.parsePeriod("w:20260101"), 1).key, "w:20260105");
+  assert.equal(P.step(P.parsePeriod("m:202606"), 1), null); assert.equal(P.parsePeriod("bogus").key, "h1");
+  assert.equal(P.parsePeriod("r:20260520-20260501").key, "r:20260501-20260520");
+});
+
+test("v3.4 · map legend filter = Site-list filter (?sel=map_<mode>~keys)", async () => {
+  const { applySel, MAP_KEYS } = await import("../lib/drill.js");
+  const scope = M.filter((s) => s.site_active === 1 && !s.offair);
+  for (const [mode, keys] of [["priority", ["P1", "P2"]], ["survival", ["late", "beyond"]], ["design", ["Dead", "Critical"]]]) {
+    const r = applySel(scope, `map_${mode}~${keys.join("+")}`);
+    assert.equal(r.rows.length, scope.filter((s) => keys.includes(MAP_KEYS[mode](s))).length, mode);
+    assert.equal(r.weight, null, "no hours column for a legend filter");
+  }
+});

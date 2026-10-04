@@ -9,7 +9,8 @@ import { coverageGap } from "@/lib/view";
 const LV = ["P1", "P2", "P3", "P4"];
 const PROB = ["Dead", "Critical", "Degraded"];
 
-export default function BbsActions({ scope, cfg, setPick, openDrill }) {
+export default function BbsActions({ scope, cfg, setPick, openDrill, period }) {
+  const fx = !!period && period.gran !== "h1";
   const all = useMemo(() => scope.filter((s) => s.bbs_priority_level).sort((a, b) => b.bbs_priority_score - a.bbs_priority_score), [scope]);
   const [lv, setLv] = useState([]), [st, setSt] = useState([]), [ev, setEv] = useState([]), [ac, setAc] = useState([]);
   const actions = useMemo(() => [...new Set(all.map((s) => s.recommended_action))].sort(), [all]);
@@ -40,9 +41,9 @@ export default function BbsActions({ scope, cfg, setPick, openDrill }) {
         {" "}<b>{t("bbs.note.priority")}</b> {t("bbs.note.priority_body", { f: cfg.severity_floor.measured_dead_critical })}
       </Note>
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        <Kpi scope="filtered" label={t("bbs.kpi.need")} value={fInt(rows.length)} sub={t("common.of_in_scope", { n: fInt(scope.length) })} />
-        {LV.map((l, i) => <Kpi key={l} scope="filtered" onClick={() => openDrill(`bbs_${l}`)} label={t("bbs.kpi.batch", { p: `BBS-${l}`, n: i + 1 })} value={fInt(c((s) => s.bbs_priority_level === l))} sub={t(`batch.${l}.when`)} tone={["crit", "warn", "navy", "slate"][i]} />)}
-        <Kpi scope="filtered" label={t("bbs.kpi.inspect")} value={fInt(c((s) => s.rule?.startsWith("R2")))} sub={t("bbs.kpi.inspect_sub", { n: fInt(c((s) => s.rule?.startsWith("R2b"))) })} tone="warn" help={t("gloss.derived_unverified")} />
+        <Kpi scope="filtered" fixed={fx} label={t("bbs.kpi.need")} value={fInt(rows.length)} sub={t("common.of_in_scope", { n: fInt(scope.length) })} />
+        {LV.map((l, i) => <Kpi key={l} scope="filtered" fixed={fx} onClick={() => openDrill(`bbs_${l}`)} label={t("bbs.kpi.batch", { p: `BBS-${l}`, n: i + 1 })} value={fInt(c((s) => s.bbs_priority_level === l))} sub={t(`batch.${l}.when`)} tone={["crit", "warn", "navy", "slate"][i]} />)}
+        <Kpi scope="filtered" fixed={fx} label={t("bbs.kpi.inspect")} value={fInt(c((s) => s.rule?.startsWith("R2")))} sub={t("bbs.kpi.inspect_sub", { n: fInt(c((s) => s.rule?.startsWith("R2b"))) })} tone="warn" help={t("gloss.derived_unverified")} />
       </div>
 
       <Card title={t("bbs.dist.title")} sub={t("bbs.dist.sub")}>

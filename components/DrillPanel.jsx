@@ -22,6 +22,8 @@ export function selLabel(sel) {
   const { id, seg } = p;
   if (id === "cause") return t("drill.chip.cause", { c: tv("cause", seg) });
   if (id === "resp") return t("drill.chip.resp", { r: tv("resp", seg) });
+  if (id.startsWith("map_")) { const m = id.slice(4), lab = (k) => (m === "priority" ? `MBP-${k}` : m === "design" ? tv("status", k) : t(`map.key.${k}`));
+    return t("drill.chip.map", { m: t(`map.mode.${m}`), k: seg.split("+").map(lab).join(", ") }); }
   const title = id.startsWith("bbs_") ? t("drill.bbs.title", { p: id.slice(4) }) : id.startsWith("field_") ? t("drill.field.title", { f: t(`dq.field.${id.slice(6)}`) }) : t(`drill.${baseId(id)}.title`);
   if (seg === "total") return title;
   return `${title} › ${DRILLS[id].groups?.[seg] ? t(`drill.group.${seg}`) : seg.split("+").map((k) => segLabel(id, k)).join(", ")}`;

@@ -8,6 +8,8 @@ import { t, setLang, initialLang, persistLang } from "@/lib/i18n";
 import { NavCtx } from "@/lib/nav";
 import SiteDrawer from "@/components/SiteDrawer";
 import DrillPanel from "@/components/DrillPanel";
+import PeriodBar, { periodLabel } from "@/components/PeriodBar";
+import { parsePeriod, isFull, periodAgg, applyPeriod, loadPeriodFiles } from "@/lib/period";
 import Health from "@/components/tabs/Health";
 import Accountability from "@/components/tabs/Accountability";
 import Impact from "@/components/tabs/Impact";
@@ -33,6 +35,8 @@ const VIEW_OF = Object.fromEntries(GROUPS.flatMap(([, tabs]) => tabs.map(([k, v]
 const TAB_OF = Object.fromEntries(Object.entries(VIEW_OF).map(([k, v]) => [v, k]));
 const groupOf = (tab) => GROUPS.find(([, tabs]) => tabs.some(([k]) => k === tab))[0];
 const DEFAULT_TAB = "health";
+// tabs that do not follow the period filter (decisions / estimators / fixed Q1-vs-Q2 comparison)
+const FIXED_TABS = new Set(["trend", "sim", "place", "est", "corr", "tel", "cfg"]);
 const FIRST_OF = Object.fromEntries(GROUPS.map(([g, tabs]) => [g, tabs[0][0]]));
 /** everything the URL can carry; an unknown ?view= falls back to its group's first sub-tab (or Health) with a notice */
 function readUrl() {
@@ -40,8 +44,8 @@ function readUrl() {
     const q = new URLSearchParams(window.location.search), v = q.get("view");
     let tab = TAB_OF[v] || DEFAULT_TAB, notice = null;
     if (v && !TAB_OF[v]) { const g = v.split(".")[0]; tab = FIRST_OF[g] || DEFAULT_TAB; notice = v; }
-    return { tab, notice, nop: q.get("nop") || "All NOPs", cls: (q.get("cls") || "").split(",").filter(Boolean), inactive: q.get("inactive") === "1", offair: q.get("offair") === "1", sel: q.get("sel") || null };
-  } catch { return { tab: DEFAULT_TAB, nop: "All NOPs", cls: [], inactive: false, offair: false, sel: null }; }
+    return { tab, notice, nop: q.get("nop") || "All NOPs", cls: (q.get("cls") || "").split(",").filter(Boolean), inactive: q.get("inactive") === "1", offair: q.get("offair") === "1", sel: q.get("sel") || null, per: parsePeriod(q.get("per")).key };
+  } catch { return { tab: DEFAULT_TAB, nop: "All NOPs", cls: [], inactive: false, offair: false, sel: null, per: "h1" }; }
 }
 const CLASSES = ["Diamond", "Platinum", "Gold", "Silver", "Bronze"];
 const LS_KEY = "pba.config.v3";
@@ -51,12 +55,12 @@ export default function Page() {
   const [tab, setTabState] = useState(DEFAULT_TAB), [nop, setNop] = useState("All NOPs"), [classes, setClasses] = useState([]);
   const [inactive, setInactive] = useState(false), [pick, setPick] = useState(null), [offair, setOffair] = useState(false);
   const [lang, setLangState] = useState("id");
-  const [sel, setSel] = useState(null), [notice, setNotice] = useState(null), [drill, setDrill] = useState(null);
+  const [sel, setSel] = useState(null), [notice, setNotice] = useState(null), [drill, setDrill] = useState(null), [per, setPer] = useState("h1"), [pf, setPf] = useState(null);
   setLang(lang);                                   // module-level language for t() and number formatters (set before children render)
   useEffect(() => {
     document.title = "PBA — Power Backup Analytic";
     const l = initialLang(); setLangState(l); persistLang(l);       // ?lang= is remembered
-    const apply = () => { const u = readUrl(); setTabState(u.tab); setNop(u.nop); setClasses(u.cls); setInactive(u.inactive); setOffair(u.offair); setSel(u.sel); setNotice(u.notice); };
+    const apply = () => { const u = readUrl(); setTabState(u.tab); setNop(u.nop); setClasses(u.cls); setInactive(u.inactive); setOffair(u.offair); setSel(u.sel); setNotice(u.notice); setPer(u.per); };
     apply();
     const onPop = () => apply();
     window.addEventListener("popstate", onPop);
@@ -64,7 +68,7 @@ export default function Page() {
   }, []);
   useEffect(() => { document.documentElement.lang = lang; }, [lang]);
   // URL builder: current state + overrides. Language is always carried so shared links open in the same language.
-  const cur = { view: VIEW_OF[tab], nop, cls: classes, inactive, offair, sel, lang };
+  const cur = { view: VIEW_OF[tab], nop, cls: classes, inactive, offair, sel, per, lang };
   const hrefFor = (o = {}) => {
     const st = { ...cur, sel: null, ...o }, q = new URLSearchParams();
     q.set("view", st.view);
@@ -73,21 +77,22 @@ export default function Page() {
     if (st.inactive) q.set("inactive", "1");
     if (st.offair) q.set("offair", "1");
     if (st.sel) q.set("sel", st.sel);
+    if (st.per && st.per !== "h1") q.set("per", st.per);
     q.set("lang", st.lang);
     return `?${q.toString()}`;
   };
   const navigate = (o = {}) => {
     const st = { ...cur, sel: null, ...o };
     if (TAB_OF[st.view]) setTabState(TAB_OF[st.view]);
-    setNop(st.nop || "All NOPs"); setClasses(st.cls || []); setInactive(!!st.inactive); setOffair(!!st.offair); setSel(st.sel || null); setNotice(null); setPick(null); setDrill(null);
+    setNop(st.nop || "All NOPs"); setClasses(st.cls || []); setInactive(!!st.inactive); setOffair(!!st.offair); setSel(st.sel || null); setPer(st.per || "h1"); setNotice(null); setPick(null); setDrill(null);
     try { window.history.pushState({}, "", hrefFor(o)); } catch {}
     window.scrollTo({ top: 0 });
   };
   const setTab = (k) => { if (k !== tab) navigate({ view: VIEW_OF[k] }); };
   // filter changes replace the URL (no history spam) but keep it shareable
-  useEffect(() => { try { if (window.location.search !== hrefFor({ sel })) window.history.replaceState({}, "", hrefFor({ sel })); } catch {} }, [nop, classes, inactive, offair, lang, sel]); // eslint-disable-line
+  useEffect(() => { try { if (window.location.search !== hrefFor({ sel })) window.history.replaceState({}, "", hrefFor({ sel })); } catch {} }, [nop, classes, inactive, offair, lang, sel, per]); // eslint-disable-line
   const chooseLang = (l) => { setLangState(l); persistLang(l); };
-  const resetFilters = () => { setNop("All NOPs"); setClasses([]); setInactive(false); setOffair(false); setSel(null); };
+  const resetFilters = () => { setNop("All NOPs"); setClasses([]); setInactive(false); setOffair(false); setSel(null); setPer("h1"); };
 
   useEffect(() => {
     loadAll().then((d) => {
@@ -102,9 +107,23 @@ export default function Page() {
 
   // ONE model for every tab (single source of truth)
   const model = useMemo(() => (data && cfg ? buildModel(data.sites, data.mbps, cfg) : []), [data, cfg]);
+  // v3.4 — period filter: observed metrics (RAN, PLN, events, tickets) are re-summed over the period; decisions stay on the full snapshot
+  const P = parsePeriod(per);
+  const [perErr, setPerErr] = useState(null);
+  useEffect(() => {
+    if (!data || isFull(P)) return;
+    let alive = true; setPerErr(null);
+    loadPeriodFiles(P).then((files) => { if (alive) setPf({ key: P.key, files }); }).catch((e) => alive && setPerErr(String(e)));
+    return () => { alive = false; };
+  }, [data, P.key]); // eslint-disable-line
+  const perLoading = !isFull(P) && (!pf || pf.key !== P.key) && !perErr;
+  const pmodel = useMemo(() => {
+    if (isFull(P) || !pf || pf.key !== P.key || !model.length) return model;
+    return applyPeriod(model, data.sites.map((s) => s.site_id), periodAgg(pf.files, P, data.sites.length), P);
+  }, [model, pf, P.key]); // eslint-disable-line
   // A5 — suspected off-air / dismantle / data-issue sites are excluded from every KPI unless the toggle is on
-  const active = useMemo(() => model.filter((s) => (inactive || s.site_active === 1) && (offair || !s.offair)), [model, inactive, offair]);
-  const offairSites = useMemo(() => model.filter((s) => s.offair && (inactive || s.site_active === 1)), [model, inactive]);
+  const active = useMemo(() => pmodel.filter((s) => (inactive || s.site_active === 1) && (offair || !s.offair)), [pmodel, inactive, offair]);
+  const offairSites = useMemo(() => pmodel.filter((s) => s.offair && (inactive || s.site_active === 1)), [pmodel, inactive]);
   const nopCounts = useMemo(() => { const m = new Map(); active.forEach((s) => m.set(s.nop, (m.get(s.nop) || 0) + 1)); return m; }, [active]);
   const allNops = useMemo(() => [...new Set(model.map((s) => s.nop).filter(Boolean))].sort(), [model]);
   const scope = useMemo(() => active.filter((s) => (nop === "All NOPs" || s.nop === nop) && (!classes.length || classes.includes(s.site_class))), [active, nop, classes]);
@@ -114,12 +133,12 @@ export default function Page() {
   if (err) return <div className="p-8 text-crit">{t("app.load_error", { err })}</div>;
   if (!data || !cfg) return <div className="min-h-screen flex items-center justify-center text-slate" role="status">{t("app.loading")}</div>;
   const snap = data.meta.snapshot || {};
-  const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setNop, setPick, classes, inactive, offairSites, includeOffair: offair, sel, setSel, navigate, hrefFor, openDrill: (id, focus) => setDrill({ id, focus }) };
+  const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setNop, setPick, classes, inactive, offairSites, includeOffair: offair, sel, setSel, navigate, hrefFor, per, period: P, periodText: periodLabel(P), openDrill: (id, focus) => setDrill({ id, focus }) };
   const empty = scope.length === 0 && !["dq", "tel", "cfg", "corr", "est"].includes(tab);
 
   const cfgH = configHash(cfg), cfgEdited = cfgH !== configHash(data.meta.config);
   const activeGroup = groupOf(tab);
-  const filtered = nop !== "All NOPs" || classes.length > 0 || inactive || offair;
+  const filtered = nop !== "All NOPs" || classes.length > 0 || inactive || offair || per !== "h1";
   const scopeChip = [t("filter.scope_sites", { n: fInt(scope.length) }), nop === "All NOPs" ? t("filter.all_nops") : nop, classes.length ? classes.join(", ") : t("filter.all_classes")].join(" · ");
   return (
     <NavCtx.Provider value={{ navigate, hrefFor, state: cur }}>
@@ -179,10 +198,15 @@ export default function Page() {
               <button onClick={resetFilters} disabled={!filtered} className="px-2 py-[3px] rounded-md border border-line text-[12px] text-slate bg-white hover:border-slate disabled:opacity-40 whitespace-nowrap shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1">{t("filter.reset")}</button>
             </div>
           </div>
+          <div className="max-w-[1560px] mx-auto px-4 py-1 flex items-center gap-3 border-t border-line/70 overflow-x-auto">
+            <PeriodBar per={per} setPer={setPer} loading={perLoading} error={perErr} />
+            {!isFull(P) && <span className="ml-auto text-[11px] text-mut whitespace-nowrap" title={t("per.fixed_tip")}>{t("per.fixed_short")}</span>}
+          </div>
         </div>
       </header>
       <main id="main" className="max-w-[1560px] mx-auto p-5">
         {notice && <div role="status" className="mb-3 text-[12.5px] border border-warn/60 bg-warn/10 rounded-md px-3 py-1.5 flex items-center gap-2">{t("nav.unknown_view", { v: notice, to: t(`nav.${VIEW_OF[tab]}`) })}<button onClick={() => setNotice(null)} className="ml-auto text-slate" aria-label={t("common.close")}>×</button></div>}
+        {!isFull(P) && FIXED_TABS.has(tab) && <div role="status" className="mb-3 text-[12.5px] border border-s1/30 bg-s1/5 rounded-md px-3 py-1.5">{t("per.tab_fixed", { p: periodLabel(P) })}</div>}
         {empty ? <Empty>{t("empty.no_sites")}</Empty> : <div key={lang}>
           {tab === "health" && <Health {...ctx} />}
           {tab === "acc" && <Accountability {...ctx} />}

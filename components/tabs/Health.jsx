@@ -1,6 +1,7 @@
 "use client";
 import React, { useMemo } from "react";
-import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
+import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceArea, ReferenceLine } from "recharts";
+import { isFull, monthsOf } from "@/lib/period";
 import { Card, Kpi, Note, DataTable, Bar100, AvailTriple, GapTag, Gloss, fInt, fPct, fPP, fH, fNum, CAUSE_COLOR, isNum, monthName } from "@/components/ui";
 import { t, tv } from "@/lib/i18n";
 import { aggregateAvailability } from "@/lib/logic";
@@ -18,7 +19,11 @@ function groupAvail(sites, key) {
   }).filter((r) => r.available);
 }
 
-export default function Health({ scope, data, nop, inactive, cfg, openDrill, navigate, setNop }) {
+export default function Health({ scope, data, nop, inactive, cfg, openDrill, navigate, setNop, period }) {
+  const pm = period && !isFull(period) ? monthsOf(period) : [];
+  // a single month has no width on a line chart → mark it with a vertical band line instead
+  const shadeLine = pm.length === 1 ? <ReferenceLine x={monthName(pm[0].m - 1)} stroke="#2a78d6" strokeOpacity={0.35} strokeWidth={14} /> : null;
+  const shade = pm.length ? <ReferenceArea x1={monthName(pm[0].m - 1)} x2={monthName(pm[pm.length - 1].m - 1)} fill="#2a78d6" fillOpacity={0.08} stroke="#2a78d6" strokeOpacity={0.3} ifOverflow="extendDomain" /> : null;
   const a = useMemo(() => aggregateAvailability(scope), [scope]);
   const byKey = nop === "All NOPs" ? "nop" : "cluster_to";
   const rows = useMemo(() => groupAvail(scope, byKey), [scope, byKey]);
@@ -39,7 +44,7 @@ export default function Health({ scope, data, nop, inactive, cfg, openDrill, nav
         <Kpi scope="filtered" label={t("health.kpi.power")} value={a.gap < 0 ? fPP(a.contrib.power) : "—"} tone="crit" onClick={() => openDrill("power_down")} sub={t("health.kpi.power_sub", { p: fInt(a.powerSharePct || 0) })} />
         <Kpi scope="filtered" onClick={() => openDrill("below_target")} label={t("health.kpi.below")} value={fInt(below)} sub={t("common.of_in_scope", { n: fInt(scope.length) })} tone="warn" />
         <Kpi scope="filtered" onClick={() => openDrill("downtime")} label={t("health.kpi.downtime")} value={fH(a.outage)} sub={t("health.kpi.downtime_sub")} />
-        <Kpi scope="filtered" onClick={() => openDrill("bbt_measured")} label={t("health.kpi.bbt")} help={t("gloss.bbt")} value={fInt(measured)} sub={t("health.kpi.bbt_sub")} />
+        <Kpi scope="filtered" fixed={pm.length > 0} onClick={() => openDrill("bbt_measured")} label={t("health.kpi.bbt")} help={t("gloss.bbt")} value={fInt(measured)} sub={t("health.kpi.bbt_sub")} />
       </div>
 
       <Card title={t("health.cause.title")} sub={t("health.cause.sub")}>
@@ -78,6 +83,7 @@ export default function Health({ scope, data, nop, inactive, cfg, openDrill, nav
               <YAxis domain={["auto", "auto"]} tickFormatter={(v) => fPct(v, 1)} tick={{ fontSize: 11, fill: "#6B7588" }} width={52} />
               <Tooltip formatter={(v) => fPct(Number(v))} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
+              {shadeLine || shade}
               <Line dataKey="availability" name={t("health.kpi.avail")} stroke="#2a78d6" strokeWidth={2} dot={{ r: 3 }} />
               <Line dataKey="target" name={t("common.target")} stroke="#55627A" strokeWidth={2} strokeDasharray="5 4" dot={false} />
             </LineChart>
@@ -90,6 +96,7 @@ export default function Health({ scope, data, nop, inactive, cfg, openDrill, nav
               <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#55627A" }} />
               <YAxis tickFormatter={(v) => (v >= 1000 ? `${fInt(v / 1000)}k` : fInt(v))} tick={{ fontSize: 11, fill: "#6B7588" }} width={44} />
               <Tooltip formatter={(v) => fH(v)} />
+              {shade}
               <Bar dataKey="power_h" name={t("health.pmonth.series")} fill="#d03b3b" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

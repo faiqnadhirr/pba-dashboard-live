@@ -127,3 +127,31 @@ def read_ran_site_month() -> pl.DataFrame:
     if not frames:
         raise FileNotFoundError("No RAN availability file (zip or csv) in data/raw")
     return pl.concat(frames).unique(subset=["site_id", "ym"], keep="first")
+
+
+def read_ran_site_day() -> pl.DataFrame:
+    """v3.4 period filter: RAN daily rows per site-day in WALL-CLOCK seconds (same conversion and per-day cap as
+    read_ran_site_month, so summing a full month gives exactly the monthly figures). One row per site-day present."""
+    zips = _find("*Avail*RAN*.zip", required=False)
+    csvs = _find("*Avail*RAN*.csv", required=False)
+    num = ["outage (Sec)", "denum (Sec)", "duration_power (Sec)", "duration_transport (Sec)", "duration_ran (Sec)", "duration_other (Sec)"]
+
+    def day(df: pl.DataFrame) -> pl.DataFrame:
+        df = df.with_columns([pl.col(c).cast(pl.Float64, strict=False) for c in num])
+        ne = (pl.col("denum (Sec)") / 86400.0).clip(lower_bound=1.0)
+        wc = lambda c: (pl.col(c).fill_null(0) / ne).clip(upper_bound=86400.0)
+        return df.select([pl.col("site_id"), pl.col("period").str.slice(0, 8).alias("ymd"),
+                          wc("outage (Sec)").alias("o"), wc("duration_power (Sec)").alias("p"), wc("duration_transport (Sec)").alias("t"),
+                          wc("duration_ran (Sec)").alias("r"), wc("duration_other (Sec)").alias("x")])
+
+    frames = []
+    for z in zips:
+        with zipfile.ZipFile(z) as zf:
+            for n in zf.namelist():
+                if n.lower().endswith(".csv"):
+                    frames.append(day(pl.read_csv(io.BytesIO(zf.read(n)), separator=";", infer_schema_length=0)))
+    for c in csvs:
+        frames.append(day(pl.read_csv(c, separator=";", infer_schema_length=0)))
+    if not frames:
+        raise FileNotFoundError("No RAN availability file (zip or csv) in data/raw")
+    return pl.concat(frames).unique(subset=["site_id", "ymd"], keep="first")

@@ -98,7 +98,7 @@ export function Card({ title, sub, right, children, className = "" }) {
     </section>
   );
 }
-export function Kpi({ label, value, sub, tone = "navy", scope, help, onClick }) {
+export function Kpi({ label, value, sub, tone = "navy", scope, help, onClick, fixed }) {
   const c = { navy: "text-navy", crit: "text-[#b42318]", good: "text-[#066b06]", warn: "text-[#8a5a00]", slate: "text-slate" }[tone];
   // 2a: a clickable card opens the drilldown panel (pointer, hover, ↗, Enter/Space)
   const click = onClick ? { role: "button", tabIndex: 0, onClick, title: t("drill.open"), onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } } : {};
@@ -107,7 +107,8 @@ export function Kpi({ label, value, sub, tone = "navy", scope, help, onClick }) 
       {onClick && <span aria-hidden className="absolute right-1.5 bottom-1 text-[12px] text-s1">↗</span>}
       <div className="flex items-center justify-between gap-2">
         <div className="text-[11px] uppercase tracking-wide text-mut font-semibold" title={help}>{label}{help && <span className="normal-case ml-0.5 text-s1 cursor-help" aria-label={help}>ⓘ</span>}</div>
-        {scope && <span className="text-[9.5px] uppercase tracking-wide text-mut border border-line rounded px-1" title={t(scope === "portfolio" ? "kpi.portfolio_tip" : "kpi.filtered_tip")}>{t(scope === "portfolio" ? "kpi.portfolio" : "kpi.filtered")}</span>}
+        {fixed && <span className="text-[9.5px] uppercase tracking-wide text-[#8a5a00] bg-warn/15 border border-warn/50 rounded px-1 whitespace-nowrap" title={t("per.fixed_tip")}>{t("per.full_badge")}</span>}
+        {!fixed && scope && <span className="text-[9.5px] uppercase tracking-wide text-mut border border-line rounded px-1" title={t(scope === "portfolio" ? "kpi.portfolio_tip" : "kpi.filtered_tip")}>{t(scope === "portfolio" ? "kpi.portfolio" : "kpi.filtered")}</span>}
       </div>
       <div className={`text-[22px] leading-tight font-bold tabular break-words ${c}`}>{value}</div>
       {sub && <div className="text-[11px] text-mut mt-0.5 leading-snug">{sub}</div>}

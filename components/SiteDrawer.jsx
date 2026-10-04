@@ -6,6 +6,8 @@ import { LevelTag, BbtCell, ActionLabel, StatusTag, EvTag, Tag, Note, EvidenceTa
 import { t, tv, locale } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { showCoverageGap } from "@/lib/view";
+import { periodLabel } from "./PeriodBar";
+import { parsePeriod } from "@/lib/period";
 
 const Row = ({ k, v }) => (
   <div className="flex justify-between gap-3 py-1 border-b border-line/60 text-[12.5px]"><span className="text-mut">{k}</span><span className="text-right text-ink">{v}</span></div>
@@ -40,6 +42,7 @@ export default function SiteDrawer({ site, cfg, onClose }) {
           <button autoFocus onClick={onClose} className="text-white/80 hover:text-white text-[22px] leading-none px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn" aria-label={t("drawer.close")}>×</button>
         </header>
         <div className="p-5 space-y-4">
+          {s.period_key && <Note>{t("per.drawer", { p: periodLabel(parsePeriod(s.period_key)) })}</Note>}
           <div className="flex flex-wrap gap-2 items-center">
             <span className="text-[12px] text-mut">{t("col.mbp_priority")}</span><LevelTag kind="MBP" v={s.mbp_priority_level} />
             <span className="tabular text-[12px]" title={t("prio.cutoffs", { p1: prio.P1, p2: prio.P2, p3: prio.P3 })}>{f3(s.mbp_priority_score)}</span>

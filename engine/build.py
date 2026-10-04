@@ -194,6 +194,71 @@ def run_js_tests():
         raise SystemExit("JS rule tests failed — see `npm test`")
 
 
+def read_ran_daily(cache: str | None):
+    if cache and os.path.exists(cache):
+        return pickle.load(open(cache, "rb"))
+    d = L.read_ran_site_day().to_pandas()
+    if cache:
+        pickle.dump(d, open(cache, "wb"))
+    return d
+
+
+def export_period(t, iv, ev, tk, mo, qa):
+    """Per month YYYYMM -> public/data/period/YYYYMM.json. Everything is keyed by the site's row index in sites.json.
+    ran : site-days with any downtime (seconds, wall-clock, capped per day exactly like the monthly figures)
+    days: number of RAN days per site in that month; miss: missing days for sites with a partial month
+    pln : merged PLN intervals (start day, seconds) — sites whose PLN source is the BBT event feed
+    plnm: monthly-summary PLN (count, hours) for sites without events — month grain only
+    evt : mains-fail events per site-day; tk: tickets (day, root-cause class, MBP deployment, RH hours)"""
+    idx = {sid: i for i, sid in enumerate(t["site_id"])}
+    rd = read_ran_daily(os.environ.get("PBA_DAILY_CACHE"))
+    rd["site_id"] = norm_id(rd["site_id"])
+    rd = rd[rd["site_id"].isin(idx)].copy()
+    rd["i"] = rd["site_id"].map(idx).astype(int); rd["ym"] = rd["ymd"].str[:6]; rd["d"] = rd["ymd"].str[6:8].astype(int)
+    ev_src = set(t.loc[t["pln_source"].astype(str).str.startswith("BBT events"), "site_id"])
+    rc_list = ["utility", "internal", "battery", "generator", "vendor", "operational"]
+    tko = tk[(tk["status"].str.upper() != "CANCELED") & tk["occurred_at"].notna()].copy()
+    tko["i"] = tko["site_id"].map(idx); tko = tko[tko["i"].notna()]
+    evo = ev.dropna(subset=["mf_start"]).copy(); evo["i"] = evo["site_id"].map(idx); evo = evo[evo["i"].notna()]
+    ivo = iv[iv["site_id"].isin(ev_src)].copy(); ivo["i"] = ivo["site_id"].map(idx)
+    mo_fb = mo[~mo["site_id"].isin(ev_src)].copy(); mo_fb["i"] = mo_fb["site_id"].map(idx); mo_fb = mo_fb[mo_fb["i"].notna()]
+    MD = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30}
+    total = 0; rows_ran = 0; check = {}
+    (OUT / "period").mkdir(parents=True, exist_ok=True)
+    for m in range(1, 7):
+        ym = f"20260{m}"
+        r = rd[rd["ym"] == ym]
+        cnt = r.groupby("i").size()
+        days = [0] * len(idx)
+        for i_, n_ in cnt.items(): days[int(i_)] = int(n_)
+        miss = []
+        for i_, g_ in r[r["i"].isin(cnt[cnt < MD[m]].index)].groupby("i"):
+            have = set(g_["d"]); miss.append([int(i_)] + [d_ for d_ in range(1, MD[m] + 1) if d_ not in have])
+        nz = r[(r[["o", "p", "t", "r", "x"]] > 0).any(axis=1)].sort_values(["i", "d"])
+        secs = lambda c: nz[c].round(0).astype(int).tolist()
+        ran = {"s": nz["i"].astype(int).tolist(), "d": nz["d"].tolist(), "o": secs("o"), "p": secs("p"), "t": secs("t"), "r": secs("r"), "x": secs("x")}
+        rows_ran += len(nz)
+        check[ym] = round(float(r["o"].sum() / 3600), 1)
+        pi = ivo[(ivo["start"].dt.month == m)]
+        pln = {"s": pi["i"].astype(int).tolist(), "d": pi["start"].dt.day.astype(int).tolist(), "h": (pi["hours"] * 3600).round(0).astype(int).tolist()}
+        pm = mo_fb[mo_fb["month"] == m]
+        hrs = MD[m] * 24.0
+        plnm = {"s": pm["i"].astype(int).tolist(), "n": pm["repetitive"].fillna(0).clip(upper=load_config()["power"]["max_pln_events_per_month"]).astype(int).tolist(),
+                "h": pm["total_pln_down_h"].fillna(0).clip(upper=hrs).round(2).tolist()}
+        em = evo[evo["mf_start"].dt.month == m].assign(d=lambda x: x["mf_start"].dt.day).groupby(["i", "d"]).size().reset_index(name="n")
+        evt = {"s": em["i"].astype(int).tolist(), "d": em["d"].astype(int).tolist(), "n": em["n"].astype(int).tolist()}
+        tm = tko[tko["occurred_at"].dt.month == m]
+        tkd = {"s": tm["i"].astype(int).tolist(), "d": tm["occurred_at"].dt.day.astype(int).tolist(),
+               "c": [rc_list.index(c) if c in rc_list else -1 for c in tm["resp_class"]],
+               "dep": tm["is_deployment"].astype(int).tolist(), "rh": [None if pd.isna(v) else round(float(v), 2) for v in tm["rh_hours"]]}
+        obj = {"ym": ym, "mdays": MD[m], "n_sites": len(idx), "first_site": t["site_id"].iloc[0], "rc": rc_list,
+               "ran": ran, "days": days, "miss": miss, "pln": pln, "plnm": plnm, "evt": evt, "tk": tkd}
+        total += dump(obj, f"period/{ym}.json")
+    qa["period_ran_nonzero_site_days"] = rows_ran
+    qa["period_ran_outage_h_by_month"] = check
+    return total
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw", default=None, help="folder with raw files (default engine/data/raw)")
@@ -458,6 +523,10 @@ def main():
                         "ev": [[jclean(r.mf_start), jclean(r.backup_min), int(r.is_exhaustion)] for r in es.itertuples()]}
         dump(det, f"detail/{slug(nop)}.json")
     sz["detail/*"] = sum(p.stat().st_size for p in (OUT / "detail").glob("*.json"))
+
+    # v3.4 period filter — one file per month with SPARSE site-day series (site index = row of sites.json)
+    log("period files (daily RAN, PLN intervals, events, tickets)")
+    sz["period/*"] = export_period(t, iv, ev, tk, mo, qa)
 
     # analytics + meta
     curves_out = []
