@@ -2,8 +2,10 @@
 import React, { useEffect, useState } from "react";
 import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid, Legend } from "recharts";
 import { loadDetail } from "@/lib/data";
-import { LevelTag, BbtCell, StatusTag, EvTag, Tag, Note, EvidenceTable, AvailTriple, Gloss, fInt, fMin, fH, fKm, fPct, fPP, f3, f1, fNum, fCoord, precisionNote, isNum, monthName } from "./ui";
+import { LevelTag, BbtCell, ActionLabel, StatusTag, EvTag, Tag, Note, EvidenceTable, AvailTriple, Gloss, fInt, fMin, fH, fKm, fPct, fPP, f3, f1, fNum, fCoord, precisionNote, isNum, monthName } from "./ui";
 import { t, tv, locale } from "@/lib/i18n";
+import { te } from "@/lib/i18n-engine";
+import { showCoverageGap } from "@/lib/view";
 
 const Row = ({ k, v }) => (
   <div className="flex justify-between gap-3 py-1 border-b border-line/60 text-[12.5px]"><span className="text-mut">{k}</span><span className="text-right text-ink">{v}</span></div>
@@ -45,18 +47,19 @@ export default function SiteDrawer({ site, cfg, onClose }) {
             <StatusTag v={s.bbt_status} /><EvTag v={A.source} />
             {s.reach_risk === 1 && <Tag tone="crit">✖ {t("drawer.dark_before")}</Tag>}
             {!s.covered && <Tag tone="crit">{t("drawer.no_mbp_radius", { r: cfg?.mbp?.max_radius_km })}</Tag>}
-            {s.nop_flag && <Tag tone="warn">{s.nop_flag}</Tag>}
-            {s.offair && <Tag tone="crit" title={s.offair}>{t("drawer.offair_tag")}</Tag>}
+            {s.nop_flag && <Tag tone="warn">{te(s.nop_flag, "nop_flag")}</Tag>}
+            {s.offair && <Tag tone="crit" title={te(s.offair, "offair")}>{t("drawer.offair_tag")}</Tag>}
           </div>
 
-          {s.offair && <Note tone="warn">{s.offair}. {t("drawer.offair_note")}</Note>}
+          {s.offair && <Note tone="warn">{te(s.offair, "offair")}. {t("drawer.offair_note")}</Note>}
           <Box title={t("drawer.action")}>
-            <div className="text-[14px] font-semibold">{tv("action", s.recommended_action)}{s.mbp_standby_flag ? <> <Tag tone="warn">{t("bbs.standby")}</Tag></> : null}</div>
-            {s.bbs_priority_level && <div className="text-[12px] text-slate mt-0.5">{t(`batch.${s.bbs_priority_level}`)} · {t("ev.rule")} {s.rule}{s.priority_floor ? ` · ${t("bbs.floor", { a: `BBS-${s.priority_floor}`, b: `BBS-${s.bbs_priority_level}` })}` : ""}</div>}
-            {A.conflict && <div className="mt-2"><Note tone="warn"><b>{t("bbs.conflict")}:</b> {A.conflict}</Note></div>}
+            <div className="text-[14px]"><ActionLabel r={s} strong onNavigate={onClose} />{s.mbp_standby_flag ? <> <Tag tone="warn">{t("bbs.standby")}</Tag></> : null}</div>
+            {s.bbs_priority_level && <div className="text-[12px] text-slate mt-0.5">{t(`batch.${s.bbs_priority_level}`)} · {t("ev.rule")} {te(s.rule, "rule")}{s.priority_floor ? ` · ${t("bbs.floor", { a: `BBS-${s.priority_floor}`, b: `BBS-${s.bbs_priority_level}` })}` : ""}</div>}
+            {showCoverageGap(s) && <div className="mt-2"><Note tone="warn">{t("gap.drawer", { eta: fMin(s.dist_eta_min), bbt: fMin(s.bbt_effective_min), mbp: s.dist_mbp || "—", r: cfg?.mbp?.max_radius_km })}</Note></div>}
+            {A.conflict && <div className="mt-2"><Note tone="warn"><b>{t("bbs.conflict")}:</b> {te(A.conflict, "conflict")}</Note></div>}
             <div className="mt-2"><EvidenceTable rows={s.evidence} action={s.evidence?.length ? s.recommended_action : null} /></div>
-            <div className="text-[12px] text-mut mt-2">{t("drawer.mbp_drivers")}: {s.mbp_priority_drivers || "—"}</div>
-            {s.bbs_priority_drivers && <div className="text-[12px] text-mut">{t("drawer.bbs_drivers")}: {s.bbs_priority_drivers}</div>}
+            <div className="text-[12px] text-mut mt-2">{t("drawer.mbp_drivers")}: {te(s.mbp_priority_drivers, "drivers") || "—"}</div>
+            {s.bbs_priority_drivers && <div className="text-[12px] text-mut">{t("drawer.bbs_drivers")}: {te(s.bbs_priority_drivers, "drivers")}</div>}
           </Box>
 
           <div className="grid md:grid-cols-2 gap-4">
@@ -64,7 +67,7 @@ export default function SiteDrawer({ site, cfg, onClose }) {
               {!av.available ? <div className="text-mut text-[12px]">{t("drawer.no_ran")}</div> : <>
                 <Row k={t("col.avail_triple")} v={<AvailTriple a={av.avail} t={av.target} g={av.gap} compact />} />
                 <Row k={t("drawer.net_down")} v={fH(av.outage)} />
-                {["power", "transport", "ran", "other", "unknown"].map((c) => <Row key={c} k={`… ${tv("cause", c)}`} v={`${fH(av.cause?.[c])}${av.gap < 0 ? ` · ${fPP(av.contrib?.[c])}` : ""}`} />)}
+                {["power", "transport", "ran", "other", "unknown"].map((c) => <Row key={c} k={c === "power" ? `… ${t("drawer.power_ran")}` : `… ${tv("cause", c)}`} v={`${fH(av.cause?.[c])}${av.gap < 0 ? ` · ${fPP(av.contrib?.[c])}` : ""}`} />)}
                 {av.overlap && <div className="text-[11px] text-mut mt-1">{t("drawer.overlap")}</div>}
               </>}
             </Box>
@@ -72,7 +75,7 @@ export default function SiteDrawer({ site, cfg, onClose }) {
               <Row k={t("acc.col.party")} v={R.primary ? tv("resp", R.primary) : "—"} />
               <Row k={t("col.basis")} v={R.kind && R.kind !== "NONE" ? <EvTag v={R.kind} /> : "—"} />
               <Row k={t("drawer.resp_tickets")} v={fInt(R.n)} />
-              <div className="text-[12px] text-slate mt-1.5"><b className="text-ink">{t("common.why")}:</b> {R.why}</div>
+              <div className="text-[12px] text-slate mt-1.5"><b className="text-ink">{t("common.why")}:</b> {te(R.why, "resp")}</div>
             </Box>
           </div>
 
@@ -85,7 +88,9 @@ export default function SiteDrawer({ site, cfg, onClose }) {
               <Row k={<>{t("col.s14.bbt_design")}<Gloss k="bbt_design" /></>} v={<span title={cfg.bbt.criteria_basis === "site" ? t("design.site_tip") : t("design.std_tip")}>{fMin(design)}</span>} />
               <Row k={t("col.s14.bbt_measured")} v={<BbtCell r={s} />} />
               <Row k={t("col.s14.pln_freq")} v={s.pln_known ? fInt(s.pln_freq) : <NA />} />
-              <Row k={t("col.s14.pln_dur")} v={s.pln_known ? fH(s.pln_total_h) : <NA />} />
+              <Row k={<span title={t("drawer.pln_dur_tip")}>{t("drawer.pln_dur")}<span className="text-s1 ml-0.5 cursor-help">ⓘ</span></span>} v={s.pln_known ? fH(s.pln_total_h) : <NA />} />
+              {s.pln_known && (s.ran_power_down_h || 0) > 2 * (s.pln_total_h || 0) && (s.ran_power_down_h || 0) >= 1 &&
+                <div className="text-[11px] text-[#8a5a00] bg-warn/10 rounded px-2 py-1 my-1">{t("drawer.pln_vs_power", { a: fH(s.pln_total_h), b: fH(s.ran_power_down_h) })}</div>}
               <Row k={t("col.s14.distance")} v={`${fKm(s.dist_km)} → ${s.dist_mbp || "—"}${s.within_radius ? "" : ` (${t("drawer.nearest_beyond")})`}`} />
               <Row k={t("drawer.eta_est")} v={`${fMin(s.dist_eta_min)}${s.access_class === "island" ? ` · ${t("drawer.sea_indicative")}` : ""}`} />
               <Row k={t("col.s14.hist_mbp")} v={s.mbp_hist_known ? t("drawer.deployments", { n: fInt(s.mbp_deployments) }) : <span title={t("drawer.not_in_ticket_file")}><NA /> {t("drawer.not_in_ticket_file_short")}</span>} />
@@ -97,21 +102,21 @@ export default function SiteDrawer({ site, cfg, onClose }) {
               <Row k={t("drawer.can_arrive")} v={t("drawer.n_mbp", { n: fInt(s.feasible_mbps) })} />
               <Row k={t("drawer.assigned")} v={s.mbp_assigned || "—"} />
               <Row k={<>{t("drawer.eta_vs_bbt")}<Gloss k="eta_gap" /></>} v={isNum(s.eta_min) ? <span className={s.can_arrive_before_bbt ? "" : "text-[#b42318] font-semibold"}>{s.can_arrive_before_bbt ? "✔" : "✖"} {fMin(s.eta_min)} vs {fMin(s.bbt_effective_min)}</span> : "—"} />
-              <Row k={t("drawer.eta_conf")} v={s.eta_confidence} />
+              <Row k={t("drawer.eta_conf")} v={te(s.eta_confidence, "eta_conf")} />
               <Row k={t("drawer.access")} v={tv("access", s.access_class) || "—"} />
-              <div className="text-[11.5px] text-slate mt-1">{t("drawer.access_basis")}: {s.access_basis || "—"}</div>
-              <div className="text-[11.5px] text-slate mt-1"><b className="text-ink">{t("drawer.assign_basis")}:</b> {s.assignment_basis}</div>
+              <div className="text-[11.5px] text-slate mt-1">{t("drawer.access_basis")}: {te(s.access_basis, "access") || "—"}</div>
+              <div className="text-[11.5px] text-slate mt-1"><b className="text-ink">{t("drawer.assign_basis")}:</b> {te(s.assignment_basis, "assign")}</div>
               {C.inRadius?.length > 0 && <div className="text-[11.5px] text-slate mt-1">{t("drawer.in_radius")}: {C.inRadius.slice(0, 6).map((m) => `${m.mbp_id} ${fKm(m.km)}`).join(" · ")}{C.nIn > 6 ? ` · +${C.nIn - 6}` : ""}</div>}
             </Box>
           </div>
 
           <Box title={t("drawer.battery")}>
-            <Row k={t("drawer.precedence")} v={<span className="text-[11.5px]">{A.precedence}</span>} />
+            <Row k={t("drawer.precedence")} v={<span className="text-[11.5px]">{te(A.precedence, "prec")}</span>} />
             {A.display?.hidden_estimate != null && <Row k={t("drawer.hidden_est")} v={`${fMin(A.display.hidden_estimate)} ESTIMATED`} />}
             <Row k={t("drawer.pct_design")} v={`${fPct(s.bbt_pct_design, 0)} (${t("drawer.of_design", { d: fMin(design) })})`} />
             <Row k={<>{t("drawer.dark_months")}<Gloss k="dark_site" /></>} v={`${s.dark_months}/6${s.dark ? ` — ${t("drawer.dark_site")}` : ""}`} />
-            <Row k={t("drawer.bbt_basis")} v={<span className="text-[11.5px]">{s.bbt_value_basis || "—"}</span>} />
-            {s.bbt_value_evidence === "ESTIMATED" && <Row k={t("drawer.est_range")} v={`${fMin(s.bbt_est_low_min)}–${fMin(s.bbt_est_high_min)} · ${s.bbt_est_confidence}`} />}
+            <Row k={t("drawer.bbt_basis")} v={<span className="text-[11.5px]">{te(s.bbt_value_basis, "bbtbasis") || "—"}</span>} />
+            {s.bbt_value_evidence === "ESTIMATED" && <Row k={t("drawer.est_range")} v={`${fMin(s.bbt_est_low_min)}–${fMin(s.bbt_est_high_min)} · ${te(s.bbt_est_confidence, "conf")}`} />}
             <Row k={t("drawer.events")} v={`${fInt(s.evt_exhaustion)} / ${fInt(s.evt_censored)}`} />
             <Row k={t("drawer.lower_bound")} v={fMin(s.bbt_lower_bound_min)} />
             <Row k={t("drawer.type_age")} v={`${s.battery_type || "—"} · ${isNum(s.battery_age_y) ? f1(s.battery_age_y) + " " + t("drawer.years") : "—"}`} />
@@ -121,7 +126,7 @@ export default function SiteDrawer({ site, cfg, onClose }) {
             <details className="mt-2 text-[12px]" open={showComputed} onToggle={(e) => setShowComputed(e.currentTarget.open)}>
               <summary className="cursor-pointer text-slate">{t("col.computed_design")}</summary>
               <div className="mt-1"><Row k={t("col.computed_design")} v={<span className="inline-flex items-center gap-1.5">{fMin(s.bbt_design_min)} <EvTag v={s.bbt_design_evidence} /> · {fPct(s.bbt_pct_site_design, 0)}</span>} />
-                <div className="text-[11.5px] text-slate mt-1">{s.bbt_design_basis}</div>
+                <div className="text-[11.5px] text-slate mt-1">{te(s.bbt_design_basis, "design")}</div>
                 <div className="mt-1"><Note tone="warn">{t("design.computed_note")}</Note></div></div>
             </details>
           </Box>

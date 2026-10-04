@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, CircleMarker, Circle, Marker, Polyline, Toolti
 import "leaflet/dist/leaflet.css";
 import { LEVEL_KIND, STATUS, fInt, fKm, fMin, fPct, fPP, fH, isNum } from "./ui";
 import { t, tv } from "@/lib/i18n";
+import { te } from "@/lib/i18n-engine";
 
 const MAX_POINTS = 4000;
 const TRUCK = (sel, isNew) => L.divIcon({
@@ -145,7 +146,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
                       [t("map.avg_distance"), fKm(st.avg_km)], [t("map.avg_eta_est"), fMin(st.avg_eta_min)], [t("col.dark_before_mbp"), `${fInt(st.at_risk_sites)} (${fPct(100 * st.risk_share, 0)})`],
                       [t("map.workload"), fInt(st.deployments_h1)], [t("col.signal"), tv("signal", st.load_signal)]].map(([k, v]) => <tr key={k}><td className="text-mut py-0.5">{k}</td><td className="text-right font-medium">{v}</td></tr>)}
                   </tbody></table>) : <div className="text-mut">{t("map.no_stats")}</div>}
-                {st && <div className="text-[11px] text-slate mt-1">{st.signal_why}</div>}
+                {st && <div className="text-[11px] text-slate mt-1">{te(st.signal_why, "signal")}</div>}
               </div>
             )}
             {selSite && (

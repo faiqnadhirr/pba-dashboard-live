@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from "recharts";
 import { Card, Kpi, Note, DataTable, Select, Slider, EvTag, fInt, fH, fPct, fPP, fNum, fCoord, precisionNote } from "@/components/ui";
@@ -10,6 +10,7 @@ const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 export default function Placement({ model, data, cfg, nop: gNop, setPick, setRadius }) {
   const nops = useMemo(() => [...new Set(model.map((s) => s.nop).filter(Boolean))].sort(), [model]);
   const [nop, setNop] = useState(gNop !== "All NOPs" ? gNop : "NOP PALEMBANG");
+  useEffect(() => { if (gNop !== "All NOPs") setNop(gNop); }, [gNop]);
   const [target, setTarget] = useState(Math.round((cfg.placement?.target_share ?? 0.9) * 100));
   const [maxNew, setMaxNew] = useState(cfg.placement?.max_new ?? 15);
   const inNop = useMemo(() => model.filter((s) => s.nop === nop), [model, nop]);

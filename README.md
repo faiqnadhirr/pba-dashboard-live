@@ -1,6 +1,6 @@
-# PBA — Power Backup Analytic (v3.1)
+# PBA — Power Backup Analytic (v3.3)
 
-PBA is a decision-support dashboard for T **AREA1** power backup (ENOM). It covers the two areas in the management order:
+PBA is a decision-support dashboard for Telkomsel **AREA1** power backup (ENOM). It covers the two areas in the management order:
 
 - **MBP (Mobile Backup Power).** Every MBP base camp has its own coverage area. Each coverage area shows a site list with the **14 mandatory columns**, sorted by priority. From there you can run a simulation that recommends **where to deploy MBPs** during a PLN outage.
 - **BBS (Battery Backup System).** This part covers four things:
@@ -219,3 +219,12 @@ See `docs/METHOD.md`.
 - **Relocation candidates** are tested cumulatively, with a maximum of 3 by default.
 - **Config** opens read-only; use **Edit (what-if)** to change it. A config version hash is shown in the header.
 - **Tests:** `npm test` runs 32 tests. `engine/build.py` runs them automatically after every refresh.
+
+## v3.3 — coverage-gap label, engine text in ID, drilldowns
+
+- **1a Coverage gap.** A site whose BBS action is "No action" but whose MBP cannot arrive before the battery runs out (or has no MBP within the radius) shows **"Battery OK — MBP coverage gap"** with a link to *MBP › Placement* for its NOP (Site list, site drawer, BBS action list). New CSV column `coverage_gap` (true/false); all existing CSV columns are unchanged. Display only (`lib/view.js`), no engine change.
+- **1b Engine text in Indonesian.** `lib/i18n-engine.js` translates the engine's English strings (rules, status basis, evidence, priority drivers, responsibility "why", assignment basis, simulation reasons, trend "why", base-camp signals, off-air, design/BBT basis, data-quality notes) segment by segment with ordered patterns → `eng.*` dictionary keys. The engine output and CSV stay English. Test `1b` runs **every** engine string on the snapshot through the patterns and fails if any segment is left untranslated.
+- **2a Drilldown panel** (`components/DrillPanel.jsx`, `lib/drill.js`): click a KPI card (↗) → total + formula, donut of the evidence composition (≤ 5 segments), per-NOP (per-cluster when a NOP is selected) stacked bars sorted by the "no data" share, and **View N sites →** which opens *MBP › Site list* with `?sel=<drill>[~segment]`. Installed on Health (BBT measured, Sites below target, Network downtime, …of which power), Accountability (Power downtime), Coverage cards, BBS-P1…P4 batch cards and Data quality › Evidence per field.
+- **2b Clickable charts:** Health cause bar → Site list sorted by that cause's hours; Accountability bar → Site list for that party; Health per-NOP table row → NOP filter; BBS "Battery vs design" row/segment → Status + Status-basis chips of the action list.
+- **2c Trend:** Q1 → Q2 dumbbell for the 15 clusters with the worst change, above the table; click a cluster to filter the table.
+- **3 Minor:** unknown `?view=` falls back with a notice; `?lang=` persists and every link carries it; drawer separates *PLN outage duration (PLN records)* from *Power (RAN downtime)*; compact Site list / correlation table fit at 1350 px; compact mode has no column numbers.

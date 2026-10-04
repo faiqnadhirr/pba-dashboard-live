@@ -2,6 +2,9 @@
 import React, { Fragment, useMemo, useState } from "react";
 import { bbtDisplay } from "@/lib/logic";
 import { t, tv, locale, withEnglish } from "@/lib/i18n";
+import { te } from "@/lib/i18n-engine";
+import { showCoverageGap } from "@/lib/view";
+import { Go } from "@/lib/nav";
 
 /* ---------------- format (never None / nan; counts as integers; precision follows the data) ---------------- */
 export const isNum = (v) => typeof v === "number" && Number.isFinite(v);
@@ -52,10 +55,20 @@ const Pill = ({ c, t, children, title }) => (
   <span title={title} className="inline-flex items-center gap-1 px-1.5 py-[1px] rounded text-[11px] font-semibold whitespace-nowrap" style={{ background: c, color: t }}>{children}</span>
 );
 export const LevelTag = ({ v, kind = "MBP" }) => { const L = LEVEL_KIND[kind][v]; return v && L ? <Pill {...L} title={t(kind === "MBP" ? "prio.mbp_tip" : "prio.bbs_tip", { v: `${kind}-${v}` })}><span aria-hidden>{L.i}</span>{kind}-{v}</Pill> : <span className="text-mut">—</span>; };
+/** 1a — action label: "No action" from the BBS engine is shown as "Battery OK — MBP coverage gap" when MBP cannot arrive in time */
+export const ActionLabel = ({ r, strong = false, onNavigate }) => {
+  if (showCoverageGap(r)) return (
+    <span className="inline-flex flex-wrap items-center gap-x-1.5">
+      <span className={`text-[#8a5a00] ${strong ? "font-semibold" : "font-medium"}`} title={t("gap.tip")}>{t("gap.label")}</span>
+      <Go to={{ view: "mbp.placement", nop: r.nop }} onBefore={onNavigate} className="text-s1 underline text-[11.5px] whitespace-nowrap" title={t("gap.link_tip", { nop: r.nop })}>{t("gap.link")} →</Go>
+    </span>);
+  const a = r.recommended_action;
+  return a && a !== "No action" ? <span className={strong ? "font-semibold" : ""}>{tv("action", a)}</span> : <span className="text-mut">{tv("action", a) || "—"}</span>;
+};
 /** A3 — the only way a BBT value is rendered: status basis and number can never contradict */
 export const BbtCell = ({ r, showStatus = false }) => {
   const d = bbtDisplay(r);
-  return <span className="inline-flex items-center gap-1.5">{d.text ? <span className="text-slate">{t("bbt.no_battery_ticket")}</span> : fMin(d.value)}{showStatus && <StatusTag v={r.bbt_status} />}<EvTag v={d.evidence} /></span>;
+  return <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5">{d.text ? <span className="text-slate">{t("bbt.no_battery_ticket")}</span> : fMin(d.value)}{showStatus && <StatusTag v={r.bbt_status} />}<EvTag v={d.evidence} /></span>;
 };
 export const bbtCsv = (r) => { const d = bbtDisplay(r); return d.text ? d.text : `${isNum(d.value) ? Math.round(d.value) : ""} ${d.evidence || ""}`.trim(); };
 export const StatusTag = ({ v }) => { const s = STATUS[v] || STATUS.Unknown; return v ? <Pill {...s} title={t("status.tip")}><span aria-hidden>{s.i}</span>{tv("status", v)}</Pill> : <span className="text-mut">—</span>; };
@@ -85,10 +98,13 @@ export function Card({ title, sub, right, children, className = "" }) {
     </section>
   );
 }
-export function Kpi({ label, value, sub, tone = "navy", scope, help }) {
+export function Kpi({ label, value, sub, tone = "navy", scope, help, onClick }) {
   const c = { navy: "text-navy", crit: "text-[#b42318]", good: "text-[#066b06]", warn: "text-[#8a5a00]", slate: "text-slate" }[tone];
+  // 2a: a clickable card opens the drilldown panel (pointer, hover, ↗, Enter/Space)
+  const click = onClick ? { role: "button", tabIndex: 0, onClick, title: t("drill.open"), onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } } : {};
   return (
-    <div className="bg-card border border-line rounded-lg px-4 py-3 min-w-0">
+    <div {...click} className={`relative bg-card border border-line rounded-lg px-4 py-3 min-w-0 ${onClick ? "cursor-pointer hover:border-s1 hover:shadow-md hover:bg-s1/[0.03] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1" : ""}`}>
+      {onClick && <span aria-hidden className="absolute right-1.5 bottom-1 text-[12px] text-s1">↗</span>}
       <div className="flex items-center justify-between gap-2">
         <div className="text-[11px] uppercase tracking-wide text-mut font-semibold" title={help}>{label}{help && <span className="normal-case ml-0.5 text-s1 cursor-help" aria-label={help}>ⓘ</span>}</div>
         {scope && <span className="text-[9.5px] uppercase tracking-wide text-mut border border-line rounded px-1" title={t(scope === "portfolio" ? "kpi.portfolio_tip" : "kpi.filtered_tip")}>{t(scope === "portfolio" ? "kpi.portfolio" : "kpi.filtered")}</span>}
@@ -148,16 +164,22 @@ export function Slider({ label, value, onChange, min, max, step = 1, fmt = (v) =
     </label>
   );
 }
-export function Bar100({ parts, height = 14 }) {
+export function Bar100({ parts, height = 14, onSeg, legend = true }) {
   const tot = parts.reduce((a, p) => a + Math.max(0, p.v), 0) || 1;
+  // 2b: with onSeg every segment (and legend item) is a button → "Click to view sites"
+  const hint = onSeg ? ` — ${t("chart.click_sites")}` : "";
+  const seg = (p) => (onSeg ? { role: "button", tabIndex: 0, onClick: (e) => { e.stopPropagation(); onSeg(p); }, onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSeg(p); } } } : {});
   return (
     <div className="w-full">
-      <div className="flex w-full overflow-hidden rounded" style={{ height }} role="img" aria-label={parts.map((p) => `${p.label} ${Math.round((100 * p.v) / tot)}%`).join(", ")}>
-        {parts.map((p) => p.v > 0 && <div key={p.label} title={`${p.label}: ${Math.round((100 * p.v) / tot)}%`} style={{ width: `${(100 * p.v) / tot}%`, background: p.c }} className="border-r-2 border-white last:border-r-0" />)}
+      <div className="flex w-full overflow-hidden rounded" style={{ height }} role={onSeg ? "group" : "img"} aria-label={parts.map((p) => `${p.label} ${Math.round((100 * p.v) / tot)}%`).join(", ")}>
+        {parts.map((p) => p.v > 0 && <div key={p.label} {...seg(p)} title={`${p.label}: ${p.txt ?? `${Math.round((100 * p.v) / tot)}%`}${hint}`} style={{ width: `${(100 * p.v) / tot}%`, background: p.c }}
+          className={`border-r-2 border-white last:border-r-0 ${onSeg ? "cursor-pointer hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink" : ""}`} />)}
       </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[11.5px] text-slate">
-        {parts.map((p) => <span key={p.label} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: p.c }} />{p.label} {p.txt ?? `${Math.round((100 * p.v) / tot)}%`}</span>)}
-      </div>
+      {legend && <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[11.5px] text-slate">
+        {parts.map((p) => onSeg && p.v > 0
+          ? <button key={p.label} onClick={() => onSeg(p)} title={t("chart.click_sites")} className="inline-flex items-center gap-1 hover:text-navy hover:underline"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: p.c }} />{p.label} {p.txt ?? `${Math.round((100 * p.v) / tot)}%`} <span aria-hidden className="text-s1">↗</span></button>
+          : <span key={p.label} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: p.c }} />{p.label} {p.txt ?? `${Math.round((100 * p.v) / tot)}%`}</span>)}
+      </div>}
     </div>
   );
 }
@@ -167,7 +189,7 @@ export function EvidenceTable({ rows, action }) {
   return (
     <table className="w-full text-[12px]">
       <thead><tr className="text-slate text-left">{[t("ev.metric"), t("ev.value"), t("ev.threshold"), t("ev.rule")].map((h) => <th key={h} className="py-1 pr-2 border-b border-line font-semibold">{h}</th>)}</tr></thead>
-      <tbody>{rows.map((e, i) => <tr key={i} className="border-b border-line/60 align-top"><td className="py-1 pr-2 font-medium">{tv("metric", e.metric)}</td><td className="py-1 pr-2 tabular">{String(e.value)}</td><td className="py-1 pr-2 text-slate">{e.threshold}</td><td className="py-1 text-slate">{e.rule}</td></tr>)}
+      <tbody>{rows.map((e, i) => <tr key={i} className="border-b border-line/60 align-top"><td className="py-1 pr-2 font-medium">{tv("metric", e.metric)}</td><td className="py-1 pr-2 tabular">{te(String(e.value), "ev")}</td><td className="py-1 pr-2 text-slate">{te(e.threshold, "ev")}</td><td className="py-1 text-slate">{te(e.rule, "ev")}</td></tr>)}
         {action && <tr><td className="py-1 pr-2 font-semibold text-navy">→ {t("ev.action")}</td><td colSpan={3} className="py-1 font-semibold text-navy">{tv("action", action)}</td></tr>}</tbody>
     </table>
   );
@@ -229,7 +251,7 @@ export function DataTable({ rows, columns, initialSort, onRowClick, filename = "
                 <th key={c.key} scope="col" title={c.help ? t(c.help) : undefined} aria-sort={sort.key === c.key ? (sort.dir === 1 ? "ascending" : "descending") : "none"} style={fz(ci).style}
                   className={`px-2 py-1.5 font-semibold text-slate border-b border-line whitespace-nowrap ${c.num ? "text-right" : "text-left"} ${fz(ci, "bg-surface").className}`}>
                   <button className="hover:text-navy focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1 rounded" onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key ? -s.dir : -1 }))}>
-                    {t(c.label)}{c.help ? <span className="text-s1 ml-0.5" aria-hidden>ⓘ</span> : null}{sort.key === c.key ? (sort.dir === 1 ? " ▲" : " ▼") : ""}
+                    {c.short ? <span title={t(c.label)}>{c.short}</span> : c.plain ? t(c.label).replace(/^\d+ · /, "") : t(c.label)}{c.help ? <span className="text-s1 ml-0.5" aria-hidden>ⓘ</span> : null}{sort.key === c.key ? (sort.dir === 1 ? " ▲" : " ▼") : ""}
                   </button>
                 </th>
               ))}
@@ -245,11 +267,13 @@ export function DataTable({ rows, columns, initialSort, onRowClick, filename = "
                     onClick={() => (expand ? toggle(k) : onRowClick?.(r))}
                     className={`border-b border-line/70 ${onRowClick || expand ? "cursor-pointer hover:bg-s1/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1" : ""} ${isOpen ? "bg-s1/5" : ""} ${rowClass ? rowClass(r) : ""}`}>
                     {expand && <td className="px-1 text-slate" aria-hidden>{isOpen ? "▾" : "▸"}</td>}
-                    {columns.map((c, ci) => (
-                      <td key={c.key} style={fz(ci).style} className={`px-2 ${dense ? "py-[3px]" : "py-1.5"} ${c.num ? "text-right" : ""} ${c.wrap ? "max-w-[360px] truncate" : "whitespace-nowrap"} ${fz(ci, "bg-white").className}`} title={c.wrap ? String(c.csv ? c.csv(r) : r[c.key] ?? "") : undefined}>
-                        {c.render ? c.render(r) : r[c.key] ?? "—"}
-                      </td>
-                    ))}
+                    {columns.map((c, ci) => { const v = c.render ? c.render(r) : r[c.key] ?? "—";
+                      // tooltip of a truncated cell = the displayed (translated) text when it is plain text, else the CSV value
+                      const tip = c.wrap && !c.tdClass ? String(typeof v === "string" || typeof v === "number" ? v : c.csv ? c.csv(r) : r[c.key] ?? "") : undefined;
+                      return (
+                      <td key={c.key} style={fz(ci).style} className={`px-2 ${dense ? "py-[3px]" : "py-1.5"} ${c.num ? "text-right" : ""} ${c.tdClass ?? (c.wrap ? "max-w-[360px] truncate" : "whitespace-nowrap")} ${fz(ci, "bg-white").className}`} title={tip}>
+                        {v}
+                      </td>); })}
                   </tr>
                   {expand && isOpen && <tr className="bg-surface/70 border-b border-line"><td /><td colSpan={columns.length} className="px-3 py-2">{expand(r)}</td></tr>}
                 </Fragment>
@@ -270,6 +294,7 @@ export function DataTable({ rows, columns, initialSort, onRowClick, filename = "
   );
 }
 
+const actionTitle = (r) => (showCoverageGap(r) ? `${t("gap.label")} — ${t("gap.link")}` : tv("action", r.recommended_action) || "");
 /* ---------------- site list columns: "Ringkas/Compact" (default) and "Detail" (14 mandatory columns, management order) ---------------- */
 const NA = () => <span className="text-mut" title={t("common.no_data")}>—</span>;
 const prioTip = (cfg) => t("prio.cutoffs", { p1: cfg.priority_levels.P1, p2: cfg.priority_levels.P2, p3: cfg.priority_levels.P3 });
@@ -297,7 +322,7 @@ const C = (cfg) => ({
     render: (r) => {
       if (!isNum(r.dist_eta_min)) return t("site.no_coords");
       const unknown = r.bbt_status === "Unknown", late = !r.can_arrive_before_bbt && !unknown;
-      return <span className={late ? "text-[#b42318] font-semibold" : ""} title={unknown ? t("eta.bbt_unknown") : late ? t("eta.late") : r.dist_note || ""}>
+      return <span className={late ? "text-[#b42318] font-semibold" : ""} title={unknown ? t("eta.bbt_unknown") : late ? t("eta.late") : te(r.dist_note, "dist_note") || ""}>
         {late ? "✖ " : unknown ? <span className="text-mut">? </span> : ""}{fMin(r.dist_eta_min)}{r.access_class === "island" ? <span className="text-mut font-normal text-[10px]"> {t("site.sea_access")}</span> : null}</span>;
     }, csv: (r) => (isNum(r.dist_eta_min) ? Math.round(r.dist_eta_min) : "") },
   within: { key: "within_radius", label: "col.within_radius", render: (r) => (r.within_radius ? <Tag tone="good">✔ {t("common.yes")}</Tag> : <Tag tone="crit">✖ {t("common.no")}</Tag>), csv: (r) => (r.within_radius ? "yes" : "no") },
@@ -307,11 +332,19 @@ const C = (cfg) => ({
   mbp: { key: "dist_mbp", label: "col.mbp_assigned_nearest" },
   mbp_assigned: { key: "mbp_assigned", label: "col.mbp_assigned", render: (r) => r.mbp_assigned || <span className="text-mut" title={t("eta.beyond_radius")}>{t("common.none_in_radius")}</span>, csv: (r) => r.mbp_assigned || "" },
   arrives: { key: "can_arrive_before_bbt", label: "col.arrives_before_bbt", render: (r) => (r.bbt_status === "Unknown" ? <Tag tone="mut">? {t("eta.bbt_unknown_short")}</Tag> : r.can_arrive_before_bbt ? <Tag tone="good">✔ {t("common.yes")}</Tag> : <Tag tone="crit">✖ {t("common.no")}</Tag>), csv: (r) => (r.can_arrive_before_bbt ? "yes" : "no") },
-  action: { key: "recommended_action", label: "col.action", wrap: true, render: (r) => (r.recommended_action && r.recommended_action !== "No action" ? tv("action", r.recommended_action) : <span className="text-mut">{tv("action", r.recommended_action) || "—"}</span>), csv: (r) => r.recommended_action },
+  action: { key: "recommended_action", label: "col.action", wrap: true, render: (r) => <ActionLabel r={r} />, csv: (r) => r.recommended_action },
 });
 export function siteColumns(cfg, mode = "compact", { showComputed = false } = {}) {
   const c = C(cfg);
-  if (mode === "compact") return [c.priority, c.site_id, c.site_name, c.site_class, c.nop, c.bbt_short, c.mbp_assigned, c.eta, c.action];
+  // compact: no column numbers (numbers only in Detail), narrower text columns so Action is visible at ~1350 px without scrolling
+  if (mode === "compact") {
+    const clip = (w, f) => (r) => { const v = f(r); return <span className="inline-block truncate align-bottom" style={{ maxWidth: w }} title={typeof v === "string" ? v : undefined}>{v}</span>; };
+    return [c.priority, c.site_id, { ...c.site_name, render: clip(130, (r) => r.site_name) }, c.site_class, { ...c.nop, render: (r) => <span title={r.nop}>{String(r.nop || "").replace(/^NOP /, "")}</span> },
+      { ...c.bbt_short, tdClass: "whitespace-normal", render: (r) => <span className="inline-flex flex-wrap items-center gap-1 max-w-[150px]"><BbtCell r={r} showStatus /></span> },
+      { ...c.mbp_assigned, render: (r) => (r.mbp_assigned ? clip(130, (x) => x.mbp_assigned)(r) : <span className="text-mut" title={t("eta.beyond_radius")}>—</span>) },
+      { ...c.eta, render: (r) => (isNum(r.dist_eta_min) ? c.eta.render(r) : <span className="text-mut" title={t("site.no_coords")}>—</span>) },
+      { ...c.action, tdClass: "whitespace-normal", render: (r) => <span className="block line-clamp-2 min-w-[140px] max-w-[220px]" title={actionTitle(r)}><ActionLabel r={r} /></span> }].map((x) => ({ ...x, plain: true }));
+  }
   return [c.priority, c.site_id, c.site_name, c.site_class, c.dependency, c.nop, c.design, ...(showComputed ? [c.computed] : []), c.bbt, c.pln_freq, c.pln_dur,
     c.distance, c.eta, c.within, c.hist, c.backup, c.avail, c.mbp, c.arrives];
 }

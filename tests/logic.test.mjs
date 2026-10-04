@@ -335,6 +335,91 @@ test("1 · navigation: 4 groups in order Overview · MBP · BBS · Data & Config
   const src = fs.readFileSync("app/page.jsx", "utf8");
   const order = [...src.matchAll(/^\s+\["(overview|mbp|bbs|data)", \[/gm)].map((m) => m[1]);
   assert.deepEqual(order, ["overview", "mbp", "bbs", "data"]);
-  assert.ok(src.includes('DEFAULT_TAB = "health"') && src.includes('searchParams.set("view"') && src.includes("popstate"));
+  assert.ok(src.includes('DEFAULT_TAB = "health"') && src.includes('q.set("view"') && src.includes("popstate"));
   assert.ok(/\["bbs", \[\["bbs", "bbs.actions"\]/.test(src), "BBS opens on the action list");
+});
+
+/* ================= fourth pass ================= */
+import { coverageGap, showCoverageGap } from "../lib/view.js";
+test("1a · 'No action' with an MBP coverage gap is labelled as a coverage gap (TBH048)", () => {
+  const s = byId.get("TBH048");
+  assert.equal(s.recommended_action, "No action");          // engine unchanged
+  assert.ok(coverageGap(s) && showCoverageGap(s));
+  const n = active.filter((x) => x.mbp_priority_level === "P1" && showCoverageGap(x)).length;
+  console.log("MBP-P1 sites relabelled as coverage gap:", n);
+  assert.equal(active.filter((x) => showCoverageGap(x) && x.bbs_priority_level && x.recommended_action !== "No action").length, 0);
+  for (const f of ["components/ui.jsx", "components/SiteDrawer.jsx", "components/tabs/BbsActions.jsx"]) assert.ok(fs.readFileSync(f, "utf8").includes("ActionLabel"), f);
+  for (const f of ["components/tabs/MbpTab.jsx", "components/tabs/BbsActions.jsx"]) assert.ok(fs.readFileSync(f, "utf8").includes('label: "coverage_gap"'), f);
+});
+
+/* ---------- 1b. every engine string is translated in ID (frontend pattern mapping) ---------- */
+test("1b · engine strings: every string on the snapshot is covered by an ID pattern", async () => {
+  const { registerDicts, setLang, t } = await import("../lib/i18n.js");
+  const { te, covered } = await import("../lib/i18n-engine.js");
+  const en = JSON.parse(fs.readFileSync("i18n/en.json", "utf8")), id = JSON.parse(fs.readFileSync("i18n/id.json", "utf8"));
+  registerDicts({ en, id });
+  const miss = new Map(), seen = new Map();
+  const chk = (fam, kind, v) => {
+    if (v == null || v === "") return; seen.set(fam, (seen.get(fam) || 0) + 1);
+    if (!covered(v, kind)) { const k = `${fam}: ${String(v).replace(/\d+(\.\d+)?/g, "#")}`; miss.set(k, (miss.get(k) || 0) + 1); }
+  };
+  for (const s of M) {
+    chk("rule", "rule", s.rule); chk("precedence", "prec", s.battery.precedence); chk("conflict", "conflict", s.battery.conflict);
+    for (const e of s.evidence || []) { chk("ev.value", "ev", e.value); chk("ev.threshold", "ev", e.threshold); chk("ev.rule", "ev", e.rule); }
+    chk("mbp_drivers", "drivers", s.mbp_priority_drivers); chk("bbs_drivers", "drivers", s.bbs_priority_drivers);
+    chk("resp.why", "resp", s.resp.why); chk("assignment_basis", "assign", s.assignment_basis); chk("eta_conf", "eta_conf", s.eta_confidence);
+    chk("dist_note", "dist_note", s.dist_note); chk("offair", "offair", s.offair); chk("bbt_value_basis", "bbtbasis", s.bbt_value_basis);
+    chk("access_basis", "access", s.access_basis); chk("design_basis", "design", s.bbt_design_basis); chk("nop_flag", "nop_flag", s.nop_flag);
+    chk("est_conf", "conf", s.bbt_est_confidence);
+  }
+  for (const r of clusterTable(active, cfg)) chk("trend_why", "trend", r.trend_why);
+  for (const r of basecampSummary(M, mbps, cfg)) chk("signal_why", "signal", r.signal_why);
+  const aff = active.filter((s) => s.nop === "NOP PALEMBANG").sort((a, b) => (b.pln_freq || 0) - (a.pln_freq || 0)).slice(0, 40).map((s) => s.site_id);
+  for (const h of [1, 4, 12]) for (const r of simulate(M, aff, h, mbps, { fam }, cfg, { departHour: 17 }).rows) chk("sim.reasons", "sim", r.reasons);
+  for (const m of meta.mbp.pic_matches || []) chk("pic.basis", "pic", m.basis);
+  for (const m of meta.mbp.duplicates || []) chk("dup.status", "pic", m.status);
+  for (const m of meta.dq.unmatched || []) chk("unmatched.note", "pic", m.note);
+  for (const c of meta.qa.build_sanity || []) chk("sanity", "sanity", c.check);
+  console.log("1b families checked:", Object.fromEntries(seen));
+  if (miss.size) console.log("1b untranslated:", [...miss.entries()].slice(0, 40));
+  assert.equal(miss.size, 0, `${miss.size} untranslated engine string shapes`);
+  // spot checks: rendered Indonesian, English kept in EN
+  setLang("id");
+  const tpi = byId.get("TPI516") || M[0];
+  const r8 = te("R8: Degraded at P1/P2 — monitoring is not allowed for a high priority", "rule");
+  assert.match(r8, /^R8: Menurun/);
+  assert.match(te("no MBP within 35 km coverage radius", "sim"), /tidak ada MBP dalam radius cakupan 35 km/);
+  assert.match(te("eta gap", "drivers") ?? "", /eta gap/);
+  assert.ok(!/[{}]/.test(te(tpi.assignment_basis, "assign") || ""), "no unfilled placeholders");
+  for (const k of Object.keys(id).filter((k) => k.startsWith("eng."))) assert.ok(!/eng\./.test(t(k)), k);
+  setLang("en");
+  assert.equal(te(r8, "rule"), r8);
+});
+
+/* ---------- 2a/2b. drilldowns: panel totals = Site-list rows behind "View N sites" ---------- */
+test("2a · drilldown totals equal the Site-list filter; segments ≤ 5; per-NOP sorted by 'no data' share", async () => {
+  const { DRILLS, drillModel, applySel, parseSel } = await import("../lib/drill.js");
+  const scope = M.filter((s) => s.site_active === 1 && !s.offair);
+  const ids = Object.keys(DRILLS).filter((k) => !DRILLS[k].filterOnly);
+  for (const id of ids) {
+    const m = drillModel(id, scope);
+    assert.ok(m.segs.length <= 5, `${id}: ${m.segs.length} segments`);
+    const sitesSum = m.segs.reduce((a, x) => a + x.n, 0);
+    if (!DRILLS[id].unit) assert.equal(sitesSum, m.universe, `${id}: every site in exactly one segment`);
+    assert.equal(applySel(scope, id).rows.length, m.totalSites, `${id}: View N sites = KPI total`);
+    for (const x of m.segs) if (x.k !== "other" && !DRILLS[id].unit) assert.equal(applySel(scope, `${id}~${x.k}`).rows.length, x.n, `${id}~${x.k}`);
+    for (let i = 1; i < m.rows.length; i++) assert.ok(m.rows[i - 1].noneShare >= m.rows[i].noneShare);
+  }
+  // KPI values on the cards
+  assert.equal(drillModel("bbt_measured", scope).totalSites, scope.filter((s) => s.battery.measured).length);
+  assert.equal(drillModel("below_target", scope).totalSites, scope.filter((s) => typeof s.avail_delta_pp === "number" && s.avail_delta_pp < 0).length);
+  const cov = drillModel("cov", scope); assert.equal(applySel(scope, "cov~within").rows.length, scope.filter((s) => s.covered).length);
+  assert.equal(cov.universe, scope.length);
+  const pd = drillModel("power_down", scope);
+  assert.ok(Math.abs(pd.totalValue - scope.reduce((a, s) => a + (s.ran_power_down_h || 0), 0)) < 1e-6);
+  // 2b filter-only presets sort by hours
+  const c = applySel(scope, "cause~power"); assert.ok(c.weight && c.rows.every((s) => s.ran_power_down_h > 0));
+  const r = applySel(scope, "resp~utility_inferred"); assert.ok(r.rows.length > 0 && r.rows.every((s) => (s.resp.shares?.utility_inferred || 0) > 0));
+  assert.equal(parseSel("nonsense"), null); assert.equal(applySel(scope, "nonsense").rows.length, scope.length);
+  console.log("2a drills:", ids.map((id) => `${id}=${drillModel(id, scope).totalSites}`).join(" "));
 });

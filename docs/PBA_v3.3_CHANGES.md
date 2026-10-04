@@ -1,0 +1,15 @@
+# PBA v3.3 — changes (coverage gap, engine text in ID, drilldowns)
+
+Continues claude/PBA_v3_METHOD.md. No scoring or rule change in this pass.
+
+- **1a Coverage gap.** A site whose BBS action is "No action" but whose MBP cannot arrive before the battery runs out (or has no MBP within the radius) shows **"Battery OK — MBP coverage gap"** with a link to *MBP › Placement* for its NOP (Site list, site drawer, BBS action list). New CSV column `coverage_gap` (true/false); all existing CSV columns are unchanged. Display only (`lib/view.js`), no engine change.
+- **1b Engine text in Indonesian.** `lib/i18n-engine.js` translates the engine's English strings (rules, status basis, evidence, priority drivers, responsibility "why", assignment basis, simulation reasons, trend "why", base-camp signals, off-air, design/BBT basis, data-quality notes) segment by segment with ordered patterns → `eng.*` dictionary keys. The engine output and CSV stay English. Test `1b` runs **every** engine string on the snapshot through the patterns and fails if any segment is left untranslated.
+- **2a Drilldown panel** (`components/DrillPanel.jsx`, `lib/drill.js`): click a KPI card (↗) → total + formula, donut of the evidence composition (≤ 5 segments), per-NOP (per-cluster when a NOP is selected) stacked bars sorted by the "no data" share, and **View N sites →** which opens *MBP › Site list* with `?sel=<drill>[~segment]`. Installed on Health (BBT measured, Sites below target, Network downtime, …of which power), Accountability (Power downtime), Coverage cards, BBS-P1…P4 batch cards and Data quality › Evidence per field.
+- **2b Clickable charts:** Health cause bar → Site list sorted by that cause's hours; Accountability bar → Site list for that party; Health per-NOP table row → NOP filter; BBS "Battery vs design" row/segment → Status + Status-basis chips of the action list.
+- **2c Trend:** Q1 → Q2 dumbbell for the 15 clusters with the worst change, above the table; click a cluster to filter the table.
+- **3 Minor:** unknown `?view=` falls back with a notice; `?lang=` persists and every link carries it; drawer separates *PLN outage duration (PLN records)* from *Power (RAN downtime)*; compact Site list / correlation table fit at 1350 px; compact mode has no column numbers.
+## v3.3 display additions (no scoring change)
+
+- **Coverage gap** = BBT status known AND (no MBP within radius OR MBP cannot arrive before effective BBT). Shown instead of "No action" only when the BBS action is "No action"; exported as `coverage_gap`.
+- **Engine text translation** happens in the UI (`lib/i18n-engine.js`); the engine and CSV keep English. Chosen over changing the engine to emit codes because the engine strings are produced in `lib/logic.js` (shared by UI, tests and CSV) — changing them would touch every decision path; pattern mapping keeps outputs byte-identical and a coverage test guards against untranslated strings.
+- **Drilldowns** (`lib/drill.js`): each KPI is a partition of the sites in scope into ≤ 5 evidence segments; "View N sites" applies exactly the same predicate in the Site list (test `2a` checks panel total = list rows).

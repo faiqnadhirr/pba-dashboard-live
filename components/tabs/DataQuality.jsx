@@ -2,18 +2,13 @@
 import React, { useMemo } from "react";
 import { Card, Note, DataTable, EvTag, Tag, Gloss, fInt, fPct, fNum, precisionNote } from "@/components/ui";
 import { t, tv } from "@/lib/i18n";
+import { te } from "@/lib/i18n-engine";
+import { EVCOLS } from "@/lib/drill";
 
-const EVCOLS = [["dependency_children", "dependency", (s) => (s.dependency_children != null ? "PROXY" : "UNAVAILABLE")],
-  ["bbt_value_min", "bbt", (s) => s.bbt_value_evidence || "UNAVAILABLE"],
-  ["eta_min", "eta", (s) => (s.dist_eta_min != null ? "ESTIMATED" : "UNAVAILABLE")],
-  ["pln_freq", "pln", (s) => (s.pln_known ? "DERIVED" : "UNAVAILABLE")],
-  ["dist_km", "distance", (s) => (s.dist_km != null ? "DERIVED" : "UNAVAILABLE")],
-  ["mbp_deployments", "hist", (s) => (s.mbp_hist_known ? "DERIVED" : "UNAVAILABLE")],
-  ["avail_wc_pct", "avail", (s) => (s.avail_wc_pct != null ? "DERIVED" : "UNAVAILABLE")]];
 const EV = ["ACTUAL", "DERIVED", "ESTIMATED", "PROXY", "UNAVAILABLE"];
 const pct = (n, d) => fPct((100 * n) / Math.max(1, d), 1);
 
-export default function DataQuality({ scope, data, offairSites = [], mbpStats, cfg, setPick }) {
+export default function DataQuality({ scope, data, offairSites = [], mbpStats, cfg, setPick, openDrill }) {
   const snap = data.meta.snapshot || {}, mb = data.meta.mbp || {}, m = data.meta, qa = m.qa;
   const prec = useMemo(() => { const c = {}; scope.forEach((x) => { const d = x.lat == null ? "none" : x.coord_decimals ?? "none"; c[d] = (c[d] || 0) + 1; }); return Object.entries(c).sort((a, b) => String(b[0]).localeCompare(String(a[0]))); }, [scope]);
   const acc = useMemo(() => { const c = {}; scope.forEach((x) => { c[x.access_class] = (c[x.access_class] || 0) + 1; }); return c; }, [scope]);
@@ -43,7 +38,7 @@ export default function DataQuality({ scope, data, offairSites = [], mbpStats, c
         <Card title={t("dq.evidence.title")}>
           <div className="overflow-x-auto"><table className="w-full text-[12.5px] tabular">
             <thead><tr className="text-slate"><th className="text-left py-1 border-b border-line">{t("dq.col.field")}</th>{EV.map((e) => <th key={e} className="text-right px-2 border-b border-line"><EvTag v={e} /></th>)}</tr></thead>
-            <tbody>{ev.map((r) => <tr key={r.field} className="border-b border-line/60"><td className="py-1.5">{t(`dq.field.${r.field}`)}</td>{EV.map((e) => <td key={e} className="text-right px-2">{r[e] ? fInt(r[e]) : "·"}</td>)}</tr>)}</tbody>
+            <tbody>{ev.map((r) => <tr key={r.field} className="border-b border-line/60"><td className="py-1.5"><button onClick={() => openDrill(`field_${r.field}`)} title={t("drill.open")} className="text-left text-s1 hover:text-navy hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1">{t(`dq.field.${r.field}`)} <span aria-hidden className="text-[11px]">↗</span></button></td>{EV.map((e) => <td key={e} className="text-right px-2">{r[e] ? fInt(r[e]) : "·"}</td>)}</tr>)}</tbody>
           </table></div>
         </Card>
       </div>
@@ -75,7 +70,7 @@ export default function DataQuality({ scope, data, offairSites = [], mbpStats, c
           <div className="text-[11.5px] text-mut">{t("dq.unver.rule", { e: cfg.bbt.derived_support.min_exhaustion_events, h: cfg.bbt.derived_support.min_power_h, s: fPct(cfg.bbt.derived_support.min_share_of_pln * 100, 0) })}</div>
         </Card>
         <Card title={t("dq.sanity.title")} sub={t("dq.sanity.sub")}>
-          <table className="w-full text-[12px]"><tbody>{(qa.build_sanity || []).map((c) => <tr key={c.check} className="border-b border-line/60"><td className="py-0.5">{c.ok ? "✔" : "✖"}</td><td className="py-0.5">{c.check}</td></tr>)}</tbody></table>
+          <table className="w-full text-[12px]"><tbody>{(qa.build_sanity || []).map((c) => <tr key={c.check} className="border-b border-line/60"><td className="py-0.5">{c.ok ? "✔" : "✖"}</td><td className="py-0.5">{te(c.check, "sanity")}</td></tr>)}</tbody></table>
         </Card>
       </div>
       <Card title={t("dq.offair.title", { n: fInt(offairSites.length) })} sub={t("dq.offair.sub", { a: fPct(cfg.offair.max_outage_share * 100, 0), b: fPct(cfg.offair.full_month_share * 100, 0), c: fPct(cfg.offair.no_alarm_min_share * 100, 0) })}>
@@ -84,7 +79,7 @@ export default function DataQuality({ scope, data, offairSites = [], mbpStats, c
           { key: "ran_outage_h", label: "dq.col.downtime", num: true, render: (r) => `${fInt(r.ran_outage_h)} ${t("unit.h")} (${fPct((100 * r.ran_outage_h) / r.ran_hours, 0)})`, csv: (r) => r.ran_outage_h?.toFixed(1) },
           { key: "ran_power_down_h", label: "dq.col.power", num: true, render: (r) => `${fInt(r.ran_power_down_h)} ${t("unit.h")}`, csv: (r) => r.ran_power_down_h?.toFixed(1) },
           { key: "evt_total", label: "dq.col.alarms", num: true, render: (r) => fInt(r.evt_total || 0), csv: (r) => r.evt_total || 0 }, { key: "in_ticket_file", label: "dq.col.tickets", render: (r) => (r.in_ticket_file ? t("common.yes") : t("dq.none")), csv: (r) => (r.in_ticket_file ? "yes" : "none") },
-          { key: "offair", label: "col.why", wrap: true },
+          { key: "offair", label: "col.why", wrap: true, render: (r) => te(r.offair, "offair"), csv: (r) => r.offair },
         ]} />
       </Card>
       <div className="grid xl:grid-cols-2 gap-4">
@@ -119,15 +114,15 @@ export default function DataQuality({ scope, data, offairSites = [], mbpStats, c
         <DataTable rows={(mb.pic_matches || []).filter((r) => r.confidence !== "EXACT")} pageSize={25} filename="pba_dq_pic_matching.csv" initialSort={{ key: "status", dir: 1 }} columns={[
           { key: "pic", label: "dq.col.ticket_pic" }, { key: "nop", label: "col.nop" }, { key: "n", label: "dq.col.tickets", num: true },
           { key: "status", label: "dq.col.status", render: (r) => <Tag tone={r.status === "MATCHED" ? "good" : r.status === "NEEDS REVIEW" ? "warn" : "crit"}>{r.status}</Tag>, csv: (r) => r.status },
-          { key: "confidence", label: "col.confidence" }, { key: "mbp_id", label: "dq.col.matched" }, { key: "basis", label: "col.basis", wrap: true }, { key: "candidates", label: "dq.col.candidates", wrap: true }]} />
+          { key: "confidence", label: "col.confidence" }, { key: "mbp_id", label: "dq.col.matched" }, { key: "basis", label: "col.basis", wrap: true, render: (r) => te(r.basis, "pic"), csv: (r) => r.basis }, { key: "candidates", label: "dq.col.candidates", wrap: true }]} />
       </Card>
       <Card title={t("dq.dup.title")} sub={t("dq.dup.sub")}>
         <DataTable rows={mb.duplicates || []} pageSize={25} filename="pba_dq_basecamp_duplicates.csv" initialSort={{ key: "similarity", dir: -1 }} columns={[
           { key: "mbp_a", label: "dq.col.camp_a" }, { key: "mbp_b", label: "dq.col.camp_b" }, { key: "nop_a", label: "dq.col.nop_a" }, { key: "nop_b", label: "dq.col.nop_b" },
           { key: "similarity", label: "dq.col.similarity", num: true, render: (r) => fNum(r.similarity, 2), csv: (r) => r.similarity }, { key: "km_apart", label: "dq.col.km_apart", num: true, render: (r) => (r.km_apart == null ? "—" : fNum(r.km_apart, 1)), csv: (r) => r.km_apart },
-          { key: "status", label: "dq.col.assessment", wrap: true }]} />
+          { key: "status", label: "dq.col.assessment", wrap: true, render: (r) => te(r.status, "pic"), csv: (r) => r.status }]} />
       </Card>
-      <Card title={t("dq.unmatchedl.title")}><DataTable rows={m.dq.unmatched} pageSize={20} filename="pba_dq_unmatched.csv" columns={[{ key: "source", label: "dq.col.source" }, { key: "id", label: "ID" }, { key: "n", label: "dq.col.tickets", num: true, render: (r) => (r.n == null ? "" : fInt(r.n)), csv: (r) => r.n }, { key: "note", label: "dq.col.note", wrap: true }]} /></Card>
+      <Card title={t("dq.unmatchedl.title")}><DataTable rows={m.dq.unmatched} pageSize={20} filename="pba_dq_unmatched.csv" columns={[{ key: "source", label: "dq.col.source" }, { key: "id", label: "ID" }, { key: "n", label: "dq.col.tickets", num: true, render: (r) => (r.n == null ? "" : fInt(r.n)), csv: (r) => r.n }, { key: "note", label: "dq.col.note", wrap: true, render: (r) => te(r.note, "pic"), csv: (r) => r.note }]} /></Card>
       <Note>{t("dq.footer", { area: m.scope.area, a: m.scope.period_start, b: m.scope.period_end, r: snap.refreshed_at || m.built_at })}</Note>
     </div>
   );

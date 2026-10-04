@@ -36,10 +36,10 @@ export default function BbsAnalysis({ data, cfg, part = "corr" }) {
         </Card>}
         {C && <Card title={<>{t("corr.table.title")} <Tag tone="slate">{t("kpi.portfolio").toUpperCase()}</Tag></>} sub={t("corr.table.sub")}>
           <DataTable rows={b.correlation} filename="pba_bbt_correlation.csv" pageSize={25} columns={[
-            { key: "label", label: "col.factor", render: (r) => tv("feat", r.feature), csv: (r) => r.label }, { key: "n", label: "col.n_sites", num: true, render: (r) => fInt(r.n), csv: (r) => r.n },
-            { key: "pearson", label: "Pearson r", num: true, render: (r) => f2(r.pearson) }, { key: "spearman", label: "Spearman ρ", num: true, render: (r) => f2(r.spearman) },
-            { key: "strength", label: "col.strength", render: (r) => tv("strength", r.strength), csv: (r) => r.strength }, { key: "required_by_management", label: "col.requested", render: (r) => (r.required_by_management ? "★" : "") },
-            { key: "caveat", label: "col.caveat", wrap: true, render: (r) => (r.caveat ? t("corr.row_caveat") : ""), csv: (r) => r.caveat || "" },
+            { key: "label", label: "col.factor", wrap: true, render: (r) => <span className="block min-w-[120px] max-w-[190px]">{tv("feat", r.feature)}</span>, csv: (r) => r.label }, { key: "n", label: "col.n_sites", num: true, render: (r) => fInt(r.n), csv: (r) => r.n },
+            { key: "pearson", label: "Pearson r", short: "r", num: true, render: (r) => f2(r.pearson) }, { key: "spearman", label: "Spearman ρ", short: "ρ", num: true, render: (r) => f2(r.spearman) },
+            { key: "strength", label: "col.strength", render: (r) => tv("strength", r.strength), csv: (r) => r.strength }, { key: "required_by_management", label: "col.requested", short: "★", render: (r) => (r.required_by_management ? "★" : "") },
+            { key: "caveat", label: "col.caveat", short: "⚠", render: (r) => (r.caveat ? <span title={t("corr.row_caveat")} aria-label={t("corr.row_caveat")} className="cursor-help text-[#8a5a00]">⚠</span> : ""), csv: (r) => r.caveat || "" },
           ]} />
         </Card>}
         {E && <Card title={t("est.test.title")} sub={t("est.test.sub")}>

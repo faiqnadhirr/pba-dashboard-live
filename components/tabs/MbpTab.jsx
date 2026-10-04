@@ -1,14 +1,18 @@
 "use client";
 import React, { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { Card, Kpi, Note, DataTable, Select, Tag, Toggle, Bar100, Gloss, siteColumns, fInt, fMin, fKm, fPct, fCoord, precisionNote, isNum } from "@/components/ui";
+import { Card, Kpi, Note, DataTable, Select, Tag, Toggle, Bar100, Gloss, siteColumns, fInt, fH, fMin, fKm, fPct, fCoord, precisionNote, isNum } from "@/components/ui";
 import { suggestBasecamps, coverageBreakdown } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
+import { te } from "@/lib/i18n-engine";
+import { coverageGap } from "@/lib/view";
+import { applySel } from "@/lib/drill";
+import { selLabel } from "@/components/DrillPanel";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
 const SEG = [["arrive", "#0ca30c"], ["late_dark", "#d03b3b"], ["late_other", "#ec835a"], ["bbt_unknown", "#A3ABB9"], ["beyond", "#7a1414"]];
 
-export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, setRadius, setPick, part = "map" }) {
+export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, setRadius, setPick, part = "map", openDrill, sel: drillSel, setSel: setDrillSel }) {
   const MAP = part === "map", LIST = part === "list";
   const R = cfg.mbp.max_radius_km;
   const [sel, setSel] = useState("ALL");
@@ -21,6 +25,10 @@ export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, set
       .map((m) => ({ value: m.mbp_id, label: t("mbp.camp_opt", { id: m.mbp_id, n: fInt(m.sites_covered) }) }))];
   const hidden = summary.filter((m) => m.coord_status === "MISSING" || m.sites_covered === 0).length;
   const cov = useMemo(() => (sel === "ALL" ? scope : scope.filter((s) => s.mbp_assigned === sel)).sort((a, b) => b.mbp_priority_score - a.mbp_priority_score), [scope, sel]);
+  // 2a/2b: Site-list preset from the URL (?sel=…) — same filter as the drilldown panel / chart that opened it
+  const DF = useMemo(() => applySel(cov, LIST ? drillSel : null), [cov, drillSel, LIST]);
+  const listCols = useMemo(() => { const c = siteColumns(cfg, mode, { showComputed });
+    return DF.weight ? [...c, { key: "_w", label: "col.drill_hours", num: true, sortVal: DF.weight, render: (r) => fH(DF.weight(r)), csv: (r) => DF.weight(r).toFixed(1) }] : c; }, [cfg, mode, showComputed, DF]);
   const camp = sel === "ALL" ? null : data.mbps.find((m) => m.mbp_id === sel);
   const sug = useMemo(() => suggestBasecamps(scope), [scope]);
   const bd = useMemo(() => coverageBreakdown(scope), [scope]);
@@ -32,10 +40,10 @@ export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, set
     <div className="space-y-4">
       {MAP && <>
         <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
-          <Kpi scope="filtered" label={t("mbp.kpi.within")} value={fInt(bd.within)} sub={t("mbp.kpi.within_sub", { r: R, n: fInt(bd.beyond) })} tone={bd.beyond ? "warn" : "good"} help={t("mbp.kpi.formula")} />
-          <Kpi scope="filtered" label={t("mbp.seg.arrive")} value={fInt(bd.arrive)} sub={t("mbp.kpi.pct_scope", { p: pc(bd.arrive) })} tone="good" help={t("mbp.kpi.formula")} />
-          <Kpi scope="filtered" label={t("mbp.seg.late_dark")} value={fInt(bd.late_dark)} sub={t("mbp.kpi.late_dark_sub", { m: cfg.availability.dark_min_months })} tone="crit" help={t("mbp.kpi.formula")} />
-          <Kpi scope="filtered" label={t("mbp.seg.bbt_unknown")} value={fInt(bd.bbt_unknown)} sub={t("mbp.kpi.unknown_sub")} tone="slate" help={t("mbp.kpi.formula")} />
+          <Kpi scope="filtered" onClick={() => openDrill("cov", "within")} label={t("mbp.kpi.within")} value={fInt(bd.within)} sub={t("mbp.kpi.within_sub", { r: R, n: fInt(bd.beyond) })} tone={bd.beyond ? "warn" : "good"} help={t("mbp.kpi.formula")} />
+          <Kpi scope="filtered" onClick={() => openDrill("cov", "arrive")} label={t("mbp.seg.arrive")} value={fInt(bd.arrive)} sub={t("mbp.kpi.pct_scope", { p: pc(bd.arrive) })} tone="good" help={t("mbp.kpi.formula")} />
+          <Kpi scope="filtered" onClick={() => openDrill("cov", "late_dark")} label={t("mbp.seg.late_dark")} value={fInt(bd.late_dark)} sub={t("mbp.kpi.late_dark_sub", { m: cfg.availability.dark_min_months })} tone="crit" help={t("mbp.kpi.formula")} />
+          <Kpi scope="filtered" onClick={() => openDrill("cov", "bbt_unknown")} label={t("mbp.seg.bbt_unknown")} value={fInt(bd.bbt_unknown)} sub={t("mbp.kpi.unknown_sub")} tone="slate" help={t("mbp.kpi.formula")} />
           <Kpi scope="filtered" label={t("mbp.kpi.avg_eta")} value={fMin(avg((s) => s.eta_min, scope))} sub={t("mbp.kpi.avg_eta_sub")} />
           <Kpi scope="portfolio" label={t("mbp.kpi.underserved")} value={fInt([...mbpStats.values()].filter((b) => b.load_signal === "Under-served").length)} sub={t("mbp.kpi.underserved_sub", { n: B.criteria_needed })} />
         </div>
@@ -58,20 +66,28 @@ export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, set
           {mode === "detail" && <Toggle label={<>{t("mbp.list.show_computed")}<Gloss k="bbt_design" /></>} checked={showComputed} onChange={setShowComputed} />}
           {hidden > 0 && <span className="text-[11.5px] text-mut">{t("mbp.list.hidden", { n: hidden })}</span>}
         </div>
+        {DF.known && <div className="mb-2 flex flex-wrap items-center gap-2 text-[12.5px]" role="status">
+          <span className="inline-flex items-center gap-1.5 bg-s1/10 border border-s1/40 text-navy rounded-full pl-3 pr-1 py-0.5">
+            <b>{t("drill.chip.filter")}:</b> {selLabel(drillSel)} · {t("filter.scope_sites", { n: fInt(DF.rows.length) })}
+            <button onClick={() => setDrillSel(null)} aria-label={t("drill.chip.clear")} title={t("drill.chip.clear")} className="w-5 h-5 rounded-full hover:bg-s1/20 leading-none">×</button>
+          </span>
+          {DF.weight && <span className="text-mut text-[11.5px]">{t("drill.chip.sorted")}</span>}
+        </div>}
         {camp && <div className="text-[12px] text-slate mb-2">{t("mbp.list.camp", { id: camp.mbp_id, pic: camp.pic_name || "—", nop: camp.nop || "—", t: fInt(camp.mbp_tickets_h1), eta: fMin(avg((s) => s.eta_min)) })}
           {camp.merged_from ? ` · ${t("mbp.list.merged", { m: camp.merged_from })}` : ""} · {camp.coord_status === "MISSING" ? t("mbp.loc_unavailable") : `${fCoord(camp.lat, camp.coord_decimals)}, ${fCoord(camp.lon, camp.coord_decimals)} (${precisionNote(camp.coord_decimals)})`}
           {camp.coord_status === "REPAIRED" && <> <Tag tone="warn">{t("mbp.coords_repaired")}</Tag></>}</div>}
         {mode === "detail" && showComputed && <div className="mb-2"><Note tone="warn">{t("design.computed_note")}</Note></div>}
-        <DataTable key={mode + showComputed} rows={cov} columns={siteColumns(cfg, mode, { showComputed })} onRowClick={setPick} initialSort={{ key: "mbp_priority_score", dir: -1 }}
+        <DataTable key={mode + showComputed + (drillSel || "")} rows={DF.rows} columns={listCols} onRowClick={setPick} initialSort={DF.weight ? { key: "_w", dir: -1 } : { key: "mbp_priority_score", dir: -1 }}
           filename={`pba_sites_${mode}_${sel === "ALL" ? nop : sel}.csv`.replace(/\s+/g, "_")} rowClass={(r) => (r.site_active ? "" : "bg-line/50 text-mut")}
           extraCsv={[{ key: "assignment_basis", label: "Assignment basis" }, { key: "eta_confidence", label: "ETA confidence" }, { key: "dist_note", label: "Distance note" },
             { key: "pln_known", label: "PLN data available", csv: (r) => (r.pln_known ? "yes" : "no") }, { key: "mbp_hist_known", label: "MBP history available", csv: (r) => (r.mbp_hist_known ? "yes" : "no") },
-            { key: "bbt_design_min", label: "Computed design (unvalidated, min)" }, { key: "bbt_design_basis", label: "Computed design basis" }]} />
+            { key: "bbt_design_min", label: "Computed design (unvalidated, min)" }, { key: "bbt_design_basis", label: "Computed design basis" },
+            { key: "coverage_gap", label: "coverage_gap", csv: (r) => String(coverageGap(r)) }]} />
       </Card>}
 
       {MAP && <Card title={t("mbp.camp.title")} sub={t("mbp.camp.sub", { n: B.criteria_needed, p: B.p1p2_sites_min, r: fPct(B.reach_risk_share_min * 100, 0), e: B.avg_eta_min, w: Math.round(B.workload_quantile * 100) })}>
         <DataTable rows={summary} filename="pba_basecamps.csv" initialSort={{ key: "p1_p2", dir: -1 }} pageSize={30}
-          expand={(r) => <div className="text-[12px] text-slate"><b className="text-ink">{t("mbp.camp.why", { s: tv("signal", r.load_signal) })}:</b> {r.signal_why}</div>}
+          expand={(r) => <div className="text-[12px] text-slate"><b className="text-ink">{t("mbp.camp.why", { s: tv("signal", r.load_signal) })}:</b> {te(r.signal_why, "signal")}</div>}
           columns={[
             { key: "mbp_id", label: "col.basecamp" }, { key: "pic_name", label: "col.pic" }, { key: "nop", label: "col.nop" },
             { key: "load_signal", label: "col.signal", render: (r) => <Tag tone={r.load_signal === "Under-served" ? "crit" : r.load_signal.startsWith("No") ? "warn" : r.load_signal.startsWith("Possibly") ? "mut" : "good"}>{tv("signal", r.load_signal)}</Tag>, csv: (r) => r.load_signal },

@@ -3,6 +3,7 @@ import React, { useMemo } from "react";
 import { Card, Kpi, Note, DataTable, Bar100, EvTag, fInt, fH, fPct, RESP_COLOR } from "@/components/ui";
 import { aggregateResponsibility, RESP_POWER } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
+import { te } from "@/lib/i18n-engine";
 
 const ORDER = [...RESP_POWER, "utility_inferred", "unknown"];
 // rule text names the ticket fields exactly as they appear in the source (RC 1 / RC 2 values stay in Indonesian)
@@ -10,7 +11,7 @@ const MAPPING = [["utility", "OBSERVED"], ["internal", "OBSERVED"], ["battery", 
   ["operational", "OBSERVED"], ["utility_inferred", "INFERRED"], ["unknown", "UNKNOWN"]];
 const pctOf = (v, tot) => fPct((100 * v) / (tot || 1), 0);
 
-export default function Accountability({ scope, setPick }) {
+export default function Accountability({ scope, setPick, openDrill, navigate }) {
   const agg = useMemo(() => aggregateResponsibility(scope), [scope]);
   const obs = RESP_POWER.reduce((a, k) => a + agg.hours[k], 0), inf = agg.hours.utility_inferred, unk = agg.hours.unknown;
   const tot = agg.total || 1;
@@ -26,13 +27,13 @@ export default function Accountability({ scope, setPick }) {
         <b>{t("acc.note.title")}</b> {t("acc.note.body")}
       </Note>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi scope="filtered" label={t("acc.kpi.power")} value={fH(agg.total)} sub={t("acc.kpi.power_sub", { n: fInt(rows.length) })} />
+        <Kpi scope="filtered" onClick={() => openDrill("power_down")} label={t("acc.kpi.power")} value={fH(agg.total)} sub={t("acc.kpi.power_sub", { n: fInt(rows.length) })} />
         <Kpi scope="filtered" label={t("acc.kpi.observed")} value={pctOf(obs, tot)} sub={t("acc.kpi.observed_sub", { h: fH(obs) })} tone="good" />
         <Kpi scope="filtered" label={t("acc.kpi.inferred")} value={pctOf(inf, tot)} sub={t("acc.kpi.inferred_sub", { h: fH(inf) })} tone="warn" />
         <Kpi scope="filtered" label={t("acc.kpi.unknown")} value={pctOf(unk, tot)} sub={t("acc.kpi.unknown_sub", { h: fH(unk) })} tone="slate" />
       </div>
       <Card title={t("acc.party.title")} sub={t("acc.party.sub")}>
-        <Bar100 height={20} parts={ORDER.map((k) => ({ label: tv("resp", k), c: RESP_COLOR[k], v: agg.hours[k], txt: `${pctOf(agg.hours[k], tot)} · ${fH(agg.hours[k])}` }))} />
+        <Bar100 height={20} onSeg={(p) => navigate({ view: "mbp.sitelist", sel: `resp~${p.k}` })} parts={ORDER.map((k) => ({ k, label: tv("resp", k), c: RESP_COLOR[k], v: agg.hours[k], txt: `${pctOf(agg.hours[k], tot)} · ${fH(agg.hours[k])}` }))} />
         <div className="grid lg:grid-cols-2 gap-4 mt-4">
           <table className="w-full text-[12.5px] tabular">
             <thead><tr className="text-slate text-left"><th className="py-1 border-b border-line">{t("acc.col.party")}</th><th className="text-right border-b border-line">{t("acc.col.hours")}</th><th className="text-right border-b border-line">{t("acc.col.share")}</th><th className="text-right border-b border-line">{t("acc.col.sites")}</th><th className="border-b border-line pl-2">{t("acc.col.evidence")}</th></tr></thead>
@@ -54,7 +55,7 @@ export default function Accountability({ scope, setPick }) {
       </Card>
       <Card title={t("acc.sites.title")} sub={t("acc.sites.sub")}>
         <DataTable rows={rows} filename="pba_power_responsibility_sites.csv" initialSort={{ key: "_pd_h", dir: -1 }}
-          expand={(r) => <div className="text-[12px] text-slate"><b className="text-ink">{t("common.why")}:</b> {r.resp.why} <button className="ml-2 text-s1 underline" onClick={() => setPick(r)}>{t("common.open_detail")}</button></div>}
+          expand={(r) => <div className="text-[12px] text-slate"><b className="text-ink">{t("common.why")}:</b> {te(r.resp.why, "resp")} <button className="ml-2 text-s1 underline" onClick={() => setPick(r)}>{t("common.open_detail")}</button></div>}
           columns={[
             { key: "site_id", label: "col.site", render: (r) => <span className="font-semibold text-navy">{r.site_id}</span> }, { key: "site_name", label: "col.name" }, { key: "nop", label: "col.nop" },
             { key: "_pd_h", label: "col.power_downtime", num: true, render: (r) => fH(r._pd_h), csv: (r) => r._pd_h.toFixed(2) },

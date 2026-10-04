@@ -1,10 +1,13 @@
 "use client";
+import "@/lib/i18n-dicts";
 import React, { useEffect, useMemo, useState } from "react";
 import { loadAll } from "@/lib/data";
 import { buildModel, basecampSummary, configHash } from "@/lib/logic";
 import { Toggle, Empty, fInt } from "@/components/ui";
 import { t, setLang, initialLang, persistLang } from "@/lib/i18n";
+import { NavCtx } from "@/lib/nav";
 import SiteDrawer from "@/components/SiteDrawer";
+import DrillPanel from "@/components/DrillPanel";
 import Health from "@/components/tabs/Health";
 import Accountability from "@/components/tabs/Accountability";
 import Impact from "@/components/tabs/Impact";
@@ -30,7 +33,16 @@ const VIEW_OF = Object.fromEntries(GROUPS.flatMap(([, tabs]) => tabs.map(([k, v]
 const TAB_OF = Object.fromEntries(Object.entries(VIEW_OF).map(([k, v]) => [v, k]));
 const groupOf = (tab) => GROUPS.find(([, tabs]) => tabs.some(([k]) => k === tab))[0];
 const DEFAULT_TAB = "health";
-const tabFromUrl = () => { try { return TAB_OF[new URLSearchParams(window.location.search).get("view")] || DEFAULT_TAB; } catch { return DEFAULT_TAB; } };
+const FIRST_OF = Object.fromEntries(GROUPS.map(([g, tabs]) => [g, tabs[0][0]]));
+/** everything the URL can carry; an unknown ?view= falls back to its group's first sub-tab (or Health) with a notice */
+function readUrl() {
+  try {
+    const q = new URLSearchParams(window.location.search), v = q.get("view");
+    let tab = TAB_OF[v] || DEFAULT_TAB, notice = null;
+    if (v && !TAB_OF[v]) { const g = v.split(".")[0]; tab = FIRST_OF[g] || DEFAULT_TAB; notice = v; }
+    return { tab, notice, nop: q.get("nop") || "All NOPs", cls: (q.get("cls") || "").split(",").filter(Boolean), inactive: q.get("inactive") === "1", offair: q.get("offair") === "1", sel: q.get("sel") || null };
+  } catch { return { tab: DEFAULT_TAB, nop: "All NOPs", cls: [], inactive: false, offair: false, sel: null }; }
+}
 const CLASSES = ["Diamond", "Platinum", "Gold", "Silver", "Bronze"];
 const LS_KEY = "pba.config.v3";
 
@@ -39,26 +51,43 @@ export default function Page() {
   const [tab, setTabState] = useState(DEFAULT_TAB), [nop, setNop] = useState("All NOPs"), [classes, setClasses] = useState([]);
   const [inactive, setInactive] = useState(false), [pick, setPick] = useState(null), [offair, setOffair] = useState(false);
   const [lang, setLangState] = useState("id");
+  const [sel, setSel] = useState(null), [notice, setNotice] = useState(null), [drill, setDrill] = useState(null);
   setLang(lang);                                   // module-level language for t() and number formatters (set before children render)
   useEffect(() => {
     document.title = "PBA — Power Backup Analytic";
-    setLangState(initialLang()); setTabState(tabFromUrl());
-    const onPop = () => setTabState(tabFromUrl());
+    const l = initialLang(); setLangState(l); persistLang(l);       // ?lang= is remembered
+    const apply = () => { const u = readUrl(); setTabState(u.tab); setNop(u.nop); setClasses(u.cls); setInactive(u.inactive); setOffair(u.offair); setSel(u.sel); setNotice(u.notice); };
+    apply();
+    const onPop = () => apply();
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   useEffect(() => { document.documentElement.lang = lang; }, [lang]);
-  const setTab = (k) => {
-    if (k === tab) return;
-    setTabState(k);
-    try { const u = new URL(window.location.href); u.searchParams.set("view", VIEW_OF[k]); window.history.pushState({}, "", u); } catch {}
+  // URL builder: current state + overrides. Language is always carried so shared links open in the same language.
+  const cur = { view: VIEW_OF[tab], nop, cls: classes, inactive, offair, sel, lang };
+  const hrefFor = (o = {}) => {
+    const st = { ...cur, sel: null, ...o }, q = new URLSearchParams();
+    q.set("view", st.view);
+    if (st.nop && st.nop !== "All NOPs") q.set("nop", st.nop);
+    if (st.cls?.length) q.set("cls", st.cls.join(","));
+    if (st.inactive) q.set("inactive", "1");
+    if (st.offair) q.set("offair", "1");
+    if (st.sel) q.set("sel", st.sel);
+    q.set("lang", st.lang);
+    return `?${q.toString()}`;
+  };
+  const navigate = (o = {}) => {
+    const st = { ...cur, sel: null, ...o };
+    if (TAB_OF[st.view]) setTabState(TAB_OF[st.view]);
+    setNop(st.nop || "All NOPs"); setClasses(st.cls || []); setInactive(!!st.inactive); setOffair(!!st.offair); setSel(st.sel || null); setNotice(null); setPick(null); setDrill(null);
+    try { window.history.pushState({}, "", hrefFor(o)); } catch {}
     window.scrollTo({ top: 0 });
   };
-  const chooseLang = (l) => {
-    setLangState(l); persistLang(l);
-    try { const u = new URL(window.location.href); if (u.searchParams.has("lang")) { u.searchParams.set("lang", l); window.history.replaceState({}, "", u); } } catch {}
-  };
-  const resetFilters = () => { setNop("All NOPs"); setClasses([]); setInactive(false); setOffair(false); };
+  const setTab = (k) => { if (k !== tab) navigate({ view: VIEW_OF[k] }); };
+  // filter changes replace the URL (no history spam) but keep it shareable
+  useEffect(() => { try { if (window.location.search !== hrefFor({ sel })) window.history.replaceState({}, "", hrefFor({ sel })); } catch {} }, [nop, classes, inactive, offair, lang, sel]); // eslint-disable-line
+  const chooseLang = (l) => { setLangState(l); persistLang(l); };
+  const resetFilters = () => { setNop("All NOPs"); setClasses([]); setInactive(false); setOffair(false); setSel(null); };
 
   useEffect(() => {
     loadAll().then((d) => {
@@ -85,7 +114,7 @@ export default function Page() {
   if (err) return <div className="p-8 text-crit">{t("app.load_error", { err })}</div>;
   if (!data || !cfg) return <div className="min-h-screen flex items-center justify-center text-slate" role="status">{t("app.loading")}</div>;
   const snap = data.meta.snapshot || {};
-  const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setPick, classes, inactive, offairSites, includeOffair: offair };
+  const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setNop, setPick, classes, inactive, offairSites, includeOffair: offair, sel, setSel, navigate, hrefFor, openDrill: (id, focus) => setDrill({ id, focus }) };
   const empty = scope.length === 0 && !["dq", "tel", "cfg", "corr", "est"].includes(tab);
 
   const cfgH = configHash(cfg), cfgEdited = cfgH !== configHash(data.meta.config);
@@ -93,6 +122,7 @@ export default function Page() {
   const filtered = nop !== "All NOPs" || classes.length > 0 || inactive || offair;
   const scopeChip = [t("filter.scope_sites", { n: fInt(scope.length) }), nop === "All NOPs" ? t("filter.all_nops") : nop, classes.length ? classes.join(", ") : t("filter.all_classes")].join(" · ");
   return (
+    <NavCtx.Provider value={{ navigate, hrefFor, state: cur }}>
     <div className="min-h-screen">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 bg-white p-2 z-[2000]">{t("app.skip")}</a>
       <header className="sticky top-0 z-[500] shadow">
@@ -152,6 +182,7 @@ export default function Page() {
         </div>
       </header>
       <main id="main" className="max-w-[1560px] mx-auto p-5">
+        {notice && <div role="status" className="mb-3 text-[12.5px] border border-warn/60 bg-warn/10 rounded-md px-3 py-1.5 flex items-center gap-2">{t("nav.unknown_view", { v: notice, to: t(`nav.${VIEW_OF[tab]}`) })}<button onClick={() => setNotice(null)} className="ml-auto text-slate" aria-label={t("common.close")}>×</button></div>}
         {empty ? <Empty>{t("empty.no_sites")}</Empty> : <div key={lang}>
           {tab === "health" && <Health {...ctx} />}
           {tab === "acc" && <Accountability {...ctx} />}
@@ -171,6 +202,8 @@ export default function Page() {
       </main>
       <footer className="max-w-[1560px] mx-auto px-5 pb-6 text-[11px] text-mut">{t("footer.legend")}</footer>
       <SiteDrawer site={pick} cfg={cfg} onClose={() => setPick(null)} />
+      <DrillPanel drill={drill} scope={scope} nop={nop} cfg={cfg} onClose={() => setDrill(null)} />
     </div>
+    </NavCtx.Provider>
   );
 }

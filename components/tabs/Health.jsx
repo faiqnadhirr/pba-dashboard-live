@@ -18,7 +18,7 @@ function groupAvail(sites, key) {
   }).filter((r) => r.available);
 }
 
-export default function Health({ scope, data, nop, inactive, cfg }) {
+export default function Health({ scope, data, nop, inactive, cfg, openDrill, navigate, setNop }) {
   const a = useMemo(() => aggregateAvailability(scope), [scope]);
   const byKey = nop === "All NOPs" ? "nop" : "cluster_to";
   const rows = useMemo(() => groupAvail(scope, byKey), [scope, byKey]);
@@ -36,10 +36,10 @@ export default function Health({ scope, data, nop, inactive, cfg }) {
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Kpi scope="filtered" label={t("health.kpi.avail")} value={fPct(a.avail)} sub={t("health.kpi.avail_sub", { t: fPct(a.target), n: fInt(a.sitesWithData) })} />
         <Kpi scope="filtered" label={t("health.kpi.gap")} help={t("gloss.pp")} value={fPP(a.gap)} tone={a.gap < 0 ? "crit" : "good"} sub={t(a.gap < 0 ? "health.below_target" : "health.meets_target")} />
-        <Kpi scope="filtered" label={t("health.kpi.power")} value={a.gap < 0 ? fPP(a.contrib.power) : "—"} tone="crit" sub={t("health.kpi.power_sub", { p: fInt(a.powerSharePct || 0) })} />
-        <Kpi scope="filtered" label={t("health.kpi.below")} value={fInt(below)} sub={t("common.of_in_scope", { n: fInt(scope.length) })} tone="warn" />
-        <Kpi scope="filtered" label={t("health.kpi.downtime")} value={fH(a.outage)} sub={t("health.kpi.downtime_sub")} />
-        <Kpi scope="filtered" label={t("health.kpi.bbt")} help={t("gloss.bbt")} value={fInt(measured)} sub={t("health.kpi.bbt_sub")} />
+        <Kpi scope="filtered" label={t("health.kpi.power")} value={a.gap < 0 ? fPP(a.contrib.power) : "—"} tone="crit" onClick={() => openDrill("power_down")} sub={t("health.kpi.power_sub", { p: fInt(a.powerSharePct || 0) })} />
+        <Kpi scope="filtered" onClick={() => openDrill("below_target")} label={t("health.kpi.below")} value={fInt(below)} sub={t("common.of_in_scope", { n: fInt(scope.length) })} tone="warn" />
+        <Kpi scope="filtered" onClick={() => openDrill("downtime")} label={t("health.kpi.downtime")} value={fH(a.outage)} sub={t("health.kpi.downtime_sub")} />
+        <Kpi scope="filtered" onClick={() => openDrill("bbt_measured")} label={t("health.kpi.bbt")} help={t("gloss.bbt")} value={fInt(measured)} sub={t("health.kpi.bbt_sub")} />
       </div>
 
       <Card title={t("health.cause.title")} sub={t("health.cause.sub")}>
@@ -59,7 +59,7 @@ export default function Health({ scope, data, nop, inactive, cfg }) {
               </tbody>
             </table>
             <div className="space-y-3">
-              <Bar100 height={18} parts={CAUSES.map((c) => ({ label: tv("cause", c), c: CAUSE_COLOR[c], v: -(a.contrib[c] || 0), txt: fPP(a.contrib[c]) }))} />
+              <Bar100 height={18} onSeg={(p) => navigate({ view: "mbp.sitelist", sel: `cause~${p.k}` })} parts={CAUSES.map((c) => ({ k: c, label: tv("cause", c), c: CAUSE_COLOR[c], v: -(a.contrib[c] || 0), txt: fPP(a.contrib[c]) }))} />
               <div className="text-[12px] text-slate leading-relaxed">
                 {t("health.cause.unknown_expl")}{a.overlap ? " " + t("health.cause.overlap") : ""} {t("health.cause.proportional")}
               </div>
@@ -97,7 +97,7 @@ export default function Health({ scope, data, nop, inactive, cfg }) {
       </div>
 
       <Card title={t(byKey === "nop" ? "health.by.nop" : "health.by.cluster")} sub={t("health.by.sub")}>
-        <DataTable rows={rows} filename={`pba_availability_by_${byKey}.csv`} initialSort={{ key: "gap", dir: 1 }} pageSize={50} columns={[
+        <DataTable rows={rows} onRowClick={byKey === "nop" ? (r) => setNop(r.unit) : undefined} filename={`pba_availability_by_${byKey}.csv`} initialSort={{ key: "gap", dir: 1 }} pageSize={50} columns={[
           { key: "unit", label: byKey === "nop" ? "col.nop" : "col.cluster" }, { key: "sites", label: "col.sites", num: true, render: (r) => fInt(r.sites) },
           { key: "gap", label: "col.avail_triple", num: true, render: (r) => <AvailTriple a={r.avail} t={r.target} g={r.gap} compact />, csv: (r) => `${r.avail.toFixed(2)} / ${r.target.toFixed(2)} / ${r.gap.toFixed(2)}` },
           { key: "below", label: "col.sites_below", num: true, render: (r) => fInt(r.below) },

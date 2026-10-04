@@ -311,3 +311,9 @@ Flagged sites are excluded from every KPI unless the header toggle is on. They a
 
 - `engine/build.py` runs build sanity checks: the correlation n values equal the exported fields, the merge map was applied, and the monthly series is valid.
 - It then runs `npm test` (24 rule tests). The build fails if anything fails.
+
+## 11. v3.3 display additions (no scoring change)
+
+- **Coverage gap** = BBT status known AND (no MBP within radius OR MBP cannot arrive before effective BBT). Shown instead of "No action" only when the BBS action is "No action"; exported as `coverage_gap`.
+- **Engine text translation** happens in the UI (`lib/i18n-engine.js`); the engine and CSV keep English. Chosen over changing the engine to emit codes because the engine strings are produced in `lib/logic.js` (shared by UI, tests and CSV) — changing them would touch every decision path; pattern mapping keeps outputs byte-identical and a coverage test guards against untranslated strings.
+- **Drilldowns** (`lib/drill.js`): each KPI is a partition of the sites in scope into ≤ 5 evidence segments; "View N sites" applies exactly the same predicate in the Site list (test `2a` checks panel total = list rows).

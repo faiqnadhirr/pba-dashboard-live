@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { Card, Note, DataTable, Select, Slider, Toggle, LevelTag, EvTag, Tag, fInt, fMin, fKm, fH, f3, fPct, fNum, isNum } from "@/components/ui";
 import { t, tv } from "@/lib/i18n";
+import { te } from "@/lib/i18n-engine";
 import { simulate, kmeans } from "@/lib/logic";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
@@ -136,7 +137,7 @@ export default function SimTab({ model: scored, data, cfg, nop: gNop, setPick, s
                   { key: "feasible", label: "col.arrives_before_bbt", render: (r) => (r.feasible === true ? <Tag tone="good">✔ {t("common.yes")}</Tag> : r.feasible === false ? <Tag tone="crit">✖ {t("sim.no_fallback")}</Tag> : "—"), csv: (r) => (r.feasible == null ? "" : r.feasible ? "yes" : "no") },
                   { key: "outcome", label: "col.outcome", render: (r) => <Tag tone={r.outcome === "saved" ? "good" : r.outcome === "no_need" ? "mut" : "crit"} title={t(`sim.out.${r.outcome}`)}>{t(`sim.out.${r.outcome}`).split(" — ")[0]}</Tag>, csv: (r) => OUT_EN[r.outcome] },
                   { key: "expected_down_min", label: "col.expected_down", num: true, render: (r) => fMin(r.expected_down_min), csv: (r) => Math.round(r.expected_down_min) },
-                  { key: "reasons", label: "col.why", wrap: true },
+                  { key: "reasons", label: "col.why", wrap: true, render: (r) => te(r.reasons, "sim"), csv: (r) => r.reasons },
                 ]} />
               </div>
             </Card>

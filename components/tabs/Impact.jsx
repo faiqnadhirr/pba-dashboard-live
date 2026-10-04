@@ -3,9 +3,10 @@ import React, { useMemo, useState } from "react";
 import { Card, DataTable, AvailTriple, LevelTag, StatusTag, Tag, BbtCell, bbtCsv, Gloss, fInt, fH, fPP, fPct, f2 } from "@/components/ui";
 import { clusterTable, topWorstSites } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
+import { te } from "@/lib/i18n-engine";
 
 export const TrendTag = ({ r }) => (
-  <Tag tone={r.trend === "Deteriorating" ? "crit" : r.trend === "Improving" ? "good" : r.trend === "Mixed" ? "warn" : "mut"} title={r.trend_why}>
+  <Tag tone={r.trend === "Deteriorating" ? "crit" : r.trend === "Improving" ? "good" : r.trend === "Mixed" ? "warn" : "mut"} title={te(r.trend_why, "trend")}>
     {r.trend === "Deteriorating" ? "▼ " : r.trend === "Improving" ? "▲ " : r.trend === "Mixed" ? "◆ " : ""}{tv("trend", r.trend)}</Tag>
 );
 const Parts = ({ parts, prefix }) => (
