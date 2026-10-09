@@ -26,6 +26,8 @@ import Performance from "@/components/tabs/Performance";
 import Backtest from "@/components/tabs/Backtest";
 import Dispatch from "@/components/tabs/Dispatch";
 import MbpPanel from "@/components/MbpPanel";
+import Area4 from "@/components/Area4";
+import DataInventory from "@/components/DataInventory";
 import { mbpPerformance } from "@/lib/mbpperf";
 import ConfigTab from "@/components/tabs/ConfigTab";
 
@@ -36,7 +38,7 @@ const GROUPS = [
   // v3.7 — MBP first: management overview → coverage → performance → relocation backtest → dispatch → simulation → fleet → site list → telemetry
   ["mbp", [["mgmt", "mbp.overview"], ["mbp", "mbp.coverage"], ["prod", "mbp.performance"], ["bt", "mbp.backtest"], ["disp", "mbp.dispatch"], ["sim", "mbp.simulation"], ["place", "mbp.placement"], ["list", "mbp.sitelist"], ["tel", "mbp.telemetry"]]],
   ["bbs", [["bbs", "bbs.actions"], ["est", "bbs.estimation"], ["corr", "bbs.correlation"]]],
-  ["data", [["dq", "data.quality"], ["cfg", "data.config"]]],
+  ["data", [["dq", "data.quality"], ["inv", "data.inventory"], ["cfg", "data.config"]]],
 ];
 const VIEW_OF = Object.fromEntries(GROUPS.flatMap(([, tabs]) => tabs.map(([k, v]) => [k, v])));
 const TAB_OF = Object.fromEntries(Object.entries(VIEW_OF).map(([k, v]) => [v, k]));
@@ -45,20 +47,27 @@ const DEFAULT_TAB = "mgmt";
 // v3.7 — the Overview (availability) menu is hidden from the presentation flow; ?full=1 (or opening one of its views) shows it again
 const HIDDEN_GROUP = "overview";
 // tabs that do not follow the period filter (decisions / estimators / fixed Q1-vs-Q2 comparison)
-const FIXED_TABS = new Set(["trend", "sim", "place", "prod", "mgmt", "bt", "disp", "est", "corr", "tel", "cfg"]);
+const FIXED_TABS = new Set(["inv", "trend", "sim", "place", "prod", "mgmt", "bt", "disp", "est", "corr", "tel", "cfg"]);
 const FIRST_OF = Object.fromEntries(GROUPS.map(([g, tabs]) => [g, tabs[0][0]]));
 /** everything the URL can carry; an unknown ?view= falls back to its group's first sub-tab (or Health) with a notice */
 function readUrl() {
   try {
     const q = new URLSearchParams(window.location.search), v = q.get("view");
+    if (q.get("a4")) window.__pbaA4 = q.get("a4");      // AREA 4 sub-tab (read once before the URL is rewritten)
     let tab = TAB_OF[v] || DEFAULT_TAB, notice = null;
     if (v && !TAB_OF[v]) { const g = v.split(".")[0]; tab = FIRST_OF[g] || DEFAULT_TAB; notice = v; }
     if (v === "mbp.productivity") { tab = "prod"; notice = null; }        // v3.6 link → v3.7 Performance
-    return { tab, notice, full: q.get("full") === "1", nop: q.get("nop") || "All NOPs", cls: (q.get("cls") || "").split(",").filter(Boolean), inactive: q.get("inactive") === "1", offair: q.get("offair") === "1", gen: q.get("gen") === "1", sel: q.get("sel") || null, per: parsePeriod(q.get("per")).key };
+    return { tab, notice, full: q.get("full") === "1", area: q.get("area") === "4" ? "4" : "1", nop: q.get("nop") || "All NOPs", cls: (q.get("cls") || "").split(",").filter(Boolean), inactive: q.get("inactive") === "1", offair: q.get("offair") === "1", gen: q.get("gen") === "1", sel: q.get("sel") || null, per: parsePeriod(q.get("per")).key };
   } catch { return { tab: DEFAULT_TAB, full: false, nop: "All NOPs", cls: [], inactive: false, offair: false, gen: false, sel: null, per: "h1" }; }
 }
 const CLASSES = ["Diamond", "Platinum", "Gold", "Silver", "Bronze"];
 const LS_KEY = "pba.config.v3";
+
+function InventoryTab({ meta1 }) {
+  const [m4, setM4] = useState(null);
+  useEffect(() => { fetch("/data/a4/meta.json").then((r) => (r.ok ? r.json() : null)).then(setM4).catch(() => setM4(null)); }, []);
+  return <DataInventory meta1={meta1} meta4={m4} />;
+}
 
 export default function Page() {
   const [data, setData] = useState(null), [err, setErr] = useState(null), [cfg, setCfg] = useState(null);
@@ -66,12 +75,12 @@ export default function Page() {
   const [inactive, setInactive] = useState(false), [pick, setPick] = useState(null), [offair, setOffair] = useState(false);
   const [lang, setLangState] = useState("id");
   const [sel, setSel] = useState(null), [notice, setNotice] = useState(null), [drill, setDrill] = useState(null), [per, setPer] = useState("h1"), [gen, setGen] = useState(false), [pf, setPf] = useState(null);
-  const [full, setFull] = useState(false), [pickMbp, setPickMbp] = useState(null);
+  const [full, setFull] = useState(false), [pickMbp, setPickMbp] = useState(null), [area, setArea] = useState("1");
   setLang(lang);                                   // module-level language for t() and number formatters (set before children render)
   useEffect(() => {
     document.title = "PBA — Power Backup Analytic";
     const l = initialLang(); setLangState(l); persistLang(l);       // ?lang= is remembered
-    const apply = () => { const u = readUrl(); setTabState(u.tab); setNop(u.nop); setClasses(u.cls); setInactive(u.inactive); setOffair(u.offair); setGen(u.gen); setSel(u.sel); setNotice(u.notice); setPer(u.per); setFull(u.full); };
+    const apply = () => { const u = readUrl(); setTabState(u.tab); setNop(u.nop); setClasses(u.cls); setInactive(u.inactive); setOffair(u.offair); setGen(u.gen); setSel(u.sel); setNotice(u.notice); setPer(u.per); setFull(u.full); setArea(u.area); };
     apply();
     const onPop = () => apply();
     window.addEventListener("popstate", onPop);
@@ -79,7 +88,7 @@ export default function Page() {
   }, []);
   useEffect(() => { document.documentElement.lang = lang; }, [lang]);
   // URL builder: current state + overrides. Language is always carried so shared links open in the same language.
-  const cur = { view: VIEW_OF[tab], nop, cls: classes, inactive, offair, gen, sel, per, lang, full };
+  const cur = { view: VIEW_OF[tab], nop, cls: classes, inactive, offair, gen, sel, per, lang, full, area };
   const hrefFor = (o = {}) => {
     const st = { ...cur, sel: null, ...o }, q = new URLSearchParams();
     q.set("view", st.view);
@@ -91,6 +100,7 @@ export default function Page() {
     if (st.sel) q.set("sel", st.sel);
     if (st.per && st.per !== "h1") q.set("per", st.per);
     if (st.full) q.set("full", "1");
+    if (st.area === "4") { q.set("area", "4"); try { const a4 = new URLSearchParams(window.location.search).get("a4"); if (a4) q.set("a4", a4); } catch {} }
     q.set("lang", st.lang);
     return `?${q.toString()}`;
   };
@@ -103,7 +113,7 @@ export default function Page() {
   };
   const setTab = (k) => { if (k !== tab) navigate({ view: VIEW_OF[k] }); };
   // filter changes replace the URL (no history spam) but keep it shareable
-  useEffect(() => { try { if (window.location.search !== hrefFor({ sel })) window.history.replaceState({}, "", hrefFor({ sel })); } catch {} }, [nop, classes, inactive, offair, gen, lang, sel, per, full]); // eslint-disable-line
+  useEffect(() => { try { if (window.location.search !== hrefFor({ sel })) window.history.replaceState({}, "", hrefFor({ sel })); } catch {} }, [nop, classes, inactive, offair, gen, lang, sel, per, full, area]); // eslint-disable-line
   const chooseLang = (l) => { setLangState(l); persistLang(l); };
   const resetFilters = () => { setNop("All NOPs"); setClasses([]); setInactive(false); setOffair(false); setGen(false); setSel(null); setPer("h1"); };
 
@@ -152,7 +162,7 @@ export default function Page() {
   if (!data || !cfg) return <div className="min-h-screen flex items-center justify-center text-slate" role="status">{t("app.loading")}</div>;
   const snap = data.meta.snapshot || {};
   const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setNop, setPick, classes, inactive, offairSites, includeOffair: offair, gensetSites, includeGenset: genOn, sel, setSel, navigate, hrefFor, per, period: P, periodText: periodLabel(P), openDrill: (id, focus, sites) => setDrill({ id, focus, sites }), perf, tickets: data.tickets || [], openMbp: setPickMbp, allNops, active };
-  const empty = scope.length === 0 && !["dq", "tel", "cfg", "corr", "est"].includes(tab);
+  const empty = scope.length === 0 && !["dq", "tel", "cfg", "corr", "est", "inv"].includes(tab);
 
   const cfgH = configHash(cfg), cfgEdited = cfgH !== configHash(data.meta.config);
   const activeGroup = groupOf(tab);
@@ -168,19 +178,25 @@ export default function Page() {
           <div className="max-w-[1560px] mx-auto px-4 h-11 flex items-center gap-3">
             <div className="flex items-center gap-2 min-w-0 shrink-0">
               <span className="text-[16px] font-bold whitespace-nowrap">PBA — Power Backup Analytic</span>
-              <span className="hidden lg:inline px-1.5 py-[1px] rounded bg-white/15 text-[11px] whitespace-nowrap" title={t("header.snapshot_tip")}>{t("header.snapshot")} {snap.period_start} → {snap.period_end}</span>
+              {area === "1" && <span className="hidden 2xl:inline px-1.5 py-[1px] rounded bg-white/15 text-[11px] whitespace-nowrap" title={t("header.snapshot_tip")}>{t("header.snapshot")} {snap.period_start} → {snap.period_end}</span>}
               <span className="px-1.5 py-[1px] rounded bg-warn text-ink text-[11px] font-semibold whitespace-nowrap" title={t("header.demo_tip")}>{t("header.demo")}</span>
               <span className={`px-1.5 py-[1px] rounded text-[11px] tabular whitespace-nowrap ${cfgEdited ? "bg-crit text-white" : "bg-white/15"}`}
                 title={t("header.cfg_tip", { h: cfgH, s: t(cfgEdited ? "cfg.is_edited" : "cfg.is_default") })}>{t("header.cfg")} {cfgH}{cfgEdited ? " ✎" : ""}</span>
             </div>
-            <nav className="flex items-stretch h-full ml-1" aria-label={t("nav.main")}>
+            {area === "1" && <nav className="flex items-stretch h-full ml-1" aria-label={t("nav.main")}>
               {groups.map(([g, tabs]) => (
                 <button key={g} onClick={() => activeGroup !== g && setTab(tabs[0][0])} aria-current={activeGroup === g ? "true" : undefined}
                   className={`px-3 text-[13px] font-semibold border-b-[3px] whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn ${activeGroup === g ? "border-warn text-white" : "border-transparent text-white/70 hover:text-white"}`}>{t(`nav.${g}`)}</button>
               ))}
-            </nav>
+            </nav>}
+            {area === "4" && <span className="ml-2 text-[12.5px] text-white/85">{t("a4.header")}</span>}
             <div className="ml-auto flex items-center gap-3 text-[11.5px] text-white/80 shrink-0">
-              <span className="hidden xl:inline whitespace-nowrap" title={t("header.refresh_tip")}>{t("header.refresh")} {snap.refreshed_at || data.meta.built_at}</span>
+              <div className="flex rounded-md overflow-hidden border border-white/40" role="group" aria-label={t("header.area")}>
+                {["1", "4"].map((a) => (
+                  <button key={a} onClick={() => { setArea(a); window.scrollTo({ top: 0 }); }} aria-pressed={area === a}
+                    className={`px-2 py-0.5 text-[12px] font-semibold whitespace-nowrap ${area === a ? "bg-warn text-ink" : "text-white/80 hover:text-white"}`}>AREA {a}</button>))}
+              </div>
+              <span className="hidden 2xl:inline whitespace-nowrap" title={t("header.refresh_tip")}>{t("header.refresh")} {snap.refreshed_at || data.meta.built_at}</span>
               <div className="flex rounded-md overflow-hidden border border-white/40" role="group" aria-label={t("header.language")}>
                 {["en", "id"].map((l) => (
                   <button key={l} onClick={() => chooseLang(l)} aria-pressed={lang === l}
@@ -190,7 +206,7 @@ export default function Page() {
             </div>
           </div>
         </div>
-        <div className="bg-[#2a3655] text-white">
+        {area === "1" && <><div className="bg-[#2a3655] text-white">
           <nav className="max-w-[1560px] mx-auto px-3 flex overflow-x-auto" aria-label={t(`nav.${activeGroup}`)}>
             {GROUPS.find(([g]) => g === activeGroup)[1].map(([k, v]) => (
               <button key={k} onClick={() => setTab(k)} aria-current={tab === k ? "page" : undefined}
@@ -222,9 +238,10 @@ export default function Page() {
             <PeriodBar per={per} setPer={setPer} loading={perLoading} error={perErr} />
             {!isFull(P) && <span className="ml-auto text-[11px] text-mut whitespace-nowrap" title={t("per.fixed_tip")}>{t("per.fixed_short")}</span>}
           </div>
-        </div>
+        </div></>}
       </header>
       <main id="main" className="max-w-[1560px] mx-auto p-5">
+        {area === "4" ? <div key={"a4" + lang}><Area4 cfg={cfg} setRadius={setRadius} setPick={setPick} meta1={data.meta} /></div> : <>
         {notice && <div role="status" className="mb-3 text-[12.5px] border border-warn/60 bg-warn/10 rounded-md px-3 py-1.5 flex items-center gap-2">{t("nav.unknown_view", { v: notice, to: t(`nav.${VIEW_OF[tab]}`) })}<button onClick={() => setNotice(null)} className="ml-auto text-slate" aria-label={t("common.close")}>×</button></div>}
         {!isFull(P) && FIXED_TABS.has(tab) && <div role="status" className="mb-3 text-[12.5px] border border-s1/30 bg-s1/5 rounded-md px-3 py-1.5">{t("per.tab_fixed", { p: periodLabel(P) })}</div>}
         {empty ? <Empty>{t("empty.no_sites")}</Empty> : <div key={lang}>
@@ -246,7 +263,9 @@ export default function Page() {
           {tab === "dq" && <DataQuality {...ctx} />}
           {tab === "tel" && <Telemetry {...ctx} />}
           {tab === "cfg" && <ConfigTab {...ctx} />}
+          {tab === "inv" && <InventoryTab meta1={data.meta} />}
         </div>}
+        </>}
       </main>
       <footer className="max-w-[1560px] mx-auto px-5 pb-6 text-[11px] text-mut">{t("footer.legend")}
         {" "}<button className="underline hover:text-ink" onClick={() => navigate(full || activeGroup === HIDDEN_GROUP ? { view: VIEW_OF[DEFAULT_TAB], full: false } : { view: "overview.health", full: true })}>

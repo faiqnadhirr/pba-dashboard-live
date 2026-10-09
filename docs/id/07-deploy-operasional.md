@@ -59,7 +59,7 @@ vercel --prod
 | Langkah | Perintah / tindakan | Cek |
 |---|---|---|
 | 1 | Taruh file mentah baru di satu folder (pola nama sama, lihat [03 §2](03-data-pipeline.md#2-file-sumber)) | Kualitas data › sumber menampilkan jumlah dan waktu file setelah build |
-| 2 | `cd engine` → `python build.py --raw "<folder>"` | Semua cek kewajaran build PASS; `npm test` 48/48 di akhir |
+| 2 | `cd engine` → `python build.py --raw "<folder>"` | Semua cek kewajaran build PASS; `npm test` 49/49 di akhir |
 | 3 | `python validate.py` | `docs/VALIDATION_REPORT.md` = ALL CHECKS PASSED (25/25) |
 | 4 | `npm run build` (cek lokal, opsional) lalu buka aplikasi | Tanggal snapshot dan waktu refresh di header ter-update |
 | 5 | Unggah `public/data/` yang berubah (dan `docs/VALIDATION_REPORT.md`) ke GitHub | Vercel otomatis deploy ulang |

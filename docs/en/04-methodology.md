@@ -201,7 +201,7 @@ Observed, time-stamped quantities are re-summed over the selected days from `per
 - **Map modes:** each site gets one category key per mode (e.g. Health: ≥ 1 pp below / < 1 pp below / meets / no data); problem categories are defined per mode.
 - **Roll-up:** a cluster or NOP is the multiset of its sites: counts per category, number and share of problem sites, sum of the magnitude (hours). The justification panel lists the clusters of a NOP and the problem sites with the largest magnitude, each with its own reason. Tested for every mode: NOP = Σ clusters = Σ sites.
 
-## 16. Ops feedback (v3.7)
+## 16. Ops feedback (v3.8)
 
 Changes agreed with operations (Ayatullah, Pak Nizar), all computed per site and rolled up.
 
@@ -221,7 +221,7 @@ Changes agreed with operations (Ayatullah, Pak Nizar), all computed per site and
 
 **Productivity.** Per base camp from MBP tickets (not cancelled): tickets, PLN-off, check-ins, distinct sites, RH total/mean/median, median takeover → check-in. Area visit rate = PLN-off tickets with a check-in ÷ PLN-off tickets of the sites assigned to the camp.
 
-## 17. MBP performance, backtest, dispatch and BBS action types (v3.7)
+## 17. MBP performance, backtest, dispatch and BBS action types (v3.8)
 
 **Jobs.** `tickets.json` = every MBP ticket taken over by a base camp (not cancelled) with occurrence, take-over delay, check-in delay, job hours (take-over → RH stop, 0–48 h, else RH hours), resolution (genset / PLN back / no check-in / other) and RC (PLN off / no battery / power rental / other). 46,996 jobs in H1, 39,139 of them PLN off.
 

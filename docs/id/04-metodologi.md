@@ -201,7 +201,7 @@ Besaran teramati yang bertanggal dijumlahkan ulang untuk hari yang dipilih dari 
 - **Mode peta:** setiap site mendapat satu kunci kategori per mode (misal Kesehatan: ≥ 1 pp di bawah / < 1 pp di bawah / memenuhi / tidak ada data); kategori bermasalah ditentukan per mode.
 - **Roll-up:** cluster atau NOP adalah kumpulan site-nya: jumlah per kategori, jumlah dan porsi site bermasalah, jumlah besaran (jam). Panel justifikasi menampilkan cluster di sebuah NOP dan site bermasalah dengan besaran terbesar, masing-masing dengan alasannya sendiri. Diuji untuk setiap mode: NOP = Σ cluster = Σ site.
 
-## 16. Masukan ops (v3.7)
+## 16. Masukan ops (v3.8)
 
 Perubahan yang disepakati dengan operasional (Ayatullah, Pak Nizar), semuanya dihitung per site lalu dijumlahkan.
 
@@ -221,7 +221,7 @@ Perubahan yang disepakati dengan operasional (Ayatullah, Pak Nizar), semuanya di
 
 **Produktivitas.** Per base camp dari tiket MBP (tidak canceled): tiket, PLN off, check-in, site unik, RH total/rata-rata/median, median takeover → check-in. Rasio visit wilayah = tiket PLN off yang punya check-in ÷ tiket PLN off dari site yang ditugaskan ke base camp.
 
-## 17. Performa MBP, backtest, dispatch dan jenis aksi BBS (v3.7)
+## 17. Performa MBP, backtest, dispatch dan jenis aksi BBS (v3.8)
 
 **Job.** `tickets.json` = setiap tiket MBP yang di-takeover base camp (tidak canceled) dengan waktu kejadian, jeda takeover, jeda check-in, jam job (takeover → RH stop, 0–48 jam, kalau tidak ada jam RH), penyelesaian (genset / PLN nyala / tanpa check-in / lainnya) dan RC (PLN off / tidak ada baterai / sewa daya / lainnya). 46.996 job di H1, 39.139 di antaranya PLN off.
 

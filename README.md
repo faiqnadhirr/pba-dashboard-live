@@ -1,4 +1,4 @@
-# PBA — Power Backup Analytic (v3.7)
+# PBA — Power Backup Analytic (v3.8)
 
 Decision-support dashboard for Telkomsel **AREA1** power backup (ENOM · Triple-E).
 Dasbor pendukung keputusan untuk backup daya Telkomsel **AREA1** (ENOM · Triple-E).
@@ -22,6 +22,7 @@ Dasbor pendukung keputusan untuk backup daya Telkomsel **AREA1** (ENOM · Triple
 - **Every number is computed per site and rolled up** to cluster and NOP; every menu opens with a clickable hero map whose legend filters the tab, and a Site · Cluster · NOP justification panel.
 - **v3.6 (ops feedback):** fixed-genset sites excluded from MBP analysis; 'No battery' tickets are a field-check flag, not a status; BBT design-vs-actual gap; 30-min response target with kecamatan-level placement and fleet dimensioning (concurrency); base-camp centre of gravity → kecamatan; MBP productivity tab.
 - **v3.7:** MBP-first navigation (Overview hidden for presentations, `?full=1`); MBP overview per NOP; MBP performance & utilisation from H1 job tickets; relocation backtest (replay); static dispatch priority with audit; BBS action types incl. *check rectifier/LVD/BMS setting*.
+- **v3.8:** AREA 4 (light) — availability & causes, weekly/monthly trend, battery from BBT Site Details, field staff (HW Master FME); *Data available* page with the feature matrix per AREA and the next data to send. Rebuild: `python engine/build_area4.py`.
 - Every value carries its evidence: **ACTUAL · DERIVED · ESTIMATED · PROXY · UNAVAILABLE**. Bilingual UI (ID default, EN); CSV exports in English.
 
 ### Quick start (Windows)
@@ -30,7 +31,7 @@ Dasbor pendukung keputusan untuk backup daya Telkomsel **AREA1** (ENOM · Triple
 cd C:\PBA\pba-dashboard
 npm install
 npm run dev          # http://localhost:3000
-npm test             # 48 regression tests
+npm test             # 49 regression tests
 ```
 
 ### Rebuild the data (Python 3.11+)
@@ -68,6 +69,7 @@ docs/         en/, id/, CHANGELOG, telemetry design, validation report
 - **Setiap angka dihitung per site lalu dijumlahkan** ke cluster dan NOP; setiap menu dibuka dengan peta utama yang bisa diklik, legenda yang memfilter tab, dan panel justifikasi Site · Cluster · NOP.
 - **v3.6 (masukan ops):** site genset tetap dikecualikan dari analisa MBP; tiket 'Tidak Ada Baterai' hanya tanda cek lapangan, bukan status; gap BBT desain vs aktual; target respons 30 mnt dengan penempatan level kecamatan dan dimensioning armada (konkurensi); center of gravity base camp → kecamatan; tab produktivitas MBP.
 - **v3.7:** navigasi MBP-first (Ringkasan disembunyikan untuk presentasi, `?full=1`); Ringkasan MBP per NOP; performa & utilisasi MBP dari tiket job H1; backtest relokasi (replay); prioritas dispatch statis dengan audit; jenis aksi BBS termasuk *cek setting rectifier/LVD/BMS*.
+- **v3.8:** AREA 4 (ringan) — availability & penyebab, tren mingguan/bulanan, baterai dari BBT Site Details, tenaga lapangan (HW Master FME); halaman *Data tersedia* dengan matriks fitur per AREA dan data berikutnya yang perlu dikirim. Build ulang: `python engine/build_area4.py`.
 - Setiap nilai membawa buktinya: **ACTUAL · DERIVED · ESTIMATED · PROXY · UNAVAILABLE**. Tampilan dua bahasa (default ID, ada EN); ekspor CSV berbahasa Inggris.
 
 ### Mulai cepat (Windows)
@@ -76,7 +78,7 @@ docs/         en/, id/, CHANGELOG, telemetry design, validation report
 cd C:\PBA\pba-dashboard
 npm install
 npm run dev          # http://localhost:3000
-npm test             # 48 tes regresi
+npm test             # 49 tes regresi
 ```
 
 ### Membangun ulang data (Python 3.11+)

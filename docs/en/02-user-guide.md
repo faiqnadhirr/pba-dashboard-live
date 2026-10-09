@@ -22,7 +22,7 @@ This guide walks through every screen. Screens are in Indonesian by default; swi
   - **Class** — Diamond, Platinum, Gold, Silver, Bronze (multi-select).
   - **+ inactive** — include sites that are not active in Dapot.
   - **+ off-air** — include sites flagged as suspected off-air / dismantled / data issue (excluded by default; see [04 §13](04-methodology.md#13-off-air--data-issue-flag)).
-  - **+ fixed genset** (v3.7) — include sites with a fixed genset (excluded by default: they back themselves up, so they need no MBP and are left out of PLN-off/MBP analysis; see [04 §16](04-methodology.md#16-ops-feedback-v36)). URL `gen=1`.
+  - **+ fixed genset** (v3.8) — include sites with a fixed genset (excluded by default: they back themselves up, so they need no MBP and are left out of PLN-off/MBP analysis; see [04 §16](04-methodology.md#16-ops-feedback-v36)). URL `gen=1`.
   - **Scope chip** — what is currently included; **Reset filter** clears NOP, class, toggles, period and Site-list presets.
 - **KPI badges.** *filtered* = follows the filter bar. *portfolio* = whole AREA1 regardless of the filter (used for statistics that need many sites, e.g. correlation). *full H1* (amber) = this figure depends on BBT/priority/coverage, which always use the full snapshot even when a shorter period is selected.
 
@@ -98,7 +98,7 @@ Map modes per menu:
 ### 4.5 MBP › Coverage & map (Cakupan & peta)
 - **KPIs:** Sites within MBP radius · MBP arrives before BBT · Late & site goes dark · BBT unknown · Average ETA (assigned) · Under-served base camps (portfolio).
 - **Coverage breakdown:** every site counted once in exactly one of five segments (arrive / late & dark / late, no dark evidence / BBT unknown / beyond radius); the five always add up to the scope.
-- **Reachable ≤ 30 min** (v3.7): share of sites whose fastest MBP within the radius arrives within the ops response target (default 30 min, ETA **includes** 15 min mobilisation), plus a bar of the ETA bands ≤ 30 · 30–60 · 60–120 · > 120 min · beyond radius · island.
+- **Reachable ≤ 30 min** (v3.8): share of sites whose fastest MBP within the radius arrives within the ops response target (default 30 min, ETA **includes** 15 min mobilisation), plus a bar of the ETA bands ≤ 30 · 30–60 · 60–120 · > 120 min · beyond radius · island.
 - **Map** with MBP layers (§3). The legend filter here drives the KPIs and breakdown of this tab.
 - **Base camp analysis** (decision support): sites assigned, P1+P2, share dark before MBP, average km/ETA, workload, signal (Under-served / Balanced / Possibly over-served) with the criteria met.
 - **Suggested locations** for extra MBPs / relocation (straight-line, snapped to a real anchor site).
@@ -190,3 +190,10 @@ Opened from any site row, map card or panel. It shows, top to bottom: identity (
 - **Relocation backtest:** choose the NOP, the base camp (under-utilised first), the destination (automatic shortlist or any kecamatan) and *move within the same cluster* or the whole NOP. KPIs: on time with today's locations vs after the move, the camp's jobs and occupancy before → after, colour before → after, shift km; scenario map; candidate table; *Test all* for every grey camp of the NOP.
 - **Dispatch priority:** choose a base camp; punch list of its sites (assigned + served in H1) ranked savable-first then score; tick or paste the sites that are down now → recommended order with the reason; audit of H1 decisions (priority followed %, exceptions); *Download dependency template* for NOP officers.
 - **BBS › actions:** *Action types* tiles (replace · upgrade · check setting · capacity test / verify · collect data · monitor) — a click switches the map to *Action type* and filters the list; new chip *Action type* in the list; the map subtitle states that colour = BBS priority, not site class.
+
+## 10. v3.8 — AREA 4 and "Data available"
+
+- **AREA 1 | AREA 4** switch in the header (URL `area=4`). AREA 4 is a light version built from the data received so far.
+- **AREA 4 tabs:** *AREA 4 overview* (KPIs, hero map coloured by availability gap / main cause / battery, per-NOP table) · *Availability & causes* (weekly W1–W31 and monthly Jan–Jul trend, per cluster and per kecamatan) · *Battery (BBT)* (status from the BBT Site Details snapshot, problem list; a warning explains that ≈ 77 % of measured sites show ≤ 5 min and the file period must be confirmed) · *Field staff & BPS* (BPS / TS / PM from the HW Master FME on the map, sites within the radius of a BPS, workload per person) · *Data available*.
+- **Data & Config › Data available** (both areas): feature matrix (✔ / ◐ / ✖ per AREA with the missing source), loaded sources, and the next files to send in priority order.
+- AREA 4 has no MBP tickets, BBT events, battery inventory or PLN intervals yet, so MBP performance / backtest / dispatch and BBS action rules stay AREA 1 only.

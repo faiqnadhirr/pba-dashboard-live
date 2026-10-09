@@ -20,7 +20,7 @@ Setiap angka di PBA **dihitung per site terlebih dulu**, lalu dijumlahkan ke clu
 | 05 | [Referensi konfigurasi](05-konfigurasi.md) | Analis, admin | Setiap kunci di `engine/config/*.yaml`, nilai default dan efeknya; tab Config (what-if) |
 | 06 | [Arsitektur & kode](06-arsitektur.md) | Developer | Struktur repo, alur data, modul, state URL, i18n, terjemahan teks engine, titik ekstensi |
 | 07 | [Deploy & operasional](07-deploy-operasional.md) | Developer, operator | Jalankan lokal, deploy Vercel dengan login, rutinitas refresh data, environment variable, aturan keamanan, troubleshooting |
-| 08 | [Pengujian & QA](08-pengujian-qa.md) | Developer, reviewer | 48 tes regresi, 25 cek validasi, cek kewajaran build, checklist QA manual |
+| 08 | [Pengujian & QA](08-pengujian-qa.md) | Developer, reviewer | 49 tes regresi, 25 cek validasi, cek kewajaran build, checklist QA manual |
 | 09 | [Keterbatasan, asumsi & roadmap](09-keterbatasan-roadmap.md) | Manajemen, reviewer | Yang belum bisa dijawab data, item PROXY/ESTIMASI, pertanyaan terbuka, telemetri, opsi integrasi Watson (PHP) |
 | 10 | [Glosarium](10-glosarium.md) | Semua | Istilah, singkatan dan tag bukti (ID ↔ EN) |
 | — | [Changelog](../CHANGELOG.md) | Semua | Riwayat versi v1 → v3.5 |

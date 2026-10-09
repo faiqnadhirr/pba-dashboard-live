@@ -607,3 +607,23 @@ test("v3.7 ideal utilisation: need = outages longer than BBT (histogram split li
   assert.ok(tot[0] > 20000 && tot[1] / tot[0] > 0.5 && tot[1] / tot[0] < 2, `AREA serapan ${tot[1] / tot[0]}`);
   for (const p of P.values()) if (p.resp != null) assert.ok(Math.abs(p.resp - p.area_pln_jobs / p.need) < 1e-9);
 });
+
+// ---------------------------------------------------------------- v3.8 AREA 4 (light)
+test("v3.8 AREA 4: battery status from BBT Site Details, roll-up sums, field reach", async () => {
+  const { a4Battery, a4Model, a4Rollup, a4Field } = await import("../lib/area4.js");
+  assert.equal(a4Battery({ bbt_category: "BBT", bbt_median_min: 3 }, cfg).status, "Dead");
+  assert.equal(a4Battery({ bbt_category: "BBT", bbt_median_min: 45 }, cfg).status, "Degraded");
+  assert.equal(a4Battery({ bbt_category: "Only Mains Fail", backup_min: 40 }, cfg).status, "held");
+  assert.equal(a4Battery({ bbt_category: "Only Mains Fail", backup_min: 130 }, cfg).status, "Meets design");
+  assert.equal(a4Battery({}, cfg).status, "Unknown");
+  if (!fs.existsSync("public/data/a4/sites.json")) return;
+  const S = a4Model(fromColumnar(JSON.parse(fs.readFileSync("public/data/a4/sites.json", "utf8"))), cfg);
+  const F = fromColumnar(JSON.parse(fs.readFileSync("public/data/a4/fme.json", "utf8")));
+  assert.ok(S.length > 15000 && F.length > 500);
+  assert.ok(!Object.keys(F[0]).some((k) => /mail|phone/i.test(k)), "no personal contact data exported");
+  const nops = a4Rollup(S, "nop"), cl = a4Rollup(S, "cluster_to");
+  assert.equal(nops.reduce((a, r) => a + r.sites, 0), S.length);
+  assert.ok(Math.abs(nops.reduce((a, r) => a + r.out, 0) - cl.reduce((a, r) => a + r.out, 0)) < 1e-6);
+  const fr = a4Field(S.slice(0, 3000), F, cfg.mbp.max_radius_km);
+  assert.ok(fr.rows.every((r) => r.within <= r.sites));
+});

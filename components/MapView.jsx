@@ -88,7 +88,7 @@ function SiteLayer({ sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, onPick, zo
 
 export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSite, mbpStats, fitKey = "", height = 520, colorOverride, legendOverride, keyOverride,
   defaultMode = "priority", extraMbps = [], compact = false, mode: modeProp, onMode, hidden: hiddenProp, onHidden, modes = ["priority", "design", "survival"],
-  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true, mbpKeyOf, mbpLegend, mbpPerf, onOpenMbp, mbpLabel }) {
+  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true, mbpKeyOf, mbpLegend, mbpPerf, onOpenMbp, mbpLabel, hollowOverride, ttOverride, cardRows, hollowLabel, mbpLegendTitle }) {
   const [mbpHidden, setMbpHidden] = useState([]);
   const [tileFail, setTileFail] = useState(0), [tileOk, setTileOk] = useState(0);
   const [showSites, setShowSites] = useState(true), [showMbps, setShowMbps] = useState(true), [coverage, setCoverage] = useState(false);
@@ -104,8 +104,8 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
   const colorOf = useMemo(() => colorOverride || modeColor(mode), [colorOverride, mode]);
   const keyOf = keyOverride || (MM ? MM.key : null);
   const legend = legendOverride || modeLegend(mode);
-  const hollowOf = useMemo(() => (MM ? MM.hollow || (() => false) : (s) => !s.covered), [MM]);
-  const ttLine = useMemo(() => (MM ? (s) => siteWhy(mode, s) : (s) => `MBP-${s.mbp_priority_level} · ${tv("status", s.bbt_status)}`), [MM, mode]);
+  const hollowOf = useMemo(() => hollowOverride || (MM ? MM.hollow || (() => false) : (s) => !s.covered), [MM, hollowOverride]);
+  const ttLine = useMemo(() => ttOverride || (MM ? (s) => siteWhy(mode, s) : (s) => `MBP-${s.mbp_priority_level} · ${tv("status", s.bbt_status)}`), [MM, mode, ttOverride]);
   // v3.5 — roll-up level: site dots, or one pie bubble per cluster / NOP (every bubble = its sites)
   const [level, setLevel] = useState(defaultLevel), [unit, setUnit] = useState(null);
   const canRoll = !!MM && !compact;
@@ -219,7 +219,9 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             {selSite && (
               <div>
                 <div className="font-semibold text-navy text-[13px] pr-4">● {selSite.site_id} · {selSite.site_name}</div>
-                <div className="text-mut mb-1">{selSite.site_class} · {selSite.nop} · {tv("access", selSite.access_class)}</div>
+                <div className="text-mut mb-1">{selSite.site_class} · {selSite.nop} · {cardRows ? selSite.cluster_to : tv("access", selSite.access_class)}</div>
+                {cardRows && <table className="w-full"><tbody>{cardRows(selSite).map(([k, v]) => <tr key={k}><td className="text-mut py-0.5 pr-2">{k}</td><td className="text-right font-medium">{v}</td></tr>)}</tbody></table>}
+                {!cardRows && <>
                 {MM && <div className="text-[11.5px] text-ink bg-surface border border-line rounded px-2 py-1 mb-1"><b>{t("map.why_title")}:</b> {siteWhy(mode, selSite)}</div>}
                 {canRoll && <div className="text-[11px] text-slate mb-1">{t("map.rollup_to")}{" "}
                   <button className="text-s1 underline" onClick={() => setUnit({ level: "cluster", id: selSite.cluster_to })}>{selSite.cluster_to}</button> ›{" "}
@@ -231,7 +233,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
                     [t("col.mbp_assigned_nearest"), `${selSite.dist_mbp || "—"}${selSite.within_radius ? "" : " — " + t("mbp.seg.beyond").toLowerCase()}`], [t("map.dist_eta"), `${fKm(selSite.dist_km)} · ${fMin(selSite.dist_eta_min)}${selSite.access_class === "island" ? ` (${t("site.sea_access")})` : ""}`],
                     [t("map.inside_cov"), selSite.covered ? t("map.inside_yes", { n: selSite.mbps_in_radius, r: R }) : t("map.inside_no", { km: fKm(selSite.nearest_mbp_km) })],
                     [t("col.arrives_before_bbt"), selSite.bbt_status === "Unknown" ? `? ${t("eta.bbt_unknown_short")}` : selSite.can_arrive_before_bbt ? `✔ ${t("common.yes")}` : `✖ ${t("common.no")}`]].map(([k, v]) => <tr key={k}><td className="text-mut py-0.5 pr-2">{k}</td><td className="text-right font-medium">{v}</td></tr>)}
-                </tbody></table>
+                </tbody></table></>}
                 {onPickSite && <button onClick={() => onPickSite(selSite)} className="mt-2 w-full bg-navy text-white rounded py-1 text-[12px]">{t("map.open_detail")}</button>}
               </div>
             )}
@@ -239,7 +241,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
         )}
       </div>
       {mbpKeyOf && mbpLegend && showMbpLayers && <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 mt-2 text-[11.5px] text-slate" role="group" aria-label={t("perf.legend")}>
-        <span className="text-ink font-medium">🚚 {t("perf.legend")}:</span>
+        <span className="text-ink font-medium">🚚 {mbpLegendTitle || t("perf.legend")}:</span>
         {mbpLegend.map((l) => { const on = !mbpHidden.includes(l.k); return (
           <button key={l.k} onClick={() => setMbpHidden(on ? [...mbpHidden, l.k] : mbpHidden.filter((x) => x !== l.k))} aria-pressed={on} className={chip(on)} title={l.tip || ""}>
             <span className="w-2.5 h-2.5 rounded-sm inline-block border border-navy/40" style={{ background: on ? l.c : "#C9CFD9" }} />{l.label}<span className="tabular text-mut">{fInt(mbpCounts[l.k] || 0)}</span></button>); })}
@@ -256,7 +258,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             </button>) : <span key={l.label} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: l.c }} />{l.label}</span>;
         })}
         {keyOf && hidden.length > 0 && <button onClick={() => (onHidden || setHiddenL)([])} className="text-s1 underline">{t("map.leg_all")}</button>}
-        <span className="text-mut">· {level !== "site" && canRoll ? t("map.leg.pie") : <>{MM?.size || !MM ? t("map.leg.size_m", { m: MM ? t(`map.size.${mode}`) : t("map.tt_power") }) : ""}{(MM ? MM.hollow : true) ? ` · ${MM ? t(`map.hollow.${mode}`) : t("map.leg.hollow", { r: R })}` : ""}</>} · {t("map.leg.click")}</span>
+        <span className="text-mut">· {level !== "site" && canRoll ? t("map.leg.pie") : <>{MM?.size || !MM ? t("map.leg.size_m", { m: MM ? t(`map.size.${mode}`) : t("map.tt_power") }) : ""}{(MM ? MM.hollow : true) ? ` · ${hollowLabel || (MM ? t(`map.hollow.${mode}`) : t("map.leg.hollow", { r: R }))}` : ""}</>} · {t("map.leg.click")}</span>
         {offline && <span className="text-[#8a5a00]">{t("map.offline")}</span>}
       </div>
       {canRoll && <RollupPanel unit={unit} sites={visAll} mode={mode} onOpen={setUnit} onClose={() => setUnit(null)} periodText={periodText}

@@ -5,7 +5,7 @@ PBA punya tiga gerbang otomatis dan satu checklist manual. Semua tes otomatis be
 ```text
 python engine/build.py     → cek kewajaran build → npm test (38) → build gagal bila ada error
 python engine/validate.py  → 25 cek              → docs/VALIDATION_REPORT.md
-npm test                   → 48 tes regresi pada lib/logic.js dan helper UI
+npm test                   → 49 tes regresi pada lib/logic.js dan helper UI
 ```
 
 ## 1. Tes regresi (`tests/logic.test.mjs`, `npm test`)
@@ -60,6 +60,7 @@ npm test                   → 48 tes regresi pada lib/logic.js dan helper UI
 | 46 | v3.7 dispatch | yang bisa diselamatkan dulu, lalu skor; audit hanya saat ada job lain menunggu |
 | 47 | v3.7 BBS | jenis aksi mencakup setiap aksi; Kritis baterai muda → cek setting (R6c) |
 | 48 | v3.7 utilisasi ideal | kebutuhan dari histogram durasi (dibagi linear di BBT); serapan = job PLN off wilayah ÷ kebutuhan; rasio AREA wajar |
+| 49 | v3.8 AREA 4 | aturan status baterai, NOP = Σ cluster, tidak ada data kontak pribadi diekspor, jangkauan BPS ≤ site |
 
 ## 2. Cek validasi (`engine/validate.py`)
 

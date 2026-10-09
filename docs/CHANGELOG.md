@@ -2,6 +2,13 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## v3.8 — AREA 4 (light) and "Data available"
+- AREA 1 | AREA 4 switch; AREA 4 overview, availability & causes (weekly W1–W31, monthly Jan–Jul, cluster / kecamatan), battery (BBT Site Details snapshot, with a data warning), field staff & BPS reach (HW Master FME, no personal contact data).
+- New pipeline `engine/build_area4.py` → `public/data/a4/`.
+- Data & Config › Data available: feature matrix per AREA, loaded sources, next data to send.
+- MapView: override props for custom colour modes, card rows, hollow label, base-camp legend title. Tests 48 → 49.
+- *ID:* AREA 4 versi ringan dan halaman Data tersedia.
+
 ## v3.7.1 — ideal utilisation, radius presets, RC "no battery" flag
 - **Ideal utilisation**: need = PLN outages longer than the site BBT (new per-site duration histogram `pln_dur_hist`); serapan kebutuhan = PLN-off jobs at the area sites ÷ need; map colour = under-utilised / under-responding / balanced / above need / high load; on time as second colour; scatter serapan vs occupancy; score serapan 35 · on time 35 · occupancy 30.
 - **Radius presets** 20/30/40/60/120 km on MBP overview (still adjustable via slider / Config).

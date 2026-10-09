@@ -21,7 +21,7 @@ Panduan ini membahas setiap layar. Tampilan default berbahasa Indonesia; ganti d
   - **NOP** — satu NOP atau semua. Angka dalam kurung = jumlah site dalam cakupan.
   - **Kelas** — Diamond, Platinum, Gold, Silver, Bronze (bisa pilih beberapa).
   - **+ non-aktif** — sertakan site yang tidak aktif di Dapot.
-  - **+ genset tetap** (v3.7) — sertakan site yang punya genset tetap (default dikecualikan: site membackup dirinya sendiri, jadi tidak butuh MBP dan tidak ikut analisa PLN off/MBP; lihat [04 §16](04-metodologi.md#16-masukan-ops-v36)). URL `gen=1`.
+  - **+ genset tetap** (v3.8) — sertakan site yang punya genset tetap (default dikecualikan: site membackup dirinya sendiri, jadi tidak butuh MBP dan tidak ikut analisa PLN off/MBP; lihat [04 §16](04-metodologi.md#16-masukan-ops-v36)). URL `gen=1`.
   - **+ off-air** — sertakan site yang ditandai dugaan off-air / dibongkar / masalah data (default tidak disertakan; lihat [04 §13](04-metodologi.md#13-flag-off-air--masalah-data)).
   - **Chip Cakupan** — apa yang sedang disertakan; **Reset filter** menghapus NOP, kelas, toggle, periode dan preset Daftar site.
 - **Badge KPI.** *terfilter* = mengikuti bar filter. *portofolio* = seluruh AREA1 tanpa filter (untuk statistik yang butuh banyak site, misalnya korelasi). *H1 penuh* (kuning) = angka ini bergantung pada BBT/prioritas/cakupan yang selalu memakai seluruh snapshot walaupun periode lebih pendek dipilih.
@@ -102,7 +102,7 @@ Mode peta per menu:
 - **Analisis base camp** (pendukung keputusan): site ditugaskan, P1+P2, porsi mati sebelum MBP tiba, rata-rata km/ETA, beban kerja, sinyal (Kurang terlayani / Seimbang / Mungkin berlebih) beserta kriteria yang terpenuhi.
 - **Usulan lokasi** MBP tambahan / relokasi (garis lurus, digeser ke site anchor nyata).
 
-- **Terjangkau ≤ 30 mnt** (v3.7): porsi site yang MBP tercepatnya (dalam radius) tiba dalam target respons ops (default 30 mnt, ETA **sudah termasuk** mobilisasi 15 mnt), plus bar sebaran ETA ≤ 30 · 30–60 · 60–120 · > 120 mnt · di luar radius · pulau.
+- **Terjangkau ≤ 30 mnt** (v3.8): porsi site yang MBP tercepatnya (dalam radius) tiba dalam target respons ops (default 30 mnt, ETA **sudah termasuk** mobilisasi 15 mnt), plus bar sebaran ETA ≤ 30 · 30–60 · 60–120 · > 120 mnt · di luar radius · pulau.
 
 ### 4.6 MBP › Daftar site (Site list)
 - **Ringkas** (default; kolom yang dibutuhkan untuk bertindak, tanpa nomor kolom) dan **Detail (14 kolom)** — 14 kolom wajib manajemen berurutan: 1 Prioritas · 2 Site ID · 3 Nama site · 4 Kelas · 5 Dependensi (PROXY) · 6 NOP · 7 BBT desain · 8 BBT terukur · 9 Padam PLN (frekuensi) · 10 Durasi padam · 11 Jarak ke MBP · 12 Waktu tempuh · 13 Riwayat MBP · 14 Waktu backup MBP. Detail juga bisa menampilkan *desain terhitung (belum divalidasi)*.
@@ -193,3 +193,10 @@ v3.6: kecamatan di header; tag dan catatan **Genset tetap** (dasar, kVA); tag **
 - **Backtest relokasi:** pilih NOP, base camp (under-utilized di atas), tujuan (daftar otomatis atau kecamatan mana pun) dan *pindah di dalam cluster yang sama* atau seluruh NOP. KPI: tepat waktu dengan lokasi sekarang vs setelah pindah, job dan okupansi base camp sebelum → sesudah, warna sebelum → sesudah, km geser; peta skenario; tabel kandidat; *Uji semua* untuk semua base camp abu-abu di NOP.
 - **Prioritas dispatch:** pilih base camp; punch list site-nya (ditugaskan + dilayani H1) diurutkan yang bisa diselamatkan dulu lalu skor; centang atau tempel site yang down sekarang → urutan rekomendasi beserta alasannya; audit keputusan H1 (% prioritas diikuti, pengecualian); *Unduh template dependensi* untuk NOP officer.
 - **BBS › aksi:** kotak *Jenis aksi* (ganti · upgrade · cek setting · uji kapasitas / verifikasi · lengkapi data · pantau) — klik memindah peta ke *Jenis aksi* dan memfilter daftar; chip baru *Jenis aksi* di daftar; subjudul peta menegaskan warna = prioritas BBS, bukan class site.
+
+## 10. v3.8 — AREA 4 dan "Data tersedia"
+
+- Tombol **AREA 1 | AREA 4** di header (URL `area=4`). AREA 4 adalah versi ringan dari data yang sudah diterima.
+- **Tab AREA 4:** *Ringkasan AREA 4* (KPI, peta utama dengan warna gap availability / penyebab utama / baterai, tabel per NOP) · *Availability & penyebab* (tren mingguan W1–W31 dan bulanan Jan–Jul, per cluster dan per kecamatan) · *Baterai (BBT)* (status dari snapshot BBT Site Details, daftar masalah; peringatan menjelaskan ≈ 77 % site terukur ≤ 5 mnt dan periode file perlu dikonfirmasi) · *Tenaga lapangan & BPS* (BPS / TS / PM dari HW Master FME di peta, site dalam radius BPS, beban per orang) · *Data tersedia*.
+- **Data & Config › Data tersedia** (kedua area): matriks fitur (✔ / ◐ / ✖ per AREA dengan sumber yang kurang), sumber yang sudah dimuat, dan file berikutnya yang perlu dikirim sesuai prioritas.
+- AREA 4 belum punya tiket MBP, event BBT, inventaris baterai atau interval PLN, jadi performa MBP / backtest / dispatch dan aturan aksi BBS masih khusus AREA 1.

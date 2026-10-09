@@ -5,7 +5,7 @@ PBA has three automatic gates and a manual checklist. All automatic tests run on
 ```text
 python engine/build.py     → build sanity checks  → npm test (38)  → fails the build on any error
 python engine/validate.py  → 25 checks            → docs/VALIDATION_REPORT.md
-npm test                   → 48 regression tests on lib/logic.js and the UI helpers
+npm test                   → 49 regression tests on lib/logic.js and the UI helpers
 ```
 
 ## 1. Regression tests (`tests/logic.test.mjs`, `npm test`)
@@ -60,6 +60,7 @@ npm test                   → 48 regression tests on lib/logic.js and the UI he
 | 46 | v3.7 dispatch | savable first, then score; audit only when other jobs were waiting |
 | 47 | v3.7 BBS | action types cover every action; young Critical → check setting (R6c) |
 | 48 | v3.7 ideal utilisation | need from the duration histogram (linear split at BBT); serapan = area PLN-off jobs ÷ need; AREA ratio plausible |
+| 49 | v3.8 AREA 4 | battery status rules, NOP = Σ clusters, no personal contact data exported, BPS reach ≤ sites |
 
 ## 2. Validation checks (`engine/validate.py`)
 

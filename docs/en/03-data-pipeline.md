@@ -86,7 +86,7 @@ Raw files are **Telkomsel-confidential**: they are never committed (`engine/data
 ## 7. Quality gates
 
 1. **Build sanity** (`build.py`): correlation n equals the exported fields; battery banks exported; merged base camps removed and tickets remapped; base camp IDs unique; monthly power series has 6 months and never exceeds hours in the month; coordinates keep their precision.
-2. **JS rule tests** (`npm test`, 48 tests) run automatically at the end of `build.py`; the build fails if any test fails (skip only with `PBA_SKIP_JS_TESTS=1`).
+2. **JS rule tests** (`npm test`, 49 tests) run automatically at the end of `build.py`; the build fails if any test fails (skip only with `PBA_SKIP_JS_TESTS=1`).
 3. **Validation** (`validate.py`, 25 checks in data / sanity / analytics / decision groups) → `docs/VALIDATION_REPORT.md`.
 
 ## 8. How to rebuild the data
@@ -119,3 +119,6 @@ After a rebuild, commit/upload the changed `public/data/` files; Vercel redeploy
 ## 10. v3.7 additional outputs and inputs
 - `public/data/tickets.json` (≈ 2.4 MB): MBP jobs — `site, mbp, occ, to, arr, job, out, rc` (minutes from 2026-01-01; see 04 §17).
 - Optional input `engine/data/site_dependency.csv` (git-ignored): `site_id, dependency_role, child_sites` from NOP officers (template in MBP › Dispatch priority) → site fields `dep_children_actual`, `dep_role` (ACTUAL dependency).
+
+## 11. AREA 4 pipeline (v3.8)
+`cd engine && python build_area4.py` reads `engine/data/raw_a4/` (RAN monthly + weekly zips, BBT Site Details xlsx, HW Master FME xlsx) and the shared Dapot in `engine/data/raw/`, and writes `public/data/a4/{sites,weekly,fme,meta}.json`. Availability uses NE-seconds (outage ÷ denum), downtime hours are wall-clock (÷ NE count). Weekly data is kept at NOP / cluster / AREA level. E-mail and phone numbers in the FME master are never exported.

@@ -86,7 +86,7 @@ File mentah **rahasia Telkomsel**: tidak pernah di-commit (`engine/data/` ada di
 ## 7. Gerbang kualitas
 
 1. **Cek kewajaran build** (`build.py`): n korelasi = field yang diekspor; jumlah bank baterai diekspor; base camp yang digabung sudah dihapus dan tiket dipetakan ulang; ID base camp unik; seri listrik bulanan lengkap 6 bulan dan tidak pernah melebihi jam dalam sebulan; koordinat mempertahankan presisinya.
-2. **Tes aturan JS** (`npm test`, 48 tes) dijalankan otomatis di akhir `build.py`; build gagal bila ada tes yang gagal (lewati hanya dengan `PBA_SKIP_JS_TESTS=1`).
+2. **Tes aturan JS** (`npm test`, 49 tes) dijalankan otomatis di akhir `build.py`; build gagal bila ada tes yang gagal (lewati hanya dengan `PBA_SKIP_JS_TESTS=1`).
 3. **Validasi** (`validate.py`, 25 cek dalam kelompok data / kewajaran / analitik / keputusan) → `docs/VALIDATION_REPORT.md`.
 
 ## 8. Cara membangun ulang data
@@ -119,3 +119,6 @@ Setelah build ulang, commit/unggah file `public/data/` yang berubah; Vercel otom
 ## 10. Output dan input tambahan v3.7
 - `public/data/tickets.json` (≈ 2,4 MB): job MBP — `site, mbp, occ, to, arr, job, out, rc` (menit sejak 2026-01-01; lihat 04 §17).
 - Input opsional `engine/data/site_dependency.csv` (di-.gitignore): `site_id, dependency_role, child_sites` dari NOP officer (template di MBP › Prioritas dispatch) → field site `dep_children_actual`, `dep_role` (dependensi ACTUAL).
+
+## 11. Pipeline AREA 4 (v3.8)
+`cd engine && python build_area4.py` membaca `engine/data/raw_a4/` (zip RAN bulanan + mingguan, xlsx BBT Site Details, xlsx HW Master FME) dan Dapot bersama di `engine/data/raw/`, lalu menulis `public/data/a4/{sites,weekly,fme,meta}.json`. Availability memakai NE-detik (outage ÷ denum), jam downtime adalah wall-clock (÷ jumlah NE). Data mingguan disimpan di level NOP / cluster / AREA. E-mail dan nomor HP di master FME tidak pernah diekspor.
