@@ -4,11 +4,14 @@ import React from "react";
 import { PERF_KEYS, UTIL_KEYS, ONTIME_KEYS } from "@/lib/mbpperf";
 import { t } from "@/lib/i18n";
 
-export const PERF_COLOR = { low: "#d03b3b", watch: "#fab219", good: "#0ca30c", high: "#6b4bd8", under: "#A3ABB9", nodata: "#ffffff", none: "#E3E7ED" };
+export const PERF_COLOR = { low: "#d03b3b", watch: "#fab219", good: "#0ca30c", over: "#2a78d6", high: "#6b4bd8", under: "#A3ABB9", nodata: "#ffffff", none: "#E3E7ED" };
+export const RESP_COLOR = { low: "#d03b3b", watch: "#fab219", good: "#0ca30c", nodata: "#ffffff" };
 export const UTIL_COLOR = { high: "#6b4bd8", normal: "#2a78d6", under: "#A3ABB9", none: "#E3E7ED" };
 export const ONTIME_COLOR = { low: "#d03b3b", watch: "#fab219", good: "#0ca30c", nodata: "#ffffff" };
 
 export const perfLegend = () => PERF_KEYS.map((k) => ({ k, c: PERF_COLOR[k], label: t(`perf.key.${k}`), tip: t(`perf.key_tip.${k}`) }));
+export const ontimeLegend = () => ONTIME_KEYS.map((k) => ({ k, c: ONTIME_COLOR[k], label: t(`perf.ontime.${k}`), tip: t(`perf.ontime_tip.${k}`) }));
+export const RespTag = ({ k, v }) => <Chip c={RESP_COLOR[k]} title={t(`perf.resp_tip.${k}`)}>{v}</Chip>;
 
 const Chip = ({ c, children, title }) => (
   <span title={title} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-white px-2 py-[1px] text-[11.5px]">
@@ -26,7 +29,8 @@ export function PerfFormula({ cfg }) {
     <div className="text-[12px] text-slate leading-relaxed">
       <b className="text-ink">{t("perf.formula.title")}</b> {t("perf.formula.body", {
         h: c.period_hours ?? 4344, j: c.min_jobs ?? 10, ub: Math.round(100 * (c.under_busy_max ?? 0.03)), uj: c.under_jobs_month_max ?? 2,
-        hb: Math.round(100 * (c.high_busy_min ?? 0.25)), og: Math.round(100 * (c.ontime_good ?? 0.6)), ol: Math.round(100 * (c.ontime_low ?? 0.35)) })}
+        hb: Math.round(100 * (c.high_busy_min ?? 0.25)), og: Math.round(100 * (c.ontime_good ?? 0.6)), ol: Math.round(100 * (c.ontime_low ?? 0.35)),
+        rg: Math.round(100 * (c.resp_good ?? 0.8)), rl: Math.round(100 * (c.resp_low ?? 0.5)), ro: Math.round(100 * (c.resp_over ?? 1.5)), nm: c.need_min_month ?? 3 })}
     </div>
   );
 }

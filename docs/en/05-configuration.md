@@ -156,3 +156,7 @@ Weights (MBP priority, BBS priority, MBP candidate ranking, worst clusters, Top 
 | `dispatch.w_class` / `w_dependency` / `w_priority` | 0.40 / 0.30 / 0.30 | Dispatch score |
 | `dispatch.savable_first` | true | Savable sites first |
 | `battery_young_share` | 0.4 | Critical below this share of the replacement age → check setting (R6c) |
+| `mbp_perf.resp_good` / `resp_low` / `resp_over` | 0.80 / 0.50 / 1.50 | Serapan kebutuhan: green ≥ · red < · blue ≥ |
+| `mbp_perf.need_min_month` | 3 | Minimum area need per month to judge serapan |
+| `mbp_perf.nobat_flag_share` | 0.30 | ⚑ flag when ≥ this share of jobs has RC "Baterai" |
+| `mbp.radius_presets` | [20, 30, 40, 60, 120] | Radius buttons on MBP overview |

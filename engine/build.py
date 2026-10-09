@@ -279,6 +279,19 @@ def read_dependency(t, qa):
     qa["dependency_file"] = int(t["dep_children_actual"].notna().sum())
 
 
+PLN_DUR_EDGES = [0, 15, 30, 45, 60, 90, 120, 180, 240, 360, 480, 720]   # minutes; last bucket = 720+
+
+
+def add_pln_duration_hist(t, iv, qa):
+    """v3.7 — per site: number of PLN outage events (H1, PLN records) per duration bucket (PLN_DUR_EDGES, minutes).
+    lib/mbpperf.js counts the outages longer than the site's BBT (= the site goes dark without an MBP) → MBP NEED per area."""
+    m = (iv["hours"] * 60).clip(lower=0)
+    b = np.searchsorted(PLN_DUR_EDGES, m.values, side="right") - 1
+    h = pd.crosstab(iv["site_id"], b).reindex(columns=range(len(PLN_DUR_EDGES)), fill_value=0)
+    t["pln_dur_hist"] = t["site_id"].map(lambda s: [int(v) for v in h.loc[s].values] if s in h.index else None)
+    qa["pln_dur_hist_sites"] = int(t["pln_dur_hist"].notna().sum())
+
+
 def plnoff_concurrency(tk, t):
     """How many MBP jobs run AT THE SAME TIME per NOP (PLN-off tickets with an MBP). Job = take-over (or occurrence) → RH stop
     (or + RH hours, else + median job length). Sampled every hour over the period: max, p99, p95, p90 of simultaneous jobs."""
@@ -565,6 +578,7 @@ def main():
     t["in_ticket_file"] = t["site_id"].isin(tk_sites).astype(int)
     add_ops_fields(t, tk, qa)
     read_dependency(t, qa)
+    add_pln_duration_hist(t, iv, qa)
     assert len(t) == len(sites) and t["site_id"].is_unique, "row multiplication!"
     # decision logic (coverage, survival, status, priority, action, cause, responsibility) lives in ONE place:
     # lib/logic.js — the dashboard, simulation, map, exports and tests all use it. Python only prepares evidence.
@@ -594,6 +608,8 @@ def main():
         "tk_plnoff_n", "tk_plnoff_visit_n", "tk_plnoff_rh_h",
         # v3.7 dependency from NOP officers (ACTUAL when filled)
         "dep_children_actual", "dep_role",
+        # v3.7 PLN outage duration histogram (MBP need = outages longer than the site's BBT)
+        "pln_dur_hist",
     ] + rc_cols
     for c in rc_cols:
         t[c] = t[c].fillna(0).astype(int)

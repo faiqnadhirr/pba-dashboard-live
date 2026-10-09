@@ -59,7 +59,7 @@ vercel --prod
 | Step | Command / action | Check |
 |---|---|---|
 | 1 | Put the new raw files in a folder (same name patterns, see [03 §2](03-data-pipeline.md#2-source-files)) | Data quality › sources shows file counts and times after the build |
-| 2 | `cd engine` → `python build.py --raw "<folder>"` | Build sanity all PASS; `npm test` 47/47 at the end |
+| 2 | `cd engine` → `python build.py --raw "<folder>"` | Build sanity all PASS; `npm test` 48/48 at the end |
 | 3 | `python validate.py` | `docs/VALIDATION_REPORT.md` = ALL CHECKS PASSED (25/25) |
 | 4 | `npm run build` (optional local check) and open the app | Header snapshot dates and refresh time updated |
 | 5 | Upload the changed `public/data/` (and `docs/VALIDATION_REPORT.md`) to GitHub | Vercel redeploys automatically |

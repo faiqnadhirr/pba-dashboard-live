@@ -2,6 +2,13 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## v3.7.1 — ideal utilisation, radius presets, RC "no battery" flag
+- **Ideal utilisation**: need = PLN outages longer than the site BBT (new per-site duration histogram `pln_dur_hist`); serapan kebutuhan = PLN-off jobs at the area sites ÷ need; map colour = under-utilised / under-responding / balanced / above need / high load; on time as second colour; scatter serapan vs occupancy; score serapan 35 · on time 35 · occupancy 30.
+- **Radius presets** 20/30/40/60/120 km on MBP overview (still adjustable via slider / Config).
+- **RC "Baterai / Tidak Ada Baterai"** jobs flagged ⚑ per base camp (workload only, provisional).
+- Dependency from NOP (Berlin) left as is (PROXY + template). Tests 47 → 48.
+- *ID:* Utilisasi ideal berbasis kebutuhan (padam > BBT), preset radius, flag RC tidak ada baterai.
+
 ## v3.7 — MBP-first, performance, backtest, dispatch, sharper BBS
 - Overview (availability) menu hidden from navigation (footer link / `?full=1` shows it); app opens on **MBP overview**.
 - **MBP overview**: per-NOP units, sites per MBP, coverage and arrive-before-BBT as share of ALL sites, jobs and on time (actual), base camps coloured by performance on the hero map, short lists, NOP table.

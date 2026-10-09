@@ -595,3 +595,15 @@ test("v3.7 BBS: action types cover every action; Critical on a young / lithium b
   assert.ok(young.length > 50);
   assert.ok(young.every((s) => s.action_type === "SETTING" && s.rule.startsWith("R6c")), "young Critical → R6c");
 });
+
+test("v3.7 ideal utilisation: need = outages longer than BBT (histogram split linearly); serapan = PLN-off jobs at area sites ÷ need", async () => {
+  const { needEvents } = await import("../lib/mbpperf.js");
+  const h = [0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 4];               // 10 outages of 60–90 min, 4 of 12 h+
+  assert.equal(needEvents({ pln_dur_hist: h, bbt_effective_min: 75, bbt_status: "Degraded" }), 5 + 4);
+  assert.equal(needEvents({ pln_dur_hist: h, bbt_effective_min: 30, bbt_status: "Degraded" }), 14);
+  assert.equal(needEvents({ pln_dur_hist: h, bbt_effective_min: 30, bbt_status: "Unknown" }), null);
+  const P = mbpPerformance(M, mbps, TK, cfg);
+  const tot = [...P.values()].reduce((a, p) => [a[0] + p.need, a[1] + p.area_pln_jobs], [0, 0]);
+  assert.ok(tot[0] > 20000 && tot[1] / tot[0] > 0.5 && tot[1] / tot[0] < 2, `AREA serapan ${tot[1] / tot[0]}`);
+  for (const p of P.values()) if (p.resp != null) assert.ok(Math.abs(p.resp - p.area_pln_jobs / p.need) < 1e-9);
+});

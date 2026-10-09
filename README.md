@@ -30,7 +30,7 @@ Dasbor pendukung keputusan untuk backup daya Telkomsel **AREA1** (ENOM · Triple
 cd C:\PBA\pba-dashboard
 npm install
 npm run dev          # http://localhost:3000
-npm test             # 47 regression tests
+npm test             # 48 regression tests
 ```
 
 ### Rebuild the data (Python 3.11+)
@@ -76,7 +76,7 @@ docs/         en/, id/, CHANGELOG, telemetry design, validation report
 cd C:\PBA\pba-dashboard
 npm install
 npm run dev          # http://localhost:3000
-npm test             # 47 tes regresi
+npm test             # 48 tes regresi
 ```
 
 ### Membangun ulang data (Python 3.11+)

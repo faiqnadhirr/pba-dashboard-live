@@ -205,11 +205,13 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
                   <div className="mt-2 border-t border-line pt-1.5">
                     <div className="font-semibold text-[11.5px] text-ink mb-0.5 flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: mbpCol(selMbp) || "#1F2A44" }} />{t("perf.card.title")} · {t(`perf.key.${p.key}`)}</div>
                     <table className="w-full"><tbody>
-                      {[[t("perf.col.jobs"), `${fInt(p.jobs)} (${fInt(Math.round(p.jobs_month))}/${t("perf.month_short")})`], [t("perf.col.busy"), fPct(100 * p.busy, 1)],
+                      {[[t("perf.col.jobs"), `${fInt(p.jobs)} (${fInt(Math.round(p.jobs_month))}/${t("perf.month_short")})`], [t("perf.col.need_month"), fInt(p.need_month)],
+                        [t("perf.col.resp"), p.resp == null ? "—" : fPct(100 * p.resp, 0)], [t("perf.col.busy"), fPct(100 * p.busy, 1)],
                         [t("perf.col.ontime"), p.ontime_rate == null ? "—" : fPct(100 * p.ontime_rate, 0)], [t("perf.col.rh_month"), fH(p.busy_h_month)],
                         [t("perf.col.capture"), p.capture == null ? "—" : fPct(100 * p.capture, 0)], [t("perf.col.score"), p.score == null ? "—" : `${p.score} · #${p.rank}/${p.rank_of}`]]
                         .map(([k, v]) => <tr key={k}><td className="text-mut py-0.5">{k}</td><td className="text-right font-medium">{v}</td></tr>)}
                     </tbody></table>
+                    {p.nobat_flag && <div className="mt-1 text-[11px] text-[#8a5a00] bg-warn/15 rounded px-1.5 py-0.5">⚑ {t("perf.nobat_flag", { n: fInt(p.nobat), p: fPct(100 * p.nobat_share, 0) })}</div>}
                   </div>); })()}
                 {onOpenMbp && !selMbp.is_new && <button onClick={() => onOpenMbp(selMbp)} className="mt-2 w-full bg-navy text-white rounded py-1 text-[12px]">{t("perf.card.open")}</button>}
               </div>

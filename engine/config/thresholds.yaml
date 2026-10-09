@@ -51,7 +51,8 @@ load_high_ampere: 45           # NE load considered "high" (upgrade capacity ins
 mbp:
   same_nop_only: true          # coverage + candidates restricted to MBP's own NOP
   assignment_mode: history_then_nearest   # history_then_nearest | nearest
-  max_radius_km: 120           # beyond this a site is "uncovered"
+  max_radius_km: 120           # beyond this a site is "uncovered" (adjustable in the app: map slider / presets)
+  radius_presets: [20, 30, 40, 60, 120]   # v3.7 quick buttons on MBP overview (Dudi: mainland ≈ 40 km)
   rh_max_hours_per_ticket: 48  # RH meter diff above this = outlier
   response_target_min: 30      # v3.6 ops response-time target (Pak Nizar); ETA includes travel.mobilization_minutes
   response_bands_min: [30, 60, 120]   # ETA distribution bands on Coverage
@@ -158,6 +159,11 @@ mbp_perf:                      # v3.7 MBP performance & utilisation (PROPOSAL �
   high_busy_min: 0.25          # job hours / period hours at or above this = high load (consider adding a unit)
   ontime_good: 0.60            # share of jobs arriving before the site's BBT runs out: >= good (green) — AREA1 median ≈ 0.44
   ontime_low: 0.35             # < low = red; in between = amber
+  resp_good: 0.80              # serapan kebutuhan = PLN-off jobs in the area ÷ outages longer than the site BBT (PLN records): >= good
+  resp_low: 0.50               # < low = red (the area needs MBP but most dark events get no job)
+  resp_over: 1.50              # >= this = jobs well above the outages that needed MBP (preventive dispatch or incomplete PLN records)
+  need_min_month: 3            # areas needing fewer MBP events per month are not judged on serapan
+  nobat_flag_share: 0.30       # flag base camps whose jobs are >= 30% RC "Baterai / Tidak Ada Baterai" (provisional)
   dispatch_lag_cap_min: 240    # replay: take-over lag above this is capped (outliers)
   default_job_h: 3             # replay: job length when the ticket has no RH
 

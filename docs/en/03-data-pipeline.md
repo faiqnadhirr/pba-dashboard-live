@@ -86,7 +86,7 @@ Raw files are **Telkomsel-confidential**: they are never committed (`engine/data
 ## 7. Quality gates
 
 1. **Build sanity** (`build.py`): correlation n equals the exported fields; battery banks exported; merged base camps removed and tickets remapped; base camp IDs unique; monthly power series has 6 months and never exceeds hours in the month; coordinates keep their precision.
-2. **JS rule tests** (`npm test`, 47 tests) run automatically at the end of `build.py`; the build fails if any test fails (skip only with `PBA_SKIP_JS_TESTS=1`).
+2. **JS rule tests** (`npm test`, 48 tests) run automatically at the end of `build.py`; the build fails if any test fails (skip only with `PBA_SKIP_JS_TESTS=1`).
 3. **Validation** (`validate.py`, 25 checks in data / sanity / analytics / decision groups) → `docs/VALIDATION_REPORT.md`.
 
 ## 8. How to rebuild the data

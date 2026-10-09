@@ -74,6 +74,13 @@ export default function MbpPanel({ mbp, ctx, onClose }) {
               <Stat k={t("perf.col.ontime")} v={pct(p?.ontime_rate)} sub={t("mbpd.ontime_sub", { a: fInt(p?.ontime), b: fInt(p?.late) })} />
               <Stat k={t("perf.col.capture")} v={pct(p?.capture)} sub={t("mbpd.capture_sub", { n: fInt(p?.area_jobs) })} />
             </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+              <Stat k={t("perf.col.need_month")} v={fNum(p?.need_month, 1)} sub={t("mbpd.need_sub", { n: fInt(p?.need), s: fInt(p?.need_sites), t: fInt(p?.pln_sites) })} />
+              <Stat k={t("perf.col.resp")} v={pct(p?.resp)} sub={t("mbpd.resp_sub", { a: fInt(p?.area_pln_jobs) })} />
+              <Stat k={t("perf.col.nobat")} v={fInt(p?.nobat)} sub={pct(p?.nobat_share)} />
+              <Stat k={t("perf.col.plnoff")} v={fInt(p?.plnoff)} sub={t("mbpd.nonpln", { n: fInt(p?.non_pln) })} />
+            </div>
+            {p?.nobat_flag && <div className="mt-2 text-[12px] text-[#8a5a00] bg-warn/15 rounded px-2 py-1">⚑ {t("perf.nobat_flag", { n: fInt(p.nobat), p: pct(p.nobat_share) })}</div>}
             {p?.plnoff > 0 && <div className="mt-3"><Bar100 height={12} parts={[
               { label: t("mbpd.out.ontime"), c: "#0ca30c", v: p.ontime, txt: fInt(p.ontime) }, { label: t("mbpd.out.late"), c: "#d03b3b", v: p.late, txt: fInt(p.late) },
               { label: t("mbpd.out.unknown"), c: "#A3ABB9", v: p.bbt_unknown, txt: fInt(p.bbt_unknown) }, { label: t("mbpd.out.nocheckin"), c: "#7a1414", v: p.no_checkin, txt: fInt(p.no_checkin) }]} /></div>}

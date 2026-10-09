@@ -156,3 +156,7 @@ Bobot (prioritas MBP, prioritas BBS, peringkat kandidat MBP, cluster terburuk, T
 | `dispatch.w_class` / `w_dependency` / `w_priority` | 0,40 / 0,30 / 0,30 | Skor dispatch |
 | `dispatch.savable_first` | true | Site yang bisa diselamatkan dulu |
 | `battery_young_share` | 0,4 | Kritis di bawah porsi umur ganti ini → cek setting (R6c) |
+| `mbp_perf.resp_good` / `resp_low` / `resp_over` | 0,80 / 0,50 / 1,50 | Serapan kebutuhan: hijau ≥ · merah < · biru ≥ |
+| `mbp_perf.need_min_month` | 3 | Minimum kebutuhan wilayah per bulan agar serapan dinilai |
+| `mbp_perf.nobat_flag_share` | 0,30 | Flag ⚑ bila ≥ porsi job ini ber-RC "Baterai" |
+| `mbp.radius_presets` | [20, 30, 40, 60, 120] | Tombol radius di Ringkasan MBP |

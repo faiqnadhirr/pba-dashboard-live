@@ -86,7 +86,7 @@ File mentah **rahasia Telkomsel**: tidak pernah di-commit (`engine/data/` ada di
 ## 7. Gerbang kualitas
 
 1. **Cek kewajaran build** (`build.py`): n korelasi = field yang diekspor; jumlah bank baterai diekspor; base camp yang digabung sudah dihapus dan tiket dipetakan ulang; ID base camp unik; seri listrik bulanan lengkap 6 bulan dan tidak pernah melebihi jam dalam sebulan; koordinat mempertahankan presisinya.
-2. **Tes aturan JS** (`npm test`, 47 tes) dijalankan otomatis di akhir `build.py`; build gagal bila ada tes yang gagal (lewati hanya dengan `PBA_SKIP_JS_TESTS=1`).
+2. **Tes aturan JS** (`npm test`, 48 tes) dijalankan otomatis di akhir `build.py`; build gagal bila ada tes yang gagal (lewati hanya dengan `PBA_SKIP_JS_TESTS=1`).
 3. **Validasi** (`validate.py`, 25 cek dalam kelompok data / kewajaran / analitik / keputusan) → `docs/VALIDATION_REPORT.md`.
 
 ## 8. Cara membangun ulang data
