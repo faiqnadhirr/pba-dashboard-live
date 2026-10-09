@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   buildModel, travelMinutes, dependencyChildren, pctRank, statusOf, aggregateAvailability, aggregateResponsibility,
-  clusterTable, topWorstSites, simulate, basecampSummary, PROBLEM, trendLabel, bbtDisplay, placementPlan,
+  clusterTable, topWorstSites, simulate, basecampSummary, PROBLEM, trendLabel, bbtDisplay, placementPlan, basecampGravity, kecamatanAnchors,
 } from "../lib/logic.js";
 import { fromColumnar } from "../lib/data.js";
 
@@ -202,7 +202,8 @@ test("A3 · no row shows a status that contradicts its displayed BBT basis", () 
     if (d.value != null) assert.equal(statusOf(d.value, b, s.bbt_criteria_design_min), s.bbt_status, s.site_id);
     assert.equal(d.evidence, s.battery.source, s.site_id);
   }
-  for (const id of ["LHK154", "UJT096"]) assert.equal(bbtDisplay(byId.get(id)).value, null);
+  // v3.6: 'Tidak Ada Baterai' tickets are a field-check flag, not a status (ops decision); old behaviour behind bbt.ticket_sets_status
+  for (const id of ["LHK154", "UJT096"]) { const s = byId.get(id); assert.ok(s.battery.ticket && s.battery.source !== "TICKET" && /field check/.test(s.battery.conflict), id); }
   // every tab renders the BBT through bbtDisplay (no raw bbt_value_min in BBT cells)
   assert.ok(fs.readFileSync("components/ui.jsx", "utf8").includes("bbtDisplay(r)"));
   for (const f of ["components/tabs/BbsActions.jsx", "components/tabs/Impact.jsx", "components/SiteDrawer.jsx"])
@@ -331,11 +332,12 @@ test("4 · config hash is stable and key-order independent", () => {
   assert.notEqual(configHash({ ...cfg, mbp: { ...cfg.mbp, max_radius_km: cfg.mbp.max_radius_km + 5 } }), h);
 });
 
-test("1 · navigation: 4 groups in order Overview · MBP · BBS · Data & Config, landing = overview.health, view in URL", () => {
+test("1 · navigation: 4 groups in order Overview · MBP · BBS · Data & Config, landing = MBP overview (v3.7, Overview hidden unless ?full=1), view in URL", () => {
   const src = fs.readFileSync("app/page.jsx", "utf8");
   const order = [...src.matchAll(/^\s+\["(overview|mbp|bbs|data)", \[/gm)].map((m) => m[1]);
   assert.deepEqual(order, ["overview", "mbp", "bbs", "data"]);
-  assert.ok(src.includes('DEFAULT_TAB = "health"') && src.includes('q.set("view"') && src.includes("popstate"));
+  assert.ok(src.includes('DEFAULT_TAB = "mgmt"') && src.includes('HIDDEN_GROUP = "overview"') && src.includes('q.set("full"') && src.includes('q.set("view"') && src.includes("popstate"));
+  assert.ok(/\["mbp", \[\["mgmt", "mbp.overview"\]/.test(src), "MBP opens on the management overview");
   assert.ok(/\["bbs", \[\["bbs", "bbs.actions"\]/.test(src), "BBS opens on the action list");
 });
 
@@ -480,4 +482,116 @@ test("v3.5 · roll-up: NOP = Σ its clusters = Σ its sites, for every map mode;
     const J = justify(S, "nop", nops[0].id, mode);
     assert.equal(J.nDrivers, nops[0].bad); assert.ok(J.drivers.every((s) => K.bad.includes(K.key(s)) && s.nop === nops[0].id));
   }
+});
+
+// ---------------------------------------------------------------- v3.6 ops feedback
+test("v3.6 fixed genset: protected sites never need an MBP and are out of placement targets", () => {
+  const G = M.filter((s) => s.fixed_genset === "ACTIVE");
+  assert.ok(G.length > 1000, "fixed-genset sites exported");
+  assert.ok(G.every((s) => s.genset_protected === 1 && s.reach_risk === 0));
+  const nop = G[0].nop, g = G.filter((s) => s.nop === nop).slice(0, 5).map((s) => s.site_id);
+  const r = simulate(M, g, 4, mbps, { fam }, cfg, {});
+  assert.ok(r.rows.every((x) => !x.mbp_needed), "genset sites not dispatched");
+  const p = placementPlan(M.filter((s) => s.nop === nop), mbps, cfg, { deadline: 30, scopeMode: "all", maxNew: 3 });
+  const tgt = M.filter((s) => s.nop === nop && s.site_active === 1 && !s.offair && !s.genset_protected && s.access_class !== "island" && Number.isFinite(s.lat));
+  assert.equal(p.targets + p.battery, tgt.length);
+});
+
+test("v3.6 BBT gap = actual ÷ design only for measured batteries with a computed design", () => {
+  const W = M.filter((s) => s.bbt_gap_ratio != null);
+  assert.ok(W.length > 1000);
+  for (const s of W.slice(0, 2000)) {
+    assert.ok(s.battery.measured && s.bbt_design_evidence !== "PROXY");
+    assert.ok(Math.abs(s.bbt_gap_ratio - s.battery.display.value / s.bbt_design_min) < 1e-9);
+  }
+});
+
+test("v3.6 response target: placement reach now = sites whose fastest MBP ETA ≤ target; new spots are kecamatan sites", () => {
+  for (const nop of ["NOP PALEMBANG", "NOP BATAM", "NOP ACEH"]) {
+    const S = M.filter((s) => s.nop === nop);
+    const p = placementPlan(S, mbps, cfg, { deadline: 30, scopeMode: "all", maxNew: 5, target: 1 });
+    const T = S.filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected && s.access_class !== "island" && Number.isFinite(s.lat));
+    assert.equal(p.reachedNow, T.filter((s) => s.eta_fastest_min != null && s.eta_fastest_min <= 30).length, nop);
+    assert.ok(p.added.length > 0 && p.added.every((a) => a.kecamatan), `${nop}: every new spot has a kecamatan`);
+    for (let k = 1; k < p.steps.length; k++) assert.ok(p.steps[k].reached > p.steps[k - 1].reached, "each step adds reach");
+  }
+  const A = kecamatanAnchors(M.filter((s) => s.nop === "NOP BATAM"));
+  assert.ok(A.length > 5 && A.every((a) => a.site.site_active === 1 && a.site.access_class !== "island" && a.site.kecamatan === a.kecamatan));
+});
+
+test("v3.6 centre of gravity: recommendation is a real kecamatan site and never worse on weighted reach", () => {
+  const G = basecampGravity(M, mbps, cfg, { deadline: 30 });
+  assert.ok(G.length > 200);
+  const byId = new Map(M.map((s) => [s.site_id, s]));
+  for (const g of G) {
+    const a = byId.get(g.rec_site);
+    assert.ok(a && a.kecamatan === g.rec_kecamatan && a.site_active === 1 && a.access_class !== "island", g.mbp_id);
+    if (g.verdict !== "stay") assert.ok(g.wreach_rec >= g.wreach_now - 1e-9 || g.eta_w_rec < g.eta_w_now, g.mbp_id);
+  }
+  assert.ok(G.reduce((a, g) => a + g.reach_rec, 0) >= G.reduce((a, g) => a + g.reach_now, 0));
+});
+
+test("v3.6 concurrency & productivity exports are consistent", () => {
+  const C = meta.mbp.concurrency;
+  const N = new Set(M.map((s) => s.nop).filter(Boolean));
+  assert.ok(C.length >= N.size - 2 && C.every((c) => N.has(c.nop)), "one row per NOP with MBP tickets");
+  for (const c of C) assert.ok(c.p90 <= c.p95 && c.p95 <= c.p99 && c.p99 <= c.max && c.jobs > 0, c.nop);
+  for (const m of mbps.filter((x) => x.prod_tickets > 0)) {
+    assert.ok(m.prod_plnoff <= m.prod_tickets && m.prod_visits <= m.prod_tickets, m.mbp_id);
+    assert.ok(m.prod_rh_median_h == null || m.prod_rh_median_h <= 48);
+  }
+  const pl = M.reduce((a, s) => a + (s.tk_plnoff_n || 0), 0), vi = M.reduce((a, s) => a + (s.tk_plnoff_visit_n || 0), 0);
+  assert.ok(vi <= pl && pl > 30000);
+});
+
+// ---------------------------------------------------------------- v3.7 MBP performance, backtest, dispatch, BBS action types
+import { mbpPerformance, replay, backtestMove, dispatchOrder, dispatchAudit, PERF_KEYS, nopMbpSummary } from "../lib/mbpperf.js";
+import { actionType, ACTION_TYPES } from "../lib/logic.js";
+const TK = fs.existsSync("public/data/tickets.json") ? fromColumnar(JSON.parse(fs.readFileSync("public/data/tickets.json", "utf8"))) : [];
+
+test("v3.7 MBP performance: every job counted once, classes valid, on-time judged only on PLN-off jobs", () => {
+  assert.ok(TK.length > 30000, "tickets exported");
+  const P = mbpPerformance(M, mbps, TK, cfg);
+  const ids = new Set(mbps.map((m) => m.mbp_id));
+  const sum = [...P.values()].reduce((a, p) => a + p.jobs, 0);
+  assert.equal(sum, TK.filter((k) => ids.has(k.mbp)).length);
+  for (const p of P.values()) {
+    assert.ok(PERF_KEYS.includes(p.key), p.key);
+    assert.ok(p.ontime + p.late + p.bbt_unknown <= p.plnoff && p.plnoff + p.non_pln === p.jobs, p.mbp_id);
+    if (p.ontime_rate != null) assert.ok(p.ontime_rate >= 0 && p.ontime_rate <= 1);
+  }
+  const rows = nopMbpSummary(active, mbps, P);
+  for (const r of rows) assert.ok(r.within + r.beyond === r.sites && r.arrive <= r.within, r.nop);
+});
+
+test("v3.7 backtest: replay accounts for every job; moving a camp onto its own spot changes nothing", () => {
+  const nop = "NOP BENGKULU", S = M.filter((s) => s.nop === nop && s.site_active === 1 && !s.offair), mb = mbps.filter((m) => m.nop === nop && Number.isFinite(m.lat));
+  const ids = new Set(S.map((s) => s.site_id)), T = TK.filter((k) => ids.has(k.site));
+  const r = replay(new Map(S.map((s) => [s.site_id, s])), mb, T, cfg);
+  const t = r.total;
+  assert.equal(t.served + t.beyond + t.busy + t.island + t.noLoc, t.tickets);
+  const same = replay(new Map(S.map((s) => [s.site_id, s])), mb.map((m) => ({ ...m })), T, cfg);
+  assert.equal(same.total.ontime, t.ontime);
+  const bt = backtestMove(S, mb, T, cfg, mb[0].mbp_id, { candidates: 4 });
+  for (let i = 1; i < bt.results.length; i++) assert.ok(bt.results[i - 1].ontime_gain >= bt.results[i].ontime_gain);
+  assert.ok(bt.results.every((x) => x.kecamatan && S.some((s) => s.site_id === x.site_id)));
+  const sc = backtestMove(S, mb, T, cfg, mb[0].mbp_id, { candidates: 4, sameCluster: true });
+  assert.ok(sc.results.every((x) => S.find((s) => s.site_id === x.site_id).cluster_to === sc.homeCluster));
+});
+
+test("v3.7 dispatch: savable sites first, then score; audit decisions only when other jobs were waiting", () => {
+  const camp = mbps.find((m) => m.mbp_id && Number.isFinite(m.lat) && M.filter((s) => s.mbp_assigned === m.mbp_id).length > 20);
+  const down = M.filter((s) => s.mbp_assigned === camp.mbp_id).slice(0, 12);
+  const o = dispatchOrder(down, camp, cfg);
+  for (let i = 1; i < o.length; i++) { assert.ok(o[i - 1].group <= o[i].group); if (o[i - 1].group === o[i].group) assert.ok(o[i - 1].score >= o[i].score - 1e-12); }
+  const A = dispatchAudit(TK.slice(0, 8000), byId, cfg);
+  assert.ok(A.length > 0 && A.every((d) => d.waiting >= 2 && typeof d.followed === "boolean" && d.best_score >= d.chosen_score));
+});
+
+test("v3.7 BBS: action types cover every action; Critical on a young / lithium battery → check setting, never straight replacement", () => {
+  for (const s of M) { assert.ok(ACTION_TYPES.includes(s.action_type)); if (s.recommended_action !== "No action") assert.notEqual(s.action_type, "NONE", s.recommended_action); }
+  const young = M.filter((s) => s.bbt_status === "Critical" && s.battery.measured && s.bbs_priority_level && Number.isFinite(s.battery_age_y)
+    && s.battery_age_y < 0.4 * (cfg.battery_age_replace_years[s.battery_type] ?? 5) && !(s.load_a >= cfg.load_high_ampere));
+  assert.ok(young.length > 50);
+  assert.ok(young.every((s) => s.action_type === "SETTING" && s.rule.startsWith("R6c")), "young Critical → R6c");
 });

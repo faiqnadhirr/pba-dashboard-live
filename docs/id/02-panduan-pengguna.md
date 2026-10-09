@@ -7,7 +7,7 @@ Panduan ini membahas setiap layar. Tampilan default berbahasa Indonesia; ganti d
 ```text
 ┌ PBA — Power Backup Analytic │ Snapshot 2026-01-01 → 2026-06-30 │ MODE DEMO │ cfg hash │ Ringkasan · MBP · BBS · Data & Config │ refresh │ EN|ID ┐
 ├ sub-tab menu aktif ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
-├ NOP ▾ │ chip Kelas │ ☐ + non-aktif │ ☐ + off-air (180) │                                  Cakupan: 19.771 site · Semua NOP │ Reset filter ┤
+├ NOP ▾ │ chip Kelas │ ☐ + non-aktif │ ☐ + off-air (180) │ ☐ + genset tetap (1.368) │          Cakupan: 18.407 site · Semua NOP │ Reset filter ┤
 ├ PERIODE ⓘ  Harian · Mingguan · Bulanan · Kuartal · H1 penuh · Custom   ◀ Mei 2026 ▶        BBT, prioritas & aksi = H1 penuh              ┤
 └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
   [chip filter legenda, bila aktif]
@@ -21,6 +21,7 @@ Panduan ini membahas setiap layar. Tampilan default berbahasa Indonesia; ganti d
   - **NOP** — satu NOP atau semua. Angka dalam kurung = jumlah site dalam cakupan.
   - **Kelas** — Diamond, Platinum, Gold, Silver, Bronze (bisa pilih beberapa).
   - **+ non-aktif** — sertakan site yang tidak aktif di Dapot.
+  - **+ genset tetap** (v3.7) — sertakan site yang punya genset tetap (default dikecualikan: site membackup dirinya sendiri, jadi tidak butuh MBP dan tidak ikut analisa PLN off/MBP; lihat [04 §16](04-metodologi.md#16-masukan-ops-v36)). URL `gen=1`.
   - **+ off-air** — sertakan site yang ditandai dugaan off-air / dibongkar / masalah data (default tidak disertakan; lihat [04 §13](04-metodologi.md#13-flag-off-air--masalah-data)).
   - **Chip Cakupan** — apa yang sedang disertakan; **Reset filter** menghapus NOP, kelas, toggle, periode dan preset Daftar site.
 - **Badge KPI.** *terfilter* = mengikuti bar filter. *portofolio* = seluruh AREA1 tanpa filter (untuk statistik yang butuh banyak site, misalnya korelasi). *H1 penuh* (kuning) = angka ini bergantung pada BBT/prioritas/cakupan yang selalu memakai seluruh snapshot walaupun periode lebih pendek dipilih.
@@ -101,6 +102,8 @@ Mode peta per menu:
 - **Analisis base camp** (pendukung keputusan): site ditugaskan, P1+P2, porsi mati sebelum MBP tiba, rata-rata km/ETA, beban kerja, sinyal (Kurang terlayani / Seimbang / Mungkin berlebih) beserta kriteria yang terpenuhi.
 - **Usulan lokasi** MBP tambahan / relokasi (garis lurus, digeser ke site anchor nyata).
 
+- **Terjangkau ≤ 30 mnt** (v3.7): porsi site yang MBP tercepatnya (dalam radius) tiba dalam target respons ops (default 30 mnt, ETA **sudah termasuk** mobilisasi 15 mnt), plus bar sebaran ETA ≤ 30 · 30–60 · 60–120 · > 120 mnt · di luar radius · pulau.
+
 ### 4.6 MBP › Daftar site (Site list)
 - **Ringkas** (default; kolom yang dibutuhkan untuk bertindak, tanpa nomor kolom) dan **Detail (14 kolom)** — 14 kolom wajib manajemen berurutan: 1 Prioritas · 2 Site ID · 3 Nama site · 4 Kelas · 5 Dependensi (PROXY) · 6 NOP · 7 BBT desain · 8 BBT terukur · 9 Padam PLN (frekuensi) · 10 Durasi padam · 11 Jarak ke MBP · 12 Waktu tempuh · 13 Riwayat MBP · 14 Waktu backup MBP. Detail juga bisa menampilkan *desain terhitung (belum divalidasi)*.
 - **Filter per MBP yang ditugaskan** (dropdown base camp).
@@ -118,6 +121,13 @@ Mode peta per menu:
 - Pilih NOP, **target porsi** site MBP-P1/P2 yang dicapai sebelum BBT, dan **maks MBP tambahan**.
 - KPI: site MBP-P1/P2 yang terjangkau darat (+ pulau dan baterai lebih pendek dari mobilisasi, dilaporkan terpisah) · tercapai sekarang · base camp saat ini · MBP tambahan dibutuhkan · jumlah armada · kandidat relokasi.
 - Peta lokasi usulan (NEW-n), grafik/tabel **marginal gain** (+1, +2, … MBP), site anchor usulan dengan koordinat, **kandidat relokasi** (diuji kumulatif), dan ringkasan jumlah armada untuk semua NOP.
+
+- **Target respons v3.6.** Tombol *Sebelum BBT · ≤ 30 · ≤ 60 · ≤ 120 mnt* mengganti aturan jangkauan dari "tiba sebelum baterai habis" ke target waktu respons ops; *Site target* memilih MBP-P1/P2 atau **semua site aktif**. Dalam mode menit bisa ditambah sampai +100 MBP. Lokasi baru = satu site perwakilan **per kecamatan** (site aktif non-pulau yang paling dekat ke pusat kecamatan), jadi usulan tidak pernah di laut atau hutan kosong; tabel menampilkan kecamatan dan kabupaten.
+- **Armada ideal (dimensioning).** Ideal = maks(base camp saat ini + tambahan untuk target jangkauan, **job PLN off bersamaan pada p95**). Konkurensi = job MBP yang berjalan pada jam yang sama di H1 (takeover tiket → RH stop). Tabel semua NOP menambah *Job bersamaan p95 (maks)*, *Armada ideal* dan *Ditentukan oleh* (jangkauan atau job bersamaan, ⧗).
+- **Lokasi standby per base camp — center of gravity → kecamatan.** Untuk tiap base camp: titik berat site yang ditugaskan (bobot: durasi PLN off · BBT pendek · class · tiket PLN off berulang), di-snap ke site kecamatan di kabupaten yang dilayani base camp. Rekomendasi *Pindah / Geser (kecamatan sama) / Tetap* (pindah harus menambah ≥ 2 % bobot base camp dalam target atau memangkas ETA berbobot ≥ 5 mnt), site terjangkau dalam target sekarang → di rekomendasi, pergeseran km, dua kecamatan alternatif; peta base camp sekarang dan ★ rekomendasi; tag "beda kabupaten" kalau pindah melewati batas kabupaten.
+
+### 4.8b MBP › Produktivitas (Productivity) — v3.6
+Per base camp, H1 (periode penuh): tiket ditangani, PLN off ditangani, % visit sendiri; **wilayah** = site yang ditugaskan ke base camp: tiket PLN off di wilayah, dikunjungi (tiket dengan check-in), **% visit (wilayah)** = dikunjungi ÷ tiket PLN off di wilayah (definisi ops), % site dikunjungi; site dilayani; RH total / rata-rata / median; median respons (takeover tiket → check-in). KPI di atas, ranking "15 terendah" dengan pilihan metrik (oranye = di bawah median) dan tabel lengkap dengan ekspor CSV.
 
 ### 4.9 MBP › Pilot telemetri (Telemetry pilot)
 Desain sumber data Teltonika FMC920 (GPS, MBP-on/off), manfaat bagi PBA, rencana roll-out, dan kotak **"coba model data"** yang menurunkan sesi dari CSV di browser (tidak ada yang diunggah). Lihat [desain telemetri MBP](../MBP_TELEMETRY_DESIGN.md).
@@ -165,8 +175,21 @@ Dibuka dengan klik gelembung Cluster/NOP, atau "Naik ke" di kartu site.
 
 Dibuka dari baris site, kartu peta atau panel mana pun. Isinya dari atas ke bawah: identitas (kelas, NOP, cluster, kota, akses, VIP, aktif); prioritas MBP dan BBS beserta skor, status baterai dan tag bukti; **rekomendasi aksi** dengan tabel bukti dan pemicu prioritas; availability dan penyebab; penanggung jawab listrik dengan "Alasan"; 14 field wajib; jangkauan MBP (MBP dalam radius, terdekat, bisa tiba, MBP ditugaskan, keyakinan ETA, dasar akses, dasar penugasan); bukti baterai (dasar status, % desain, bulan mati, dasar BBT, kejadian, batas bawah, tipe/umur, beban NE, tiket tanpa baterai, koordinat dan presisinya); grafik bulanan, kejadian baterai dan tiket terbaru. Ada catatan yang menjelaskan beda *Durasi padam PLN (data gangguan PLN)* dan *Listrik (downtime RAN)* bila selisihnya besar. Bila periode selain H1 dipilih, ada catatan angka mana yang mengikuti periode.
 
+v3.6: kecamatan di header; tag dan catatan **Genset tetap** (dasar, kVA); tag **tiket 'Tidak Ada Baterai' — cek lapangan** (tiket tidak lagi menentukan status baterai); baris *ETA MBP tercepat (target 30 mnt)*.
+
 ## 8. Bahasa, link dan ekspor
 
 - **EN | ID** mengganti semua teks, format angka (1.234,5 vs 1,234.5) dan alasan dari engine. Pilihan diingat; `?lang=en` di link akan menimpanya.
 - **Setiap tampilan adalah link.** URL membawa tab, NOP, kelas, toggle, periode, preset Daftar site dan bahasa (`?view=mbp.sitelist&nop=NOP%20BATAM&per=m:202605&sel=…&lang=id`). Salin untuk berbagi persis apa yang Anda lihat; tombol Back/Forward berfungsi.
 - **Ekspor CSV** selalu berbahasa Inggris dengan pemisah desimal `.`, supaya bisa dibuka rapi di Excel/Python apa pun bahasa tampilannya.
+
+## 9. v3.7 — navigasi MBP-first dan layar MBP baru
+
+- **Menu Ringkasan (availability) disembunyikan** dari alur presentasi (datanya paling mungkin berbeda dengan Power BI). Tidak dihapus: link di footer *Tampilkan menu Ringkasan* (atau `?full=1`) menampilkannya lagi. Aplikasi sekarang dibuka di **MBP › Ringkasan MBP**.
+- **Urutan menu MBP:** Ringkasan MBP · Cakupan & peta · Performa MBP · Backtest relokasi · Prioritas dispatch · Simulasi · Penempatan & jumlah armada · Daftar site · Pilot telemetri.
+- **Ringkasan MBP (manajemen):** KPI selalu dari SELURUH site dalam cakupan (misal "935 dari 942 site"), jumlah MBP dan site per MBP, job dan porsi tepat waktu (aktual); peta utama 640 px dengan **base camp diwarnai menurut performa** (legenda 🚚 bisa di-toggle), klik base camp → kartu kapabilitas + performa → *Buka detail MBP*; tiga daftar pendek (under-utilized / tepat waktu rendah / beban tinggi); tabel per NOP (unit, site, dalam radius dan tiba sebelum BBT dari semua site, P1/P2, job, tepat waktu, jumlah status).
+- **Performa MBP:** chip filter status, KPI (job, okupansi, tepat waktu, genset tersambung, median tiba), scatter *okupansi vs tepat waktu* (klik titik), kotak rumus, dan tabel ranking (skor = persentil okupansi 40 % · tepat waktu 40 % · genset 20 %).
+- **Drawer detail MBP:** kapabilitas (site dalam radius, ditugaskan, ETA, mati sebelum MBP), performa (job, okupansi, tepat waktu, capture, bar hasil, job per bulan, porsi dampak), daftar site (ditugaskan atau pernah dilayani, P1/P2 disorot, job oleh base camp ini / tepat waktu / oleh base camp lain) dan job terakhir; tombol ke backtest dan daftar dispatch.
+- **Backtest relokasi:** pilih NOP, base camp (under-utilized di atas), tujuan (daftar otomatis atau kecamatan mana pun) dan *pindah di dalam cluster yang sama* atau seluruh NOP. KPI: tepat waktu dengan lokasi sekarang vs setelah pindah, job dan okupansi base camp sebelum → sesudah, warna sebelum → sesudah, km geser; peta skenario; tabel kandidat; *Uji semua* untuk semua base camp abu-abu di NOP.
+- **Prioritas dispatch:** pilih base camp; punch list site-nya (ditugaskan + dilayani H1) diurutkan yang bisa diselamatkan dulu lalu skor; centang atau tempel site yang down sekarang → urutan rekomendasi beserta alasannya; audit keputusan H1 (% prioritas diikuti, pengecualian); *Unduh template dependensi* untuk NOP officer.
+- **BBS › aksi:** kotak *Jenis aksi* (ganti · upgrade · cek setting · uji kapasitas / verifikasi · lengkapi data · pantau) — klik memindah peta ke *Jenis aksi* dan memfilter daftar; chip baru *Jenis aksi* di daftar; subjudul peta menegaskan warna = prioritas BBS, bukan class site.

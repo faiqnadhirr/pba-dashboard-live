@@ -49,7 +49,7 @@ Status is a **separate scale from priority**:
 
 | Status | Rule (design D = 120 min) |
 |---|---|
-| ✖ Dead | BBT ≤ *5 min*, or a "Tidak Ada Baterai" ticket and no measured BBT |
+| ✖ Dead | BBT ≤ *5 min* (a "Tidak Ada Baterai" ticket counts only when `ticket_sets_status: true`; v3.6 default: flag only, see §16) |
 | ▲ Critical | BBT < *25 %* of D |
 | ◆ Degraded | BBT < *50 %* of D |
 | ◐ Below design | BBT < D |
@@ -200,3 +200,35 @@ Observed, time-stamped quantities are re-summed over the selected days from `per
 - **Drilldown:** each KPI is a partition of the sites in scope into ≤ 5 evidence segments; "View N sites" applies exactly the same predicate in the Site list.
 - **Map modes:** each site gets one category key per mode (e.g. Health: ≥ 1 pp below / < 1 pp below / meets / no data); problem categories are defined per mode.
 - **Roll-up:** a cluster or NOP is the multiset of its sites: counts per category, number and share of problem sites, sum of the magnitude (hours). The justification panel lists the clusters of a NOP and the problem sites with the largest magnitude, each with its own reason. Tested for every mode: NOP = Σ clusters = Σ sites.
+
+## 16. Ops feedback (v3.7)
+
+Changes agreed with operations (Ayatullah, Pak Nizar), all computed per site and rolled up.
+
+**Fixed genset.** `fixed_genset` = ACTIVE when Dapot has *Genset Active* with a BACKUP/MAIN POWER type, or New_BBT has *Genset Fix Telkomsel* 1/2, state GENSET ACTIVE, backup power = GENSET or main power containing GENSET; OFF when the text says power off / shutdown / dismantle / broken. ACTIVE sites (1,378; 1,134 from Dapot, 244 only from New_BBT) are `genset_protected`: no reach risk, never "MBP needed" in the simulation, not a placement target, no coverage-gap label, and **excluded from the default scope** (filter *+ fixed genset*). Source will switch to the SWFM fixed-genset export when available (`thresholds.yaml › fixed_genset`).
+
+**Battery status without RC tickets.** `bbt.ticket_sets_status: false`: a "Tidak Ada Baterai" ticket no longer makes a battery *Dead*; it is shown as a flag ("field check needed") with the BBT estimate kept. Responsibility (Accountability) still uses ticket root causes. Setting the key to `true` restores the old rule (R1 "install battery").
+
+**BBT gap — design vs actual.** Design = banks × Ah per bank × usable DoD ÷ NE load × 60 (Ah per bank **assumed** 100 until capacity data exists). `bbt_gap_ratio` = measured BBT ÷ design, only for measured batteries with a non-PROXY design; `bbt_gap_min` = design − measured. BBS map mode *BBT gap* (< 25 % · 25–50 % · 50–80 % · ≥ 80 % · no actual · no design), KPI median ratio and a column in the action list.
+
+**Response-time target.** `mbp.response_target_min` (30) — ETA of the fastest MBP within the radius (`eta_fastest_min`, includes 15 min mobilisation). AREA1 today: ≈ 30 % of active road sites ≤ 30 min, ≈ 79 % ≤ 60, ≈ 97 % ≤ 120. Placement accepts a deadline instead of BBT: reach = straight km ≤ radius **and** ETA ≤ deadline; dark hours avoided are still measured against BBT.
+
+**Kecamatan anchors.** For every kecamatan (Dapot *Subdistrict*): the active, located, non-island site nearest to the centroid of its sites. Placement candidates = target sites (≤ 400) + one anchor per kecamatan; reach sets are precomputed and a greedy set cover adds the anchor that reaches the most not-yet-reached targets.
+
+**Dimensioning.** Concurrent PLN-off jobs per NOP: job interval = takeover (or occurred) → RH stop (0–48 h; else + RH hours; else + median), sampled per hour → p90 / p95 / p99 / max. Ideal fleet = max(current + additional for the reach target, ⌈p95⌉). Concurrency is small (p95 ≈ 2–4 in most NOPs), so the **30-minute reach** drives the fleet size.
+
+**Centre of gravity → kecamatan.** Site weight = 0.35 · PLN-off duration rank + 0.25 · (1 − BBT/design) + 0.15 · class score + 0.25 · repeated PLN-off ticket rank (floor 0.02). Per base camp (sites keep their camp): weighted centroid → the 6 nearest kecamatan anchors inside the regencies holding ≥ 20 % of the camp's weight (+ its own) → best = most weight within the target, then lowest weighted ETA. Verdict *Stay* unless ≥ 2 % of weight is gained or weighted ETA improves ≥ 5 min; *Fine-tune* when the kecamatan is the same. AREA1: sites ≤ 30 min 5,043 → ≈ 6,250 if all recommendations are applied.
+
+**Productivity.** Per base camp from MBP tickets (not cancelled): tickets, PLN-off, check-ins, distinct sites, RH total/mean/median, median takeover → check-in. Area visit rate = PLN-off tickets with a check-in ÷ PLN-off tickets of the sites assigned to the camp.
+
+## 17. MBP performance, backtest, dispatch and BBS action types (v3.7)
+
+**Jobs.** `tickets.json` = every MBP ticket taken over by a base camp (not cancelled) with occurrence, take-over delay, check-in delay, job hours (take-over → RH stop, 0–48 h, else RH hours), resolution (genset / PLN back / no check-in / other) and RC (PLN off / no battery / power rental / other). 46,996 jobs in H1, 39,139 of them PLN off.
+
+**Utilisation and performance (proposal, `mbp_perf`).** Occupancy = Σ job hours ÷ 4,344 h (one MBP backs up one site at a time). On time (PLN-off jobs only) = check-in − occurrence ≤ the site's effective BBT; jobs at sites with unknown BBT are not judged. Classes: *under-utilised* (grey) when < 2 jobs/month or occupancy < 3 %; *high load* (purple) when occupancy ≥ 25 % and on time is not red; otherwise on time ≥ 60 % green, < 35 % red, amber in between (AREA1 median ≈ 44 %); fewer than 10 judged jobs = *too few jobs*. Score = percentile rank of occupancy (40 %), on time (40 %) and genset-connected share (20 %). Capture = share of the jobs of the camp's own area done by the camp.
+
+**Relocation backtest (ESTIMATED).** Replay of the NOP's H1 jobs in time order: dispatch = occurrence + the ticket's own take-over delay (capped at 240 min); the job goes to the fastest free base camp within the radius (travel model with the hour's traffic multiplier); the camp is busy for travel + job hours; on time = delay + travel ≤ BBT. Baseline = same replay with today's locations. Candidates = kecamatan anchors (same cluster by default — ops: units move between clusters with the same FMC only), short-listed by how many late / unserved jobs they could have reached in time, each fully replayed; ranked by Δ jobs on time NOP-wide, then Δ unserved.
+
+**Dispatch priority (static, `dispatch`).** Score = 0.40 class + 0.30 dependency (child sites ÷ 15; ACTUAL from `engine/data/site_dependency.csv` when NOP officers fill the template, else HUB-bucket PROXY) + 0.30 MBP priority. Order: sites the camp can still reach before BBT first, then BBT unknown, then already-late, then beyond radius; within a group by score. Audit: each H1 moment a camp took a job while other jobs for it were waiting (occurred before the take-over, taken later, ≤ 24 h) — followed when the taken site's score ≥ the best waiting score − 0.02.
+
+**BBS action types and setting check.** `actionType()` maps each recommended action to REPLACE / UPGRADE / SETTING / TEST / DATA / MONITOR / NONE (map mode *Action type*, tiles, list filter). New rules before R6: **R6c** measured Critical on a battery younger than 40 % of its replacement age (`battery_young_share`) and **R6d** measured Critical lithium with unknown age → *Check rectifier / LVD / BMS setting → re-test* (field finding: short BBT from LVD / BMS setting or load, not wear). AREA1: replacements 1,131 → 680, setting checks 566.

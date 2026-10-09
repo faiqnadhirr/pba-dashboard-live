@@ -57,6 +57,8 @@ Bobot **dinormalisasi ulang** ke 100 %, jadi Anda boleh mengisi nilai relatif.
 | `same_nop_only` | true | Cakupan/kandidat NOP sendiri diutamakan |
 | `assignment_mode` | history_then_nearest | Preferensi di antara MBP yang layak |
 | `rh_max_hours_per_ticket` | 48 | Selisih RH hour-meter di atas ini = outlier |
+| `response_target_min` | 30 | Target waktu respons ops v3.6 (ETA termasuk mobilisasi): KPI Cakupan, batas Penempatan, center of gravity |
+| `response_bands_min` | [30, 60, 120] | Pita ETA di Cakupan |
 
 ### travel — model ETA (ESTIMASI)
 | Kunci | Default | Arti |
@@ -114,6 +116,17 @@ Kategori HUB Site → perkiraan jumlah site anak: end site / BTS / repeater 0 ·
 | `worst_cluster_weights` | share_dark ,30 · power_downtime_per_site ,25 · availability_gap ,30 · p1p2_dark_share ,15 | Cluster terburuk |
 | `unknown_handling.neutral_rank` | 0,5 | Peringkat untuk site tanpa data PLN / riwayat MBP / padam 2025 |
 
+### v3.6 — fixed_genset, bbt.ticket_sets_status, gravity
+| Kunci | Default | Arti |
+|---|---|---|
+| `bbt.ticket_sets_status` | false | Tiket "Tidak Ada Baterai" membuat status Mati (true) atau hanya tanda cek lapangan (false) |
+| `fixed_genset.exclude_from_mbp` | true | Site genset tetap tidak butuh MBP (tanpa risiko jangkauan, bukan target penempatan) |
+| `fixed_genset.exclude_by_default` | true | Tidak disertakan di cakupan default (filter *+ genset tetap*) |
+| `gravity.w_pln` / `w_bbt` / `w_class` / `w_repeat` | 0,35 / 0,25 / 0,15 / 0,25 | Bobot site untuk center of gravity |
+| `gravity.candidates` | 6 | Jumlah anchor kecamatan terdekat yang dinilai |
+| `gravity.min_city_share` | 0,2 | Kandidat hanya di kabupaten yang memegang ≥ porsi ini dari bobot base camp |
+| `gravity.min_gain_share` / `min_eta_gain_min` | 0,02 / 5 | Ambang materialitas untuk *Pindah* |
+
 ## 3. `scoring.yaml`
 
 | Blok | Default |
@@ -130,3 +143,16 @@ Daftar dugaan base camp duplikat yang bisa direview. Kolom: `keep`, `drop`, `sta
 ## 5. Bagian tab Config (what-if)
 
 Bobot (prioritas MBP, prioritas BBS, peringkat kandidat MBP, cluster terburuk, Top 15) · Ambang prioritas · Kriteria BBT · Penanganan data kosong · Model perjalanan · Aturan (batas bawah prioritas, dark site, tren, off-air) · Desain dari baterai · Penempatan · Sinyal base camp · Pemetaan dependensi. Tombol: **Edit (what-if)**, **Terapkan**, **Selesai**, **Ekspor JSON**, **Impor JSON**, **Reset ke default**. Catatan tata kelola menjelaskan bahwa perubahan what-if hanya lokal sampai disepakati dan di-commit.
+
+### v3.7 — mbp_perf, dispatch, battery_young_share
+| Kunci | Default | Arti |
+|---|---|---|
+| `mbp_perf.period_hours` | 4344 | Jam di H1 (penyebut okupansi) |
+| `mbp_perf.min_jobs` | 10 | Jumlah job PLN off yang dinilai untuk kelas tepat waktu |
+| `mbp_perf.under_busy_max` / `under_jobs_month_max` | 0,03 / 2 | Under-utilized (abu) |
+| `mbp_perf.high_busy_min` | 0,25 | Beban tinggi (ungu) |
+| `mbp_perf.ontime_good` / `ontime_low` | 0,60 / 0,35 | Hijau ≥ · merah < |
+| `mbp_perf.dispatch_lag_cap_min` / `default_job_h` | 240 / 3 | Replay backtest |
+| `dispatch.w_class` / `w_dependency` / `w_priority` | 0,40 / 0,30 / 0,30 | Skor dispatch |
+| `dispatch.savable_first` | true | Site yang bisa diselamatkan dulu |
+| `battery_young_share` | 0,4 | Kritis di bawah porsi umur ganti ini → cek setting (R6c) |

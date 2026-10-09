@@ -28,7 +28,7 @@ Tampilan dirancang untuk layar desktop (berfungsi mulai lebar 1366 px). Tidak ad
 |---|---|
 | Area | AREA1 (Sumatera) — 17 NOP, 37 cluster (TO) |
 | Periode | 1 Jan – 30 Jun 2026 (H1-2026) |
-| Site (master Dapot) | 20.227; **19.771** di cakupan default (aktif, tidak ditandai off-air); 180 ditandai off-air |
+| Site (master Dapot) | 20.227; **18.407** di cakupan default (aktif, tidak ditandai off-air, tanpa genset tetap — v3.6); 180 ditandai off-air; 1.368 site aktif bergenset tetap dikecualikan |
 | Base camp MBP | 319 setelah penggabungan 8 pasangan duplikat yang sudah direview (284 berkoordinat aktual, 6 diperbaiki, 29 tanpa lokasi) |
 | Kejadian baterai BBT | 227.155 (setelah dedup) → 223.857 interval padam PLN setelah digabung |
 | Tiket MBP / listrik | 47.210 baris bersih; 97,5 % cocok ke base camp |

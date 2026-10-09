@@ -5,7 +5,7 @@ PBA has three automatic gates and a manual checklist. All automatic tests run on
 ```text
 python engine/build.py     → build sanity checks  → npm test (38)  → fails the build on any error
 python engine/validate.py  → 25 checks            → docs/VALIDATION_REPORT.md
-npm test                   → 38 regression tests on lib/logic.js and the UI helpers
+npm test                   → 47 regression tests on lib/logic.js and the UI helpers
 ```
 
 ## 1. Regression tests (`tests/logic.test.mjs`, `npm test`)
@@ -50,6 +50,15 @@ npm test                   → 38 regression tests on lib/logic.js and the UI he
 | 36 | v3.4 period | H1 re-summed from daily files = snapshot; Q1 + Q2 = H1; days add up to the month; decisions unchanged |
 | 37 | v3.4 legend | map legend filter = Site-list filter |
 | 38 | v3.5 roll-up | for every map mode, NOP = Σ clusters = Σ sites; drivers are that NOP's problem sites |
+| 39 | v3.6 fixed genset | genset sites never need an MBP, are out of placement targets |
+| 40 | v3.6 BBT gap | ratio = measured ÷ design only for measured batteries with a computed design |
+| 41 | v3.6 response target | placement reach now = sites with fastest ETA ≤ 30 min; new spots are kecamatan sites; each step adds reach |
+| 42 | v3.6 centre of gravity | recommendation is a real active kecamatan site; never worse on weighted reach |
+| 43 | v3.6 exports | concurrency percentiles ordered; productivity counts consistent |
+| 44 | v3.7 MBP performance | every job counted once; classes valid; on time judged only on PLN-off jobs; per-NOP sums |
+| 45 | v3.7 backtest | replay accounts for every job; a no-op move changes nothing; candidates ranked, same-cluster filter |
+| 46 | v3.7 dispatch | savable first, then score; audit only when other jobs were waiting |
+| 47 | v3.7 BBS | action types cover every action; young Critical → check setting (R6c) |
 
 ## 2. Validation checks (`engine/validate.py`)
 

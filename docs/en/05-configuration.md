@@ -57,6 +57,8 @@ Weights are **re-normalised** to 100 %, so you can enter relative values.
 | `same_nop_only` | true | Coverage/candidates of the MBP's own NOP preferred |
 | `assignment_mode` | history_then_nearest | Preference among feasible MBPs |
 | `rh_max_hours_per_ticket` | 48 | RH hour-meter difference above this = outlier |
+| `response_target_min` | 30 | v3.6 ops response-time target (ETA incl. mobilisation): Coverage KPI, Placement deadline, centre of gravity |
+| `response_bands_min` | [30, 60, 120] | ETA bands on Coverage |
 
 ### travel — ETA model (ESTIMATED)
 | Key | Default | Meaning |
@@ -100,6 +102,17 @@ HUB Site bucket → estimated number of child sites: end site / BTS / repeater 0
 | `no_alarm_min_share` | 0.10 | Downtime ≥ 10 % with no alarms and no tickets |
 | `exclude_by_default` | true | Excluded from KPIs unless "+ off-air" is ticked |
 
+### v3.6 — fixed_genset, bbt.ticket_sets_status, gravity
+| Key | Default | Meaning |
+|---|---|---|
+| `bbt.ticket_sets_status` | false | "Tidak Ada Baterai" tickets set status Dead (true) or are a field-check flag only (false) |
+| `fixed_genset.exclude_from_mbp` | true | Fixed-genset sites need no MBP (no reach risk, not a placement target) |
+| `fixed_genset.exclude_by_default` | true | Leave them out of the default scope (filter *+ fixed genset*) |
+| `gravity.w_pln` / `w_bbt` / `w_class` / `w_repeat` | 0.35 / 0.25 / 0.15 / 0.25 | Site weights for the centre of gravity |
+| `gravity.candidates` | 6 | Nearest kecamatan anchors scored |
+| `gravity.min_city_share` | 0.2 | Candidates only in regencies holding ≥ this share of the camp's weight |
+| `gravity.min_gain_share` / `min_eta_gain_min` | 0.02 / 5 | Materiality for *Move* |
+
 ### placement, base-camp signal, impact weights, unknown handling
 | Key | Default | Meaning |
 |---|---|---|
@@ -130,3 +143,16 @@ Reviewable list of possible duplicate base camps. Columns: `keep`, `drop`, `stat
 ## 5. Config tab sections (what-if)
 
 Weights (MBP priority, BBS priority, MBP candidate ranking, worst clusters, Top 15) · Priority cut-offs · BBT criteria · Unknown handling · Travel model · Rules (severity floor, dark site, trend, off-air) · Design from battery · Placement · Base-camp signal · Dependency mapping. Buttons: **Edit (what-if)**, **Apply**, **Done**, **Export JSON**, **Import JSON**, **Reset to default**. A governance note explains that what-if changes are local until agreed and committed.
+
+### v3.7 — mbp_perf, dispatch, battery_young_share
+| Key | Default | Meaning |
+|---|---|---|
+| `mbp_perf.period_hours` | 4344 | Hours in H1 (occupancy denominator) |
+| `mbp_perf.min_jobs` | 10 | Judged PLN-off jobs needed for an on-time class |
+| `mbp_perf.under_busy_max` / `under_jobs_month_max` | 0.03 / 2 | Under-utilised (grey) |
+| `mbp_perf.high_busy_min` | 0.25 | High load (purple) |
+| `mbp_perf.ontime_good` / `ontime_low` | 0.60 / 0.35 | Green ≥ · red < |
+| `mbp_perf.dispatch_lag_cap_min` / `default_job_h` | 240 / 3 | Backtest replay |
+| `dispatch.w_class` / `w_dependency` / `w_priority` | 0.40 / 0.30 / 0.30 | Dispatch score |
+| `dispatch.savable_first` | true | Savable sites first |
+| `battery_young_share` | 0.4 | Critical below this share of the replacement age → check setting (R6c) |

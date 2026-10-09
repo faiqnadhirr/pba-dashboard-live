@@ -2,6 +2,26 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## v3.7 — MBP-first, performance, backtest, dispatch, sharper BBS
+- Overview (availability) menu hidden from navigation (footer link / `?full=1` shows it); app opens on **MBP overview**.
+- **MBP overview**: per-NOP units, sites per MBP, coverage and arrive-before-BBT as share of ALL sites, jobs and on time (actual), base camps coloured by performance on the hero map, short lists, NOP table.
+- **MBP performance & utilisation** (proposal, Config `mbp_perf`): occupancy, on time vs site BBT, genset share, capture, score/rank, scatter; MBP detail drawer with site list and latest jobs; map card shows performance.
+- **Relocation backtest**: replay of H1 jobs with one base camp moved to a kecamatan site (same cluster by default), colour before → after, *Test all* for under-utilised camps.
+- **Dispatch priority**: static score (class + dependency + MBP priority), savable first; operator input of sites down; H1 audit (priority followed, exceptions); dependency template CSV for NOP officers (engine reads `engine/data/site_dependency.csv`).
+- **BBS**: action types (tiles, map mode, list filter); new rules R6c/R6d → *check rectifier / LVD / BMS setting* (replacements 1,131 → 680); map legend states colour = BBS priority.
+- New output `tickets.json`; tests 43 → 47.
+- *ID:* MBP-first, Ringkasan disembunyikan; Ringkasan MBP; performa & utilisasi; backtest relokasi; prioritas dispatch + audit; jenis aksi BBS dan cek setting.
+
+## v3.6 — ops feedback (Ayatullah / Pak Nizar)
+- **Fixed genset** (Dapot + New_BBT until the SWFM export arrives): 1,378 ACTIVE sites need no MBP, are not placement targets and are excluded from the default scope (filter *+ fixed genset*, URL `gen=1`); Data quality card lists them.
+- **Battery status without RC tickets:** "Tidak Ada Baterai" tickets are a field-check flag; status comes from BBT evidence (`bbt.ticket_sets_status: false`). Responsibility still uses ticket root causes.
+- **BBT gap design vs actual** (banks × 100 Ah assumed × DoD ÷ load): BBS map mode, KPI, action-list column.
+- **Response target 30 min** (ETA incl. 15 min mobilisation): Coverage KPI + ETA bands; Placement with *Before BBT / 30 / 60 / 120 min* and *MBP-P1/P2 / all active*, kecamatan anchors, up to +100 MBPs; **ideal fleet** = max(reach need, concurrent PLN-off jobs p95).
+- **Centre of gravity → kecamatan** per base camp (weights PLN-off duration, short BBT, class, repeated tickets), verdict Move / Fine-tune / Stay, alternatives, regency-change tag.
+- **MBP › Productivity** tab: tickets, PLN-off in area, % visit (area), % sites visited, RH total/avg/median, response median, ranking.
+- Site drawer: kecamatan, fixed-genset note, ticket flag, fastest ETA. Tests 38 → 43.
+- *ID:* Masukan ops: genset tetap dikecualikan, tiket bukan status baterai, gap BBT, target respons 30 mnt + kecamatan + armada ideal, center of gravity → kecamatan, tab produktivitas.
+
 ## v3.5 — hero map on every menu, site → cluster → NOP justification
 - One hero map per menu (Health, Accountability, MBP, BBS actions, Trend, Data quality) with the same behaviour: click any dot without zooming, legend chips are toggles, card with the site's own reason.
 - The legend filters the whole tab (KPIs, charts, tables) with a chip and a link to the same sites in the Site list.

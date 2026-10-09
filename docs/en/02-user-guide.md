@@ -7,7 +7,7 @@ This guide walks through every screen. Screens are in Indonesian by default; swi
 ```text
 ┌ PBA — Power Backup Analytic │ Snapshot 2026-01-01 → 2026-06-30 │ DEMO │ cfg hash │ Overview · MBP · BBS · Data & Config │ refresh │ EN|ID ┐
 ├ sub-tabs of the active menu ───────────────────────────────────────────────────────────────────────────────────────────────────────┤
-├ NOP ▾ │ Class chips │ ☐ + inactive │ ☐ + off-air (180) │                                   Scope: 19,771 sites · All NOPs │ Reset ┤
+├ NOP ▾ │ Class chips │ ☐ + inactive │ ☐ + off-air (180) │ ☐ + fixed genset (1,368) │           Scope: 18,407 sites · All NOPs │ Reset ┤
 ├ PERIOD ⓘ  Daily · Weekly · Monthly · Quarter · Full H1 · Custom   ◀ May 2026 ▶            BBT, priority & actions = full H1     ┤
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
   [legend-filter chip, when active]
@@ -22,6 +22,7 @@ This guide walks through every screen. Screens are in Indonesian by default; swi
   - **Class** — Diamond, Platinum, Gold, Silver, Bronze (multi-select).
   - **+ inactive** — include sites that are not active in Dapot.
   - **+ off-air** — include sites flagged as suspected off-air / dismantled / data issue (excluded by default; see [04 §13](04-methodology.md#13-off-air--data-issue-flag)).
+  - **+ fixed genset** (v3.7) — include sites with a fixed genset (excluded by default: they back themselves up, so they need no MBP and are left out of PLN-off/MBP analysis; see [04 §16](04-methodology.md#16-ops-feedback-v36)). URL `gen=1`.
   - **Scope chip** — what is currently included; **Reset filter** clears NOP, class, toggles, period and Site-list presets.
 - **KPI badges.** *filtered* = follows the filter bar. *portfolio* = whole AREA1 regardless of the filter (used for statistics that need many sites, e.g. correlation). *full H1* (amber) = this figure depends on BBT/priority/coverage, which always use the full snapshot even when a shorter period is selected.
 
@@ -97,6 +98,7 @@ Map modes per menu:
 ### 4.5 MBP › Coverage & map (Cakupan & peta)
 - **KPIs:** Sites within MBP radius · MBP arrives before BBT · Late & site goes dark · BBT unknown · Average ETA (assigned) · Under-served base camps (portfolio).
 - **Coverage breakdown:** every site counted once in exactly one of five segments (arrive / late & dark / late, no dark evidence / BBT unknown / beyond radius); the five always add up to the scope.
+- **Reachable ≤ 30 min** (v3.7): share of sites whose fastest MBP within the radius arrives within the ops response target (default 30 min, ETA **includes** 15 min mobilisation), plus a bar of the ETA bands ≤ 30 · 30–60 · 60–120 · > 120 min · beyond radius · island.
 - **Map** with MBP layers (§3). The legend filter here drives the KPIs and breakdown of this tab.
 - **Base camp analysis** (decision support): sites assigned, P1+P2, share dark before MBP, average km/ETA, workload, signal (Under-served / Balanced / Possibly over-served) with the criteria met.
 - **Suggested locations** for extra MBPs / relocation (straight-line, snapped to a real anchor site).
@@ -118,6 +120,13 @@ Map modes per menu:
 - Pick a NOP, the **target share** of MBP-P1/P2 sites to reach before BBT, and **max additional MBPs**.
 - KPIs: MBP-P1/P2 road-reachable sites (+ island and battery-shorter-than-mobilisation, reported separately) · reached now · current base camps · additional MBPs needed · fleet size · relocation candidates.
 - Map of proposed locations (NEW-n), **marginal gain** chart/table (+1, +2, … MBPs), proposed anchor sites with coordinates, **relocation candidates** (tested cumulatively), and a fleet-size summary for all NOPs.
+
+- **v3.6 response target.** Buttons *Before BBT · ≤ 30 · ≤ 60 · ≤ 120 min* switch the reach rule from "arrives before the battery runs out" to an ops response-time target; *Target sites* switches between MBP-P1/P2 and **all active sites**. In minute mode up to +100 MBPs can be added. New spots are one representative site **per kecamatan** (an active, non-island site nearest to the kecamatan centre), so a proposal is never in the sea or empty forest; the table shows kecamatan and regency.
+- **Ideal fleet (dimensioning).** Ideal = max(current base camps + additional needed for the reach target, **concurrent PLN-off jobs at p95**). Concurrency = MBP jobs running in the same hour in H1 (ticket takeover → RH stop). The all-NOP table adds *Concurrent jobs p95 (max)*, *Ideal fleet* and *Driven by* (reach or concurrent jobs, ⧗).
+- **Standby location per base camp — centre of gravity → kecamatan.** For each base camp: weighted centre of its assigned sites (weights: PLN-off duration · short BBT · class · repeated PLN-off tickets), snapped to a kecamatan site in the regencies the camp serves. Verdict *Move / Fine-tune (same kecamatan) / Stay* (a move must add ≥ 2 % of the camp's weight within the target or cut the weighted ETA by ≥ 5 min), sites reachable within the target now → at the recommendation, shift in km, two alternative kecamatan; map with today's camps and ★ recommendations; "other regency" tag when the move crosses a regency border.
+
+### 4.8b MBP › Productivity (Produktivitas) — v3.6
+Per base camp, H1 (full period): tickets handled, PLN-off handled, % own visits; **area** = sites assigned to the camp: PLN-off tickets in the area, visited (ticket with a check-in), **% visit (area)** = visited ÷ PLN-off tickets in the area (ops definition), % sites visited; sites served; RH total / average / median; response median (ticket takeover → check-in). KPIs on top, a "lowest 15" ranking with a metric picker (orange = below median) and the full table with CSV export.
 
 ### 4.9 MBP › Telemetry pilot (Pilot telemetri)
 Design of the Teltonika FMC920 data feed (GPS, MBP-on/off), what PBA gains, the roll-out plan, and a **"try the data model"** box that derives sessions from a CSV in the browser (nothing is uploaded). See [MBP telemetry design](../MBP_TELEMETRY_DESIGN.md).
@@ -163,10 +172,21 @@ Opened by clicking a Cluster/NOP bubble, or "Roll up to" in a site card.
 
 ## 7. Site drawer
 
-Opened from any site row, map card or panel. It shows, top to bottom: identity (class, NOP, cluster, city, access, VIP, active); MBP and BBS priority with score, battery status and evidence tag; the **recommended action** with the evidence table and priority drivers; availability and causes; power responsibility with "Why"; the 14 mandatory fields; MBP reach (MBPs in radius, nearest, can arrive, assigned MBP, ETA confidence, access basis, assignment basis); battery evidence (status basis, % of design, dark months, BBT basis, events, lower bound, type/age, NE load, no-battery tickets, coordinates and precision); monthly charts, battery events and recent tickets. A note explains the difference between *PLN outage duration (PLN records)* and *Power (RAN downtime)* when they differ a lot. When a non-H1 period is selected, a note states which figures follow the period.
+Opened from any site row, map card or panel. It shows, top to bottom: identity (class, NOP, cluster, city, access, VIP, active); MBP and BBS priority with score, battery status and evidence tag; the **recommended action** with the evidence table and priority drivers; availability and causes; power responsibility with "Why"; the 14 mandatory fields; MBP reach (MBPs in radius, nearest, can arrive, assigned MBP, ETA confidence, access basis, assignment basis); battery evidence (status basis, % of design, dark months, BBT basis, events, lower bound, type/age, NE load, no-battery tickets, coordinates and precision); monthly charts, battery events and recent tickets. v3.6: kecamatan in the header; **Fixed genset** tag and note (basis, kVA); **'No battery' ticket(s) — field check** tag (tickets no longer set the battery status); *Fastest MBP ETA (target 30 min)* row. A note explains the difference between *PLN outage duration (PLN records)* and *Power (RAN downtime)* when they differ a lot. When a non-H1 period is selected, a note states which figures follow the period.
 
 ## 8. Language, links and exports
 
 - **EN | ID** switches all text, number formats (1.234,5 vs 1,234.5) and engine reasons. The choice is remembered; `?lang=en` in a link overrides it.
 - **Every view is a link.** The URL carries the tab, NOP, classes, toggles, period, Site-list preset and language (`?view=mbp.sitelist&nop=NOP%20BATAM&per=m:202605&sel=…&lang=id`). Copy it to share exactly what you see; Back/Forward work.
 - **CSV exports** are always English, with `.` as the decimal separator, so they load cleanly into Excel/Python regardless of the UI language.
+
+## 9. v3.7 — MBP-first navigation and new MBP screens
+
+- **The Overview (availability) menu is hidden** from the presentation flow (its data is the most likely to differ from Power BI). It is not deleted: the footer link *Show the Overview menu* (or `?full=1`) brings it back. The app now opens on **MBP › MBP overview**.
+- **MBP menu order:** MBP overview · Coverage & map · MBP performance · Relocation backtest · Dispatch priority · Simulation · Placement & fleet size · Site list · Telemetry pilot.
+- **MBP overview (management):** KPIs always out of ALL sites in scope (e.g. "935 of 942 sites"), number of MBPs and sites per MBP, jobs and on-time share (actual); a 640-px hero map where **base camps are coloured by performance** (legend 🚚 toggles), click a base camp → card with capability + performance → *Open MBP detail*; three short lists (under-utilised / low on-time / high load); per-NOP table (units, sites, within radius and arrives-before-BBT of all sites, P1/P2, jobs, on time, status counts).
+- **MBP performance:** status filter chips, KPIs (jobs, occupancy, on time, genset connected, arrival median), scatter *occupancy vs on time* (click a dot), the formula box, and a ranked table (score = percentile of occupancy 40 % · on time 40 % · genset 20 %).
+- **MBP detail drawer:** capability (sites in radius, assigned, ETA, dark before MBP), performance (jobs, occupancy, on time, capture, outcome bar, jobs per month, impact shares), the site list (assigned or served, P1/P2 highlighted, jobs by this camp / on time / by other camps) and the latest jobs; buttons to the backtest and the dispatch list.
+- **Relocation backtest:** choose the NOP, the base camp (under-utilised first), the destination (automatic shortlist or any kecamatan) and *move within the same cluster* or the whole NOP. KPIs: on time with today's locations vs after the move, the camp's jobs and occupancy before → after, colour before → after, shift km; scenario map; candidate table; *Test all* for every grey camp of the NOP.
+- **Dispatch priority:** choose a base camp; punch list of its sites (assigned + served in H1) ranked savable-first then score; tick or paste the sites that are down now → recommended order with the reason; audit of H1 decisions (priority followed %, exceptions); *Download dependency template* for NOP officers.
+- **BBS › actions:** *Action types* tiles (replace · upgrade · check setting · capacity test / verify · collect data · monitor) — a click switches the map to *Action type* and filters the list; new chip *Action type* in the list; the map subtitle states that colour = BBS priority, not site class.

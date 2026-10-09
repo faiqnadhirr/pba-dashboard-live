@@ -10,7 +10,7 @@ const EV = ["ACTUAL", "DERIVED", "ESTIMATED", "PROXY", "UNAVAILABLE"];
 const pct = (n, d) => fPct((100 * n) / Math.max(1, d), 1);
 
 export default function DataQuality(props) {
-  const { scope: scopeAll, data, offairSites = [], mbpStats, cfg, setPick, openDrill: od0 } = props;
+  const { scope: scopeAll, data, offairSites = [], gensetSites = [], mbpStats, cfg, setPick, openDrill: od0 } = props;
   const L = useMapLegend(scopeAll, "dq"), scope = L.vis;
   const openDrill = (id, f) => od0(id, f, L.hidden.length ? scope : undefined);
   const snap = data.meta.snapshot || {}, mb = data.meta.mbp || {}, m = data.meta, qa = m.qa;
@@ -86,6 +86,14 @@ export default function DataQuality(props) {
           { key: "ran_power_down_h", label: "dq.col.power", num: true, render: (r) => `${fInt(r.ran_power_down_h)} ${t("unit.h")}`, csv: (r) => r.ran_power_down_h?.toFixed(1) },
           { key: "evt_total", label: "dq.col.alarms", num: true, render: (r) => fInt(r.evt_total || 0), csv: (r) => r.evt_total || 0 }, { key: "in_ticket_file", label: "dq.col.tickets", render: (r) => (r.in_ticket_file ? t("common.yes") : t("dq.none")), csv: (r) => (r.in_ticket_file ? "yes" : "none") },
           { key: "offair", label: "col.why", wrap: true, render: (r) => te(r.offair, "offair"), csv: (r) => r.offair },
+        ]} />
+      </Card>
+      <Card title={t("dq.genset.title", { n: fInt(gensetSites.length) })} sub={t("dq.genset.sub", { d: fInt(m.qa.fixed_genset_active_dapot || 0), b: fInt(m.qa.fixed_genset_active_newbbt_only || 0), o: fInt(m.qa.fixed_genset_off || 0) })}>
+        <DataTable rows={gensetSites} pageSize={15} filename="pba_dq_fixed_genset.csv" onRowClick={setPick} initialSort={{ key: "ran_power_down_h", dir: -1 }} columns={[
+          { key: "site_id", label: "col.site" }, { key: "site_name", label: "col.name" }, { key: "nop", label: "col.nop" }, { key: "kecamatan", label: "col.kecamatan" },
+          { key: "genset_kva", label: "col.genset_kva", num: true, render: (r) => (r.genset_kva ? fNum(r.genset_kva, 1) : "—"), csv: (r) => r.genset_kva ?? "" },
+          { key: "ran_power_down_h", label: "dq.col.power", num: true, render: (r) => `${fInt(r.ran_power_down_h)} ${t("unit.h")}`, csv: (r) => r.ran_power_down_h?.toFixed(1) },
+          { key: "fixed_genset_basis", label: "col.genset_basis", wrap: true },
         ]} />
       </Card>
       <div className="grid xl:grid-cols-2 gap-4">

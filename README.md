@@ -1,4 +1,4 @@
-# PBA — Power Backup Analytic (v3.5)
+# PBA — Power Backup Analytic (v3.7)
 
 Decision-support dashboard for Telkomsel **AREA1** power backup (ENOM · Triple-E).
 Dasbor pendukung keputusan untuk backup daya Telkomsel **AREA1** (ENOM · Triple-E).
@@ -20,6 +20,8 @@ Dasbor pendukung keputusan untuk backup daya Telkomsel **AREA1** (ENOM · Triple
 - **BBS (Battery Backup System):** battery status vs the 120-min design (Kaplan-Meier BBT, estimates tested on unseen sites), a prioritised action list (replace / upgrade / test / verify) with the evidence behind each action, correlation with PLN outages.
 - **Health & accountability:** availability vs target, causes of the gap, responsibility for power downtime, worst clusters and Q1→Q2 trend.
 - **Every number is computed per site and rolled up** to cluster and NOP; every menu opens with a clickable hero map whose legend filters the tab, and a Site · Cluster · NOP justification panel.
+- **v3.6 (ops feedback):** fixed-genset sites excluded from MBP analysis; 'No battery' tickets are a field-check flag, not a status; BBT design-vs-actual gap; 30-min response target with kecamatan-level placement and fleet dimensioning (concurrency); base-camp centre of gravity → kecamatan; MBP productivity tab.
+- **v3.7:** MBP-first navigation (Overview hidden for presentations, `?full=1`); MBP overview per NOP; MBP performance & utilisation from H1 job tickets; relocation backtest (replay); static dispatch priority with audit; BBS action types incl. *check rectifier/LVD/BMS setting*.
 - Every value carries its evidence: **ACTUAL · DERIVED · ESTIMATED · PROXY · UNAVAILABLE**. Bilingual UI (ID default, EN); CSV exports in English.
 
 ### Quick start (Windows)
@@ -28,7 +30,7 @@ Dasbor pendukung keputusan untuk backup daya Telkomsel **AREA1** (ENOM · Triple
 cd C:\PBA\pba-dashboard
 npm install
 npm run dev          # http://localhost:3000
-npm test             # 38 regression tests
+npm test             # 47 regression tests
 ```
 
 ### Rebuild the data (Python 3.11+)
@@ -64,6 +66,8 @@ docs/         en/, id/, CHANGELOG, telemetry design, validation report
 - **BBS (Battery Backup System):** status baterai vs desain 120 menit (BBT Kaplan-Meier, estimasi yang diuji pada site yang belum pernah dilihat model), daftar aksi berprioritas (ganti / upgrade / uji / verifikasi) beserta bukti tiap aksi, korelasi dengan padam PLN.
 - **Kesehatan & akuntabilitas:** availability vs target, penyebab gap, penanggung jawab downtime listrik, cluster terburuk dan tren Q1→Q2.
 - **Setiap angka dihitung per site lalu dijumlahkan** ke cluster dan NOP; setiap menu dibuka dengan peta utama yang bisa diklik, legenda yang memfilter tab, dan panel justifikasi Site · Cluster · NOP.
+- **v3.6 (masukan ops):** site genset tetap dikecualikan dari analisa MBP; tiket 'Tidak Ada Baterai' hanya tanda cek lapangan, bukan status; gap BBT desain vs aktual; target respons 30 mnt dengan penempatan level kecamatan dan dimensioning armada (konkurensi); center of gravity base camp → kecamatan; tab produktivitas MBP.
+- **v3.7:** navigasi MBP-first (Ringkasan disembunyikan untuk presentasi, `?full=1`); Ringkasan MBP per NOP; performa & utilisasi MBP dari tiket job H1; backtest relokasi (replay); prioritas dispatch statis dengan audit; jenis aksi BBS termasuk *cek setting rectifier/LVD/BMS*.
 - Setiap nilai membawa buktinya: **ACTUAL · DERIVED · ESTIMATED · PROXY · UNAVAILABLE**. Tampilan dua bahasa (default ID, ada EN); ekspor CSV berbahasa Inggris.
 
 ### Mulai cepat (Windows)
@@ -72,7 +76,7 @@ docs/         en/, id/, CHANGELOG, telemetry design, validation report
 cd C:\PBA\pba-dashboard
 npm install
 npm run dev          # http://localhost:3000
-npm test             # 38 tes regresi
+npm test             # 47 tes regresi
 ```
 
 ### Membangun ulang data (Python 3.11+)
@@ -89,5 +93,5 @@ Repo GitHub private → Vercel, dengan `BASIC_AUTH_USER` dan `BASIC_AUTH_PASS` d
 
 ---
 
-Data: Telkomsel AREA1, 1 Jan – 30 Jun 2026 snapshot · 20,227 sites (19,771 in default scope) · 17 NOPs · 37 clusters · 319 MBP base camps.
+Data: Telkomsel AREA1, 1 Jan – 30 Jun 2026 snapshot · 20,227 sites (18,407 in default scope: active, not off-air, no fixed genset) · 17 NOPs · 37 clusters · 319 MBP base camps.
 Confidential — internal use by Telkomsel and Triple-E only. / Rahasia — hanya untuk penggunaan internal Telkomsel dan Triple-E.

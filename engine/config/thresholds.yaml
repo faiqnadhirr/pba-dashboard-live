@@ -13,6 +13,7 @@ bbt:
   dead_max_minutes: 5          # <= 5 min backup   -> Dead (no effective backup)
   min_exhaustion_events: 1     # events needed to call BBT "measured"
   max_events_per_site_flag: 300  # above this in 6 months -> flagged as alarm flapping
+  ticket_sets_status: false     # v3.6 ops decision: 'Tidak Ada Baterai' RC tickets do NOT set the battery status (field-check flag only)
   criteria_basis: standard     # standard = problem criteria vs the 120-min management design; site = vs per-site design (B1)
   design_by_class:             # fallback design BBT when battery design data is missing (PROXY)
     Diamond: 120
@@ -43,6 +44,7 @@ battery_age_replace_years:     # age at which replacement is recommended
   VRLA: 4
   LITHIUM: 8
   OTHER: 5
+battery_young_share: 0.4       # v3.7: measured Critical on a battery younger than 40% of its life → check rectifier/LVD/BMS setting first
 
 load_high_ampere: 45           # NE load considered "high" (upgrade capacity instead of like-for-like)
 
@@ -51,6 +53,8 @@ mbp:
   assignment_mode: history_then_nearest   # history_then_nearest | nearest
   max_radius_km: 120           # beyond this a site is "uncovered"
   rh_max_hours_per_ticket: 48  # RH meter diff above this = outlier
+  response_target_min: 30      # v3.6 ops response-time target (Pak Nizar); ETA includes travel.mobilization_minutes
+  response_bands_min: [30, 60, 120]   # ETA distribution bands on Coverage
 
 travel:                        # ESTIMATED travel-time model (Sumatera roads)
   road_factor: 1.35            # straight-line km -> road km
@@ -119,17 +123,49 @@ availability:
   trend_dark_share_pp: 2.0     #     secondary signal — change in the share of dark sites (percentage points of cluster sites)
   min_cluster_sites: 5         # clusters with fewer sites -> Insufficient data
 
+fixed_genset:                  # v3.6: sites with an ACTIVE fixed genset (PROVISIONAL from Dapot/New_BBT until the SWFM export)
+  exclude_from_mbp: true       # no MBP need, not counted as dark-before-MBP, not a placement target
+  exclude_by_default: true     # left out of every KPI unless the header toggle '+ fixed genset' is on
+
 offair:                        # A5: suspected off-air / dismantled / data issue
   max_outage_share: 0.30       # total downtime >= 30% of the period
   full_month_share: 0.90       # or any month with downtime >= 90% of its hours
   no_alarm_min_share: 0.10     # or downtime >= 10% of the period with no battery alarms and no tickets
   exclude_by_default: true     # excluded from KPIs unless the header toggle is on
 
+gravity:                       # v3.6 centre of gravity per base camp -> kecamatan (ESTIMATED)
+  w_pln: 0.35                  # PLN-off duration (percentile rank among scope sites)
+  w_bbt: 0.25                  # BBT shortness = 1 - BBT / design
+  w_class: 0.15                # class score (scoring.yaml class_score)
+  w_repeat: 0.25               # repeated PLN-off tickets (percentile rank)
+  candidates: 6                # nearest kecamatan anchors to the centroid that are scored
+  min_city_share: 0.2          # candidates only in regencies holding >= this share of the camp's weight (+ its own)
+  min_gain_share: 0.02         # move only if >= 2% of the camp's weight becomes reachable within target ...
+  min_eta_gain_min: 5          # ... or the weighted ETA improves by >= 5 min
+
 placement:                     # D1: fleet size & placement (ESTIMATED: straight-line x road factor)
   target_share: 0.90           # add MBPs until >= this share of MBP-P1/P2 sites is reached before BBT expires
   max_new: 15
+  max_new_deadline: 60          # v3.6: start value when the target is a response time in minutes
   relocation_max_loss_pp: 0.5  # cumulative loss allowed for the whole relocation set (pp of MBP-P1/P2 reach)
   relocation_max_candidates: 3 # 3f: at most this many relocation candidates, tested cumulatively
+
+mbp_perf:                      # v3.7 MBP performance & utilisation (PROPOSAL — formula to be agreed with Telkomsel)
+  period_hours: 4344           # H1 2026 hours available per MBP
+  min_jobs: 10                 # fewer PLN-off jobs in H1 = "not enough data"
+  under_busy_max: 0.03         # job hours / period hours below this = under-utilised (grey)
+  under_jobs_month_max: 2      # ... or fewer jobs per month than this
+  high_busy_min: 0.25          # job hours / period hours at or above this = high load (consider adding a unit)
+  ontime_good: 0.60            # share of jobs arriving before the site's BBT runs out: >= good (green) — AREA1 median ≈ 0.44
+  ontime_low: 0.35             # < low = red; in between = amber
+  dispatch_lag_cap_min: 240    # replay: take-over lag above this is capped (outliers)
+  default_job_h: 3             # replay: job length when the ticket has no RH
+
+dispatch:                      # v3.7 static dispatch priority (operator punch list)
+  w_class: 0.40                # site class score (scoring.yaml class_score)
+  w_dependency: 0.30           # child sites (ACTUAL from NOP officers when filled, else HUB-bucket PROXY), capped at 15
+  w_priority: 0.30             # MBP priority score (BBT, PLN exposure, history ...)
+  savable_first: true          # sites the MBP can still reach before the battery runs out go first
 
 severity_floor:                # escalation: measured Dead/Critical battery can never be below this priority
   measured_dead_critical: P2

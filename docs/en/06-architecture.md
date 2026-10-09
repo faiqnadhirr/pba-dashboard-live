@@ -47,7 +47,7 @@ pba-dashboard/
 │  ├─ config/thresholds.yaml, scoring.yaml, basecamp_merge.csv
 │  └─ src/ingestion, normalization, analytics, bbs, mbp, telemetry
 ├─ public/data/             ← generated JSON (sites, mbps, familiarity, meta, detail/, period/)
-├─ tests/logic.test.mjs     ← 38 regression tests
+├─ tests/logic.test.mjs     ← 47 regression tests
 ├─ proxy.js                 ← basic auth for every path (when env vars are set)
 └─ docs/                    ← this documentation (en/, id/), changelog, telemetry design, validation report
 ```

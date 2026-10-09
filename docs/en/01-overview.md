@@ -28,7 +28,7 @@ The layout is designed for desktop screens (works from 1366 px wide). There is n
 |---|---|
 | Area | AREA1 (Sumatera) — 17 NOPs, 37 clusters (TO) |
 | Period | 1 Jan – 30 Jun 2026 (H1-2026) |
-| Sites (Dapot master) | 20,227; **19,771** in the default scope (active, not flagged off-air); 180 flagged off-air |
+| Sites (Dapot master) | 20,227; **18,407** in the default scope (active, not flagged off-air, no fixed genset — v3.6); 180 flagged off-air; 1,368 active fixed-genset sites excluded |
 | MBP base camps | 319 after the reviewed merge of 8 duplicate pairs (284 with actual coordinates, 6 repaired, 29 without location) |
 | BBT battery events | 227,155 (after de-duplication) → 223,857 merged PLN outage intervals |
 | MBP / power tickets | 47,210 clean rows; 97.5 % matched to a base camp |

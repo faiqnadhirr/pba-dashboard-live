@@ -47,7 +47,7 @@ pba-dashboard/
 │  ├─ config/thresholds.yaml, scoring.yaml, basecamp_merge.csv
 │  └─ src/ingestion, normalization, analytics, bbs, mbp, telemetry
 ├─ public/data/             ← JSON hasil build (sites, mbps, familiarity, meta, detail/, period/)
-├─ tests/logic.test.mjs     ← 38 tes regresi
+├─ tests/logic.test.mjs     ← 47 tes regresi
 ├─ proxy.js                 ← basic auth untuk semua path (bila env var di-set)
 └─ docs/                    ← dokumentasi ini (en/, id/), changelog, desain telemetri, laporan validasi
 ```

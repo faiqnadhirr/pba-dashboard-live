@@ -86,7 +86,7 @@ File mentah **rahasia Telkomsel**: tidak pernah di-commit (`engine/data/` ada di
 ## 7. Gerbang kualitas
 
 1. **Cek kewajaran build** (`build.py`): n korelasi = field yang diekspor; jumlah bank baterai diekspor; base camp yang digabung sudah dihapus dan tiket dipetakan ulang; ID base camp unik; seri listrik bulanan lengkap 6 bulan dan tidak pernah melebihi jam dalam sebulan; koordinat mempertahankan presisinya.
-2. **Tes aturan JS** (`npm test`, 38 tes) dijalankan otomatis di akhir `build.py`; build gagal bila ada tes yang gagal (lewati hanya dengan `PBA_SKIP_JS_TESTS=1`).
+2. **Tes aturan JS** (`npm test`, 47 tes) dijalankan otomatis di akhir `build.py`; build gagal bila ada tes yang gagal (lewati hanya dengan `PBA_SKIP_JS_TESTS=1`).
 3. **Validasi** (`validate.py`, 25 cek dalam kelompok data / kewajaran / analitik / keputusan) → `docs/VALIDATION_REPORT.md`.
 
 ## 8. Cara membangun ulang data
@@ -110,3 +110,12 @@ Environment variable opsional (mempercepat build berulang saat pengembangan):
 | `PBA_SKIP_JS_TESTS=1` | Tidak menjalankan `npm test` di akhir (bukan untuk build produksi) |
 
 Setelah build ulang, commit/unggah file `public/data/` yang berubah; Vercel otomatis deploy ulang (lihat [07](07-deploy-operasional.md)).
+
+## 9. Field tambahan v3.6
+- Site: `fixed_genset` (ACTIVE / OFF / NONE) + `fixed_genset_basis`, `genset_kva`, `kecamatan`, `desa` (Dapot Subdistrict / Village), `battery_brand`, `tk_plnoff_n`, `tk_plnoff_visit_n`, `tk_plnoff_rh_h` (tiket PLN off, yang punya check-in, jam RH; canceled dikecualikan).
+- Base camp: `prod_tickets`, `prod_plnoff`, `prod_visits`, `prod_sites`, `prod_rh_total_h`, `prod_rh_mean_h`, `prod_rh_median_h`, `prod_resp_median_h`.
+- `meta.mbp.concurrency`: per NOP jumlah job, maks, p99, p95, p90, rata-rata, median jam job.
+
+## 10. Output dan input tambahan v3.7
+- `public/data/tickets.json` (≈ 2,4 MB): job MBP — `site, mbp, occ, to, arr, job, out, rc` (menit sejak 2026-01-01; lihat 04 §17).
+- Input opsional `engine/data/site_dependency.csv` (di-.gitignore): `site_id, dependency_role, child_sites` dari NOP officer (template di MBP › Prioritas dispatch) → field site `dep_children_actual`, `dep_role` (dependensi ACTUAL).

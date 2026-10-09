@@ -49,7 +49,7 @@ Status adalah **skala terpisah dari prioritas**:
 
 | Status | Aturan (desain D = 120 mnt) |
 |---|---|
-| ✖ Mati | BBT ≤ *5 mnt*, atau tiket "Tidak Ada Baterai" dan tidak ada BBT terukur |
+| ✖ Mati | BBT ≤ *5 mnt* (tiket "Tidak Ada Baterai" hanya dihitung kalau `ticket_sets_status: true`; default v3.6: hanya tanda, lihat §16) |
 | ▲ Kritis | BBT < *25 %* D |
 | ◆ Menurun | BBT < *50 %* D |
 | ◐ Di bawah desain | BBT < D |
@@ -200,3 +200,35 @@ Besaran teramati yang bertanggal dijumlahkan ulang untuk hari yang dipilih dari 
 - **Drilldown:** setiap KPI adalah partisi site dalam cakupan menjadi ≤ 5 segmen bukti; "Lihat N site" menerapkan predikat yang persis sama di Daftar site.
 - **Mode peta:** setiap site mendapat satu kunci kategori per mode (misal Kesehatan: ≥ 1 pp di bawah / < 1 pp di bawah / memenuhi / tidak ada data); kategori bermasalah ditentukan per mode.
 - **Roll-up:** cluster atau NOP adalah kumpulan site-nya: jumlah per kategori, jumlah dan porsi site bermasalah, jumlah besaran (jam). Panel justifikasi menampilkan cluster di sebuah NOP dan site bermasalah dengan besaran terbesar, masing-masing dengan alasannya sendiri. Diuji untuk setiap mode: NOP = Σ cluster = Σ site.
+
+## 16. Masukan ops (v3.7)
+
+Perubahan yang disepakati dengan operasional (Ayatullah, Pak Nizar), semuanya dihitung per site lalu dijumlahkan.
+
+**Genset tetap.** `fixed_genset` = ACTIVE kalau Dapot punya *Genset Active* dengan tipe BACKUP/MAIN POWER, atau New_BBT punya *Genset Fix Telkomsel* 1/2, state GENSET ACTIVE, backup power = GENSET atau main power mengandung GENSET; OFF kalau teksnya menyebut power off / shutdown / dismantle / rusak. Site ACTIVE (1.378; 1.134 dari Dapot, 244 hanya dari New_BBT) menjadi `genset_protected`: tidak ada risiko jangkauan, tidak pernah "butuh MBP" di simulasi, bukan target penempatan, tidak diberi label gap cakupan, dan **dikecualikan dari cakupan default** (filter *+ genset tetap*). Sumber akan diganti ke ekspor genset tetap SWFM begitu tersedia (`thresholds.yaml › fixed_genset`).
+
+**Status baterai tanpa tiket RC.** `bbt.ticket_sets_status: false`: tiket "Tidak Ada Baterai" tidak lagi membuat baterai *Mati*; tiket ditampilkan sebagai tanda ("perlu cek lapangan") dan estimasi BBT tetap dipakai. Penanggung jawab (Akuntabilitas) tetap memakai akar masalah tiket. Nilai `true` mengembalikan aturan lama (R1 "pasang baterai").
+
+**Gap BBT — desain vs aktual.** Desain = jumlah bank × Ah per bank × DoD ÷ beban NE × 60 (Ah per bank **diasumsikan** 100 sampai ada data kapasitas). `bbt_gap_ratio` = BBT terukur ÷ desain, hanya untuk baterai terukur dengan desain non-PROXY; `bbt_gap_min` = desain − terukur. Mode peta BBS *Gap BBT* (< 25 % · 25–50 % · 50–80 % · ≥ 80 % · tanpa aktual · tanpa desain), KPI median rasio dan kolom di daftar aksi.
+
+**Target waktu respons.** `mbp.response_target_min` (30) — ETA MBP tercepat dalam radius (`eta_fastest_min`, termasuk mobilisasi 15 mnt). AREA1 saat ini: ≈ 30 % site aktif darat ≤ 30 mnt, ≈ 79 % ≤ 60, ≈ 97 % ≤ 120. Penempatan bisa memakai batas menit, bukan BBT: terjangkau = km garis lurus ≤ radius **dan** ETA ≤ batas; jam mati yang dihindari tetap diukur terhadap BBT.
+
+**Anchor kecamatan.** Untuk tiap kecamatan (Dapot *Subdistrict*): site aktif, berkoordinat, non-pulau yang paling dekat ke centroid site-sitenya. Kandidat penempatan = site target (≤ 400) + satu anchor per kecamatan; himpunan jangkauan dihitung di awal lalu greedy set cover menambah anchor yang menjangkau paling banyak target yang belum terjangkau.
+
+**Dimensioning.** Job PLN off bersamaan per NOP: interval job = takeover (atau occurred) → RH stop (0–48 jam; kalau tidak ada + jam RH; kalau tidak ada + median), disampel per jam → p90 / p95 / p99 / maks. Armada ideal = maks(saat ini + tambahan untuk target jangkauan, ⌈p95⌉). Konkurensi kecil (p95 ≈ 2–4 di kebanyakan NOP), jadi **jangkauan 30 menit** yang menentukan jumlah armada.
+
+**Center of gravity → kecamatan.** Bobot site = 0,35 · rank durasi PLN off + 0,25 · (1 − BBT/desain) + 0,15 · skor class + 0,25 · rank tiket PLN off berulang (minimal 0,02). Per base camp (site tetap di base camp-nya): centroid berbobot → 6 anchor kecamatan terdekat di dalam kabupaten yang memegang ≥ 20 % bobot base camp (+ kabupatennya sendiri) → terbaik = bobot terbanyak dalam target, lalu ETA berbobot terendah. Rekomendasi *Tetap* kecuali menambah ≥ 2 % bobot atau ETA berbobot membaik ≥ 5 mnt; *Geser* kalau kecamatannya sama. AREA1: site ≤ 30 mnt 5.043 → ≈ 6.250 kalau semua rekomendasi dijalankan.
+
+**Produktivitas.** Per base camp dari tiket MBP (tidak canceled): tiket, PLN off, check-in, site unik, RH total/rata-rata/median, median takeover → check-in. Rasio visit wilayah = tiket PLN off yang punya check-in ÷ tiket PLN off dari site yang ditugaskan ke base camp.
+
+## 17. Performa MBP, backtest, dispatch dan jenis aksi BBS (v3.7)
+
+**Job.** `tickets.json` = setiap tiket MBP yang di-takeover base camp (tidak canceled) dengan waktu kejadian, jeda takeover, jeda check-in, jam job (takeover → RH stop, 0–48 jam, kalau tidak ada jam RH), penyelesaian (genset / PLN nyala / tanpa check-in / lainnya) dan RC (PLN off / tidak ada baterai / sewa daya / lainnya). 46.996 job di H1, 39.139 di antaranya PLN off.
+
+**Utilisasi dan performa (usulan, `mbp_perf`).** Okupansi = Σ jam job ÷ 4.344 jam (satu MBP membackup satu site pada satu waktu). Tepat waktu (hanya job PLN off) = check-in − kejadian ≤ BBT efektif site; job di site dengan BBT tidak diketahui tidak dinilai. Kelas: *under-utilized* (abu) bila < 2 job/bulan atau okupansi < 3 %; *beban tinggi* (ungu) bila okupansi ≥ 25 % dan tepat waktu tidak merah; selain itu tepat waktu ≥ 60 % hijau, < 35 % merah, kuning di antaranya (median AREA1 ≈ 44 %); kurang dari 10 job yang dinilai = *data job kurang*. Skor = ranking persentil okupansi (40 %), tepat waktu (40 %) dan porsi genset tersambung (20 %). Capture = porsi job di wilayah base camp yang dikerjakan base camp itu sendiri.
+
+**Backtest relokasi (ESTIMASI).** Job H1 di NOP diputar ulang berurutan: dispatch = kejadian + jeda takeover tiket itu sendiri (maks 240 mnt); job diberikan ke base camp tercepat yang kosong dalam radius (model tempuh dengan pengali lalu lintas jam itu); base camp sibuk selama perjalanan + jam job; tepat waktu = jeda + perjalanan ≤ BBT. Baseline = replay yang sama dengan lokasi sekarang. Kandidat = anchor kecamatan (default di cluster yang sama — ops: unit hanya pindah antar cluster dengan FMC yang sama), disaring dari berapa job telat / tidak terlayani yang bisa dijangkau tepat waktu, tiap kandidat diputar ulang penuh; diurutkan menurut Δ job tepat waktu se-NOP, lalu Δ tidak terlayani.
+
+**Prioritas dispatch (statis, `dispatch`).** Skor = 0,40 class + 0,30 dependensi (site anak ÷ 15; ACTUAL dari `engine/data/site_dependency.csv` bila NOP officer mengisi template, kalau tidak PROXY dari bucket HUB) + 0,30 prioritas MBP. Urutan: site yang masih bisa dijangkau sebelum BBT dulu, lalu BBT tidak diketahui, lalu yang pasti telat, lalu di luar radius; di dalam grup menurut skor. Audit: setiap momen H1 saat base camp mengambil job sementara job lain untuknya menunggu (terjadi sebelum takeover, diambil kemudian, ≤ 24 jam) — dianggap diikuti bila skor site yang diambil ≥ skor terbaik yang menunggu − 0,02.
+
+**Jenis aksi BBS dan cek setting.** `actionType()` memetakan tiap aksi ke REPLACE / UPGRADE / SETTING / TEST / DATA / MONITOR / NONE (mode peta *Jenis aksi*, kotak, filter daftar). Aturan baru sebelum R6: **R6c** Kritis terukur pada baterai yang lebih muda dari 40 % umur gantinya (`battery_young_share`) dan **R6d** lithium Kritis terukur dengan umur tidak diketahui → *Cek setting rectifier / LVD / BMS → uji ulang* (temuan lapangan: BBT pendek karena setting LVD / BMS atau beban, bukan aus). AREA1: penggantian 1.131 → 680, cek setting 566.

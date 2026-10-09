@@ -20,7 +20,7 @@ Every number in PBA is computed **per site first** and then rolled up to cluster
 | 05 | [Configuration reference](05-configuration.md) | Analysts, admins | Every key in `engine/config/*.yaml`, its default and effect; the Config tab (what-if) |
 | 06 | [Architecture & code](06-architecture.md) | Developers | Repository layout, data flow, modules, URL state, i18n, engine-text translation, extension points |
 | 07 | [Deployment & operations](07-deployment-operations.md) | Developers, operators | Local run, Vercel deploy with login, data refresh routine, environment variables, security rules, troubleshooting |
-| 08 | [Testing & QA](08-testing-qa.md) | Developers, reviewers | The 38 regression tests, 25 validation checks, build sanity checks, manual QA checklist |
+| 08 | [Testing & QA](08-testing-qa.md) | Developers, reviewers | The 47 regression tests, 25 validation checks, build sanity checks, manual QA checklist |
 | 09 | [Limitations, assumptions & roadmap](09-limitations-roadmap.md) | Management, reviewers | What the data cannot tell yet, PROXY/ESTIMATED items, open questions, telemetry, Watson (PHP) integration options |
 | 10 | [Glossary](10-glossary.md) | Everyone | Terms, abbreviations and evidence tags (EN ↔ ID) |
 | — | [Changelog](../CHANGELOG.md) | Everyone | Version history v1 → v3.5 |

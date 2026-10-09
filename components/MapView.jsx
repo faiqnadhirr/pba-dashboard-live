@@ -12,11 +12,12 @@ import { modeColor, modeLegend, siteWhy, keyColor } from "./mapModes";
 import RollupPanel from "./RollupPanel";
 
 // far zoom: a small square per base camp so the trucks do not cover the sites; full truck icon from zoom 8
-const CAMP_DOT = (sel, isNew) => L.divIcon({ className: "", iconSize: [10, 10], iconAnchor: [5, 5],
-  html: `<div style="width:10px;height:10px;border-radius:2px;background:${isNew ? "#4a3aa7" : sel ? "#eda100" : "#1F2A44"};border:1.5px solid #fff;box-shadow:0 0 0 1px #1F2A44"></div>` });
-const TRUCK = (sel, isNew) => L.divIcon({
+// v3.7 — base camps can carry a performance colour (fill) — the dark outline keeps them distinct from site dots
+const CAMP_DOT = (sel, isNew, col) => L.divIcon({ className: "", iconSize: [col ? 14 : 10, col ? 14 : 10], iconAnchor: [col ? 7 : 5, col ? 7 : 5],
+  html: `<div style="width:${col ? 14 : 10}px;height:${col ? 14 : 10}px;border-radius:3px;background:${isNew ? "#4a3aa7" : sel ? "#eda100" : col || "#1F2A44"};border:${col ? 2 : 1.5}px solid #fff;box-shadow:0 0 0 1.5px #1F2A44"></div>` });
+const TRUCK = (sel, isNew, col) => L.divIcon({
   className: "", iconSize: [26, 26], iconAnchor: [13, 13],
-  html: `<div style="width:26px;height:26px;border-radius:6px;background:${isNew ? "#4a3aa7" : sel ? "#eda100" : "#1F2A44"};border:2px solid #fff;box-shadow:0 0 0 1px #1F2A44;display:flex;align-items:center;justify-content:center" aria-label="MBP base camp">
+  html: `<div style="width:26px;height:26px;border-radius:6px;background:${isNew ? "#4a3aa7" : sel ? "#eda100" : col || "#1F2A44"};border:2px solid #fff;box-shadow:0 0 0 1px #1F2A44;display:flex;align-items:center;justify-content:center" aria-label="MBP base camp">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v9H3z"/><path d="M14 9h4l3 3v3h-7z"/><circle cx="7" cy="17" r="1.8" fill="#fff"/><circle cx="17" cy="17" r="1.8" fill="#fff"/></svg></div>`,
 });
 
@@ -87,7 +88,8 @@ function SiteLayer({ sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, onPick, zo
 
 export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSite, mbpStats, fitKey = "", height = 520, colorOverride, legendOverride, keyOverride,
   defaultMode = "priority", extraMbps = [], compact = false, mode: modeProp, onMode, hidden: hiddenProp, onHidden, modes = ["priority", "design", "survival"],
-  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true }) {
+  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true, mbpKeyOf, mbpLegend, mbpPerf, onOpenMbp, mbpLabel }) {
+  const [mbpHidden, setMbpHidden] = useState([]);
   const [tileFail, setTileFail] = useState(0), [tileOk, setTileOk] = useState(0);
   const [showSites, setShowSites] = useState(true), [showMbps, setShowMbps] = useState(true), [coverage, setCoverage] = useState(false);
   const [modeL, setModeL] = useState(defaultMode), [hiddenL, setHiddenL] = useState([]);
@@ -110,8 +112,11 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
   const located = useMemo(() => sites.filter((s) => isNum(s.lat) && isNum(s.lon)), [sites]);
   const shown = useMemo(() => (keyOf && hidden.length ? located.filter((s) => !hidden.includes(keyOf(s))) : located), [located, keyOf, hidden]);
   const counts = useMemo(() => { const c = {}; if (keyOf) located.forEach((s) => { const k = keyOf(s); c[k] = (c[k] || 0) + 1; }); return c; }, [located, keyOf]);
-  const mbpsLoc = useMemo(() => [...mbps, ...extraMbps].filter((m) => isNum(m.lat)), [mbps, extraMbps]);
-  const fitPts = useMemo(() => [...located.map((s) => [s.lat, s.lon]), ...mbpsLoc.map((m) => [m.lat, m.lon])], [located, mbpsLoc]);
+  const mbpsAll = useMemo(() => [...mbps, ...extraMbps].filter((m) => isNum(m.lat)), [mbps, extraMbps]);
+  const mbpsLoc = useMemo(() => (mbpKeyOf && mbpHidden.length ? mbpsAll.filter((m) => m.is_new || !mbpHidden.includes(mbpKeyOf(m))) : mbpsAll), [mbpsAll, mbpKeyOf, mbpHidden]);
+  const mbpCounts = useMemo(() => { const c = {}; if (mbpKeyOf) mbpsAll.forEach((m) => { if (!m.is_new) { const k = mbpKeyOf(m); c[k] = (c[k] || 0) + 1; } }); return c; }, [mbpsAll, mbpKeyOf]);
+  const mbpCol = (m) => (mbpKeyOf && mbpLegend ? mbpLegend.find((l) => l.k === mbpKeyOf(m))?.c : null);
+  const fitPts = useMemo(() => [...located.map((s) => [s.lat, s.lon]), ...mbpsAll.map((m) => [m.lat, m.lon])], [located, mbpsAll]);
   // dot size = power downtime (sqrt scale, p95 = full size)
     const sizeFn = MM?.size || ((s) => s.ran_power_down_h);
   const p95s = useMemo(() => { const v = located.map((s) => sizeFn(s) || 0).sort((a, b) => a - b); return v[Math.floor(v.length * 0.95)] || 1; }, [located, mode]); // eslint-disable-line
@@ -173,9 +178,9 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
                 <Tooltip direction="top" offset={[0, -10]}><b>{u.id}</b> · {fInt(u.n)} {t("map.sites").toLowerCase()}<br />{t("map.unit_tip", { p: fPct(100 * u.badShare, 0), b: fInt(u.bad) })}<br /><span className="text-mut">{t("map.unit_click")}</span></Tooltip>
               </Marker>))}
             {showMbpLayers && showMbps && mbpsLoc.map((m) => (
-              <Marker key={"m" + m.mbp_id} position={[m.lat, m.lon]} icon={(zoom >= 8 ? TRUCK : CAMP_DOT)(selMbp?.mbp_id === m.mbp_id, m.is_new)} keyboard
+              <Marker key={"m" + m.mbp_id} position={[m.lat, m.lon]} icon={(zoom >= 8 ? TRUCK : CAMP_DOT)(selMbp?.mbp_id === m.mbp_id, m.is_new, mbpCol(m))} keyboard
                 eventHandlers={{ click: () => { setSelMbp(m); setSelSite(null); } }}>
-                <Tooltip direction="top"><b>{m.is_new ? t("map.new_scenario") + " " : ""}MBP</b> {m.mbp_id}<br />{t("map.tt_camp_click", { r: R })}</Tooltip>
+                <Tooltip direction="top"><b>{m.is_new ? (m.new_label || t("map.new_scenario")) + " " : ""}MBP</b> {m.mbp_id}{mbpLabel && !m.is_new ? <><br />{mbpLabel(m)}</> : null}<br />{t("map.tt_camp_click", { r: R })}</Tooltip>
               </Marker>
             ))}
             {selSite && <CircleMarker center={[selSite.lat, selSite.lon]} radius={12} interactive={false} pathOptions={{ color: "#141821", weight: 3, fillOpacity: 0 }} />}
@@ -195,7 +200,18 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
                       [t("map.avg_distance"), fKm(st.avg_km)], [t("map.avg_eta_est"), fMin(st.avg_eta_min)], [t("col.dark_before_mbp"), `${fInt(st.at_risk_sites)} (${fPct(100 * st.risk_share, 0)})`],
                       [t("map.workload"), fInt(st.deployments_h1)], [t("col.signal"), tv("signal", st.load_signal)]].map(([k, v]) => <tr key={k}><td className="text-mut py-0.5">{k}</td><td className="text-right font-medium">{v}</td></tr>)}
                   </tbody></table>) : <div className="text-mut">{t("map.no_stats")}</div>}
-                {st && <div className="text-[11px] text-slate mt-1">{te(st.signal_why, "signal")}</div>}
+                {st && !mbpPerf && <div className="text-[11px] text-slate mt-1">{te(st.signal_why, "signal")}</div>}
+                {mbpPerf?.get(selMbp.mbp_id) && (() => { const p = mbpPerf.get(selMbp.mbp_id); return (
+                  <div className="mt-2 border-t border-line pt-1.5">
+                    <div className="font-semibold text-[11.5px] text-ink mb-0.5 flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: mbpCol(selMbp) || "#1F2A44" }} />{t("perf.card.title")} · {t(`perf.key.${p.key}`)}</div>
+                    <table className="w-full"><tbody>
+                      {[[t("perf.col.jobs"), `${fInt(p.jobs)} (${fInt(Math.round(p.jobs_month))}/${t("perf.month_short")})`], [t("perf.col.busy"), fPct(100 * p.busy, 1)],
+                        [t("perf.col.ontime"), p.ontime_rate == null ? "—" : fPct(100 * p.ontime_rate, 0)], [t("perf.col.rh_month"), fH(p.busy_h_month)],
+                        [t("perf.col.capture"), p.capture == null ? "—" : fPct(100 * p.capture, 0)], [t("perf.col.score"), p.score == null ? "—" : `${p.score} · #${p.rank}/${p.rank_of}`]]
+                        .map(([k, v]) => <tr key={k}><td className="text-mut py-0.5">{k}</td><td className="text-right font-medium">{v}</td></tr>)}
+                    </tbody></table>
+                  </div>); })()}
+                {onOpenMbp && !selMbp.is_new && <button onClick={() => onOpenMbp(selMbp)} className="mt-2 w-full bg-navy text-white rounded py-1 text-[12px]">{t("perf.card.open")}</button>}
               </div>
             )}
             {selSite && (
@@ -220,6 +236,13 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
           </div>
         )}
       </div>
+      {mbpKeyOf && mbpLegend && showMbpLayers && <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 mt-2 text-[11.5px] text-slate" role="group" aria-label={t("perf.legend")}>
+        <span className="text-ink font-medium">🚚 {t("perf.legend")}:</span>
+        {mbpLegend.map((l) => { const on = !mbpHidden.includes(l.k); return (
+          <button key={l.k} onClick={() => setMbpHidden(on ? [...mbpHidden, l.k] : mbpHidden.filter((x) => x !== l.k))} aria-pressed={on} className={chip(on)} title={l.tip || ""}>
+            <span className="w-2.5 h-2.5 rounded-sm inline-block border border-navy/40" style={{ background: on ? l.c : "#C9CFD9" }} />{l.label}<span className="tabular text-mut">{fInt(mbpCounts[l.k] || 0)}</span></button>); })}
+        {mbpHidden.length > 0 && <button onClick={() => setMbpHidden([])} className="text-s1 underline">{t("map.leg_all")}</button>}
+      </div>}
       {/* legend = toggles: click a category to hide/show it (the KPIs and lists that follow the map use the same filter) */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 mt-2 text-[11.5px] text-slate" role="group" aria-label={t("map.legend")}>
         <span className="tabular text-ink">{t("map.plotted", { a: fInt(shown.length), b: fInt(located.length) })}</span>

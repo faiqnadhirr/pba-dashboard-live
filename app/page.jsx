@@ -21,22 +21,31 @@ import BbsAnalysis from "@/components/tabs/BbsAnalysis";
 import DataQuality from "@/components/tabs/DataQuality";
 import Telemetry from "@/components/tabs/Telemetry";
 import Placement from "@/components/tabs/Placement";
+import MbpOverview from "@/components/tabs/MbpOverview";
+import Performance from "@/components/tabs/Performance";
+import Backtest from "@/components/tabs/Backtest";
+import Dispatch from "@/components/tabs/Dispatch";
+import MbpPanel from "@/components/MbpPanel";
+import { mbpPerformance } from "@/lib/mbpperf";
 import ConfigTab from "@/components/tabs/ConfigTab";
 
 // Two-level navigation. Level 1 = group, level 2 = sub-tab. The active view lives in the URL (?view=group.sub) so it can be
 // shared / bookmarked and the browser Back button works.
 const GROUPS = [
   ["overview", [["health", "overview.health"], ["acc", "overview.accountability"], ["impact", "overview.impact"], ["trend", "overview.trend"]]],
-  ["mbp", [["mbp", "mbp.coverage"], ["list", "mbp.sitelist"], ["sim", "mbp.simulation"], ["place", "mbp.placement"], ["tel", "mbp.telemetry"]]],
+  // v3.7 — MBP first: management overview → coverage → performance → relocation backtest → dispatch → simulation → fleet → site list → telemetry
+  ["mbp", [["mgmt", "mbp.overview"], ["mbp", "mbp.coverage"], ["prod", "mbp.performance"], ["bt", "mbp.backtest"], ["disp", "mbp.dispatch"], ["sim", "mbp.simulation"], ["place", "mbp.placement"], ["list", "mbp.sitelist"], ["tel", "mbp.telemetry"]]],
   ["bbs", [["bbs", "bbs.actions"], ["est", "bbs.estimation"], ["corr", "bbs.correlation"]]],
   ["data", [["dq", "data.quality"], ["cfg", "data.config"]]],
 ];
 const VIEW_OF = Object.fromEntries(GROUPS.flatMap(([, tabs]) => tabs.map(([k, v]) => [k, v])));
 const TAB_OF = Object.fromEntries(Object.entries(VIEW_OF).map(([k, v]) => [v, k]));
 const groupOf = (tab) => GROUPS.find(([, tabs]) => tabs.some(([k]) => k === tab))[0];
-const DEFAULT_TAB = "health";
+const DEFAULT_TAB = "mgmt";
+// v3.7 — the Overview (availability) menu is hidden from the presentation flow; ?full=1 (or opening one of its views) shows it again
+const HIDDEN_GROUP = "overview";
 // tabs that do not follow the period filter (decisions / estimators / fixed Q1-vs-Q2 comparison)
-const FIXED_TABS = new Set(["trend", "sim", "place", "est", "corr", "tel", "cfg"]);
+const FIXED_TABS = new Set(["trend", "sim", "place", "prod", "mgmt", "bt", "disp", "est", "corr", "tel", "cfg"]);
 const FIRST_OF = Object.fromEntries(GROUPS.map(([g, tabs]) => [g, tabs[0][0]]));
 /** everything the URL can carry; an unknown ?view= falls back to its group's first sub-tab (or Health) with a notice */
 function readUrl() {
@@ -44,8 +53,9 @@ function readUrl() {
     const q = new URLSearchParams(window.location.search), v = q.get("view");
     let tab = TAB_OF[v] || DEFAULT_TAB, notice = null;
     if (v && !TAB_OF[v]) { const g = v.split(".")[0]; tab = FIRST_OF[g] || DEFAULT_TAB; notice = v; }
-    return { tab, notice, nop: q.get("nop") || "All NOPs", cls: (q.get("cls") || "").split(",").filter(Boolean), inactive: q.get("inactive") === "1", offair: q.get("offair") === "1", sel: q.get("sel") || null, per: parsePeriod(q.get("per")).key };
-  } catch { return { tab: DEFAULT_TAB, nop: "All NOPs", cls: [], inactive: false, offair: false, sel: null, per: "h1" }; }
+    if (v === "mbp.productivity") { tab = "prod"; notice = null; }        // v3.6 link → v3.7 Performance
+    return { tab, notice, full: q.get("full") === "1", nop: q.get("nop") || "All NOPs", cls: (q.get("cls") || "").split(",").filter(Boolean), inactive: q.get("inactive") === "1", offair: q.get("offair") === "1", gen: q.get("gen") === "1", sel: q.get("sel") || null, per: parsePeriod(q.get("per")).key };
+  } catch { return { tab: DEFAULT_TAB, full: false, nop: "All NOPs", cls: [], inactive: false, offair: false, gen: false, sel: null, per: "h1" }; }
 }
 const CLASSES = ["Diamond", "Platinum", "Gold", "Silver", "Bronze"];
 const LS_KEY = "pba.config.v3";
@@ -55,12 +65,13 @@ export default function Page() {
   const [tab, setTabState] = useState(DEFAULT_TAB), [nop, setNop] = useState("All NOPs"), [classes, setClasses] = useState([]);
   const [inactive, setInactive] = useState(false), [pick, setPick] = useState(null), [offair, setOffair] = useState(false);
   const [lang, setLangState] = useState("id");
-  const [sel, setSel] = useState(null), [notice, setNotice] = useState(null), [drill, setDrill] = useState(null), [per, setPer] = useState("h1"), [pf, setPf] = useState(null);
+  const [sel, setSel] = useState(null), [notice, setNotice] = useState(null), [drill, setDrill] = useState(null), [per, setPer] = useState("h1"), [gen, setGen] = useState(false), [pf, setPf] = useState(null);
+  const [full, setFull] = useState(false), [pickMbp, setPickMbp] = useState(null);
   setLang(lang);                                   // module-level language for t() and number formatters (set before children render)
   useEffect(() => {
     document.title = "PBA — Power Backup Analytic";
     const l = initialLang(); setLangState(l); persistLang(l);       // ?lang= is remembered
-    const apply = () => { const u = readUrl(); setTabState(u.tab); setNop(u.nop); setClasses(u.cls); setInactive(u.inactive); setOffair(u.offair); setSel(u.sel); setNotice(u.notice); setPer(u.per); };
+    const apply = () => { const u = readUrl(); setTabState(u.tab); setNop(u.nop); setClasses(u.cls); setInactive(u.inactive); setOffair(u.offair); setGen(u.gen); setSel(u.sel); setNotice(u.notice); setPer(u.per); setFull(u.full); };
     apply();
     const onPop = () => apply();
     window.addEventListener("popstate", onPop);
@@ -68,7 +79,7 @@ export default function Page() {
   }, []);
   useEffect(() => { document.documentElement.lang = lang; }, [lang]);
   // URL builder: current state + overrides. Language is always carried so shared links open in the same language.
-  const cur = { view: VIEW_OF[tab], nop, cls: classes, inactive, offair, sel, per, lang };
+  const cur = { view: VIEW_OF[tab], nop, cls: classes, inactive, offair, gen, sel, per, lang, full };
   const hrefFor = (o = {}) => {
     const st = { ...cur, sel: null, ...o }, q = new URLSearchParams();
     q.set("view", st.view);
@@ -76,23 +87,25 @@ export default function Page() {
     if (st.cls?.length) q.set("cls", st.cls.join(","));
     if (st.inactive) q.set("inactive", "1");
     if (st.offair) q.set("offair", "1");
+    if (st.gen) q.set("gen", "1");
     if (st.sel) q.set("sel", st.sel);
     if (st.per && st.per !== "h1") q.set("per", st.per);
+    if (st.full) q.set("full", "1");
     q.set("lang", st.lang);
     return `?${q.toString()}`;
   };
   const navigate = (o = {}) => {
     const st = { ...cur, sel: null, ...o };
     if (TAB_OF[st.view]) setTabState(TAB_OF[st.view]);
-    setNop(st.nop || "All NOPs"); setClasses(st.cls || []); setInactive(!!st.inactive); setOffair(!!st.offair); setSel(st.sel || null); setPer(st.per || "h1"); setNotice(null); setPick(null); setDrill(null);
+    setNop(st.nop || "All NOPs"); setClasses(st.cls || []); setInactive(!!st.inactive); setOffair(!!st.offair); setGen(!!st.gen); setSel(st.sel || null); setPer(st.per || "h1"); setFull(!!st.full); setNotice(null); setPick(null); setDrill(null); setPickMbp(null);
     try { window.history.pushState({}, "", hrefFor(o)); } catch {}
     window.scrollTo({ top: 0 });
   };
   const setTab = (k) => { if (k !== tab) navigate({ view: VIEW_OF[k] }); };
   // filter changes replace the URL (no history spam) but keep it shareable
-  useEffect(() => { try { if (window.location.search !== hrefFor({ sel })) window.history.replaceState({}, "", hrefFor({ sel })); } catch {} }, [nop, classes, inactive, offair, lang, sel, per]); // eslint-disable-line
+  useEffect(() => { try { if (window.location.search !== hrefFor({ sel })) window.history.replaceState({}, "", hrefFor({ sel })); } catch {} }, [nop, classes, inactive, offair, gen, lang, sel, per, full]); // eslint-disable-line
   const chooseLang = (l) => { setLangState(l); persistLang(l); };
-  const resetFilters = () => { setNop("All NOPs"); setClasses([]); setInactive(false); setOffair(false); setSel(null); setPer("h1"); };
+  const resetFilters = () => { setNop("All NOPs"); setClasses([]); setInactive(false); setOffair(false); setGen(false); setSel(null); setPer("h1"); };
 
   useEffect(() => {
     loadAll().then((d) => {
@@ -122,23 +135,29 @@ export default function Page() {
     return applyPeriod(model, data.sites.map((s) => s.site_id), periodAgg(pf.files, P, data.sites.length), P);
   }, [model, pf, P.key]); // eslint-disable-line
   // A5 — suspected off-air / dismantle / data-issue sites are excluded from every KPI unless the toggle is on
-  const active = useMemo(() => pmodel.filter((s) => (inactive || s.site_active === 1) && (offair || !s.offair)), [pmodel, inactive, offair]);
+  // v3.6 — sites with an active fixed genset stand on their own: excluded unless "+ fixed genset" is on
+  const genOn = gen || cfg?.fixed_genset?.exclude_by_default === false;
+  const active = useMemo(() => pmodel.filter((s) => (inactive || s.site_active === 1) && (offair || !s.offair) && (genOn || !s.genset_protected)), [pmodel, inactive, offair, genOn]);
+  const gensetSites = useMemo(() => pmodel.filter((s) => s.genset_protected && (inactive || s.site_active === 1)), [pmodel, inactive]);
   const offairSites = useMemo(() => pmodel.filter((s) => s.offair && (inactive || s.site_active === 1)), [pmodel, inactive]);
   const nopCounts = useMemo(() => { const m = new Map(); active.forEach((s) => m.set(s.nop, (m.get(s.nop) || 0) + 1)); return m; }, [active]);
   const allNops = useMemo(() => [...new Set(model.map((s) => s.nop).filter(Boolean))].sort(), [model]);
   const scope = useMemo(() => active.filter((s) => (nop === "All NOPs" || s.nop === nop) && (!classes.length || classes.includes(s.site_class))), [active, nop, classes]);
   const mbpsScope = useMemo(() => (data ? data.mbps.filter((m) => nop === "All NOPs" || m.nop === nop) : []), [data, nop]);
   const mbpStats = useMemo(() => (data && cfg ? new Map(basecampSummary(model, data.mbps, cfg).map((r) => [r.mbp_id, r])) : new Map()), [model, data, cfg]);
+  // v3.7 — MBP performance & utilisation from the H1 PLN-off job tickets (full snapshot, like coverage)
+  const perf = useMemo(() => (data && cfg ? mbpPerformance(model, data.mbps, data.tickets || [], cfg) : new Map()), [model, data, cfg]);
 
   if (err) return <div className="p-8 text-crit">{t("app.load_error", { err })}</div>;
   if (!data || !cfg) return <div className="min-h-screen flex items-center justify-center text-slate" role="status">{t("app.loading")}</div>;
   const snap = data.meta.snapshot || {};
-  const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setNop, setPick, classes, inactive, offairSites, includeOffair: offair, sel, setSel, navigate, hrefFor, per, period: P, periodText: periodLabel(P), openDrill: (id, focus, sites) => setDrill({ id, focus, sites }) };
+  const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setNop, setPick, classes, inactive, offairSites, includeOffair: offair, gensetSites, includeGenset: genOn, sel, setSel, navigate, hrefFor, per, period: P, periodText: periodLabel(P), openDrill: (id, focus, sites) => setDrill({ id, focus, sites }), perf, tickets: data.tickets || [], openMbp: setPickMbp, allNops, active };
   const empty = scope.length === 0 && !["dq", "tel", "cfg", "corr", "est"].includes(tab);
 
   const cfgH = configHash(cfg), cfgEdited = cfgH !== configHash(data.meta.config);
   const activeGroup = groupOf(tab);
-  const filtered = nop !== "All NOPs" || classes.length > 0 || inactive || offair || per !== "h1";
+  const groups = GROUPS.filter(([g]) => g !== HIDDEN_GROUP || full || activeGroup === HIDDEN_GROUP);
+  const filtered = nop !== "All NOPs" || classes.length > 0 || inactive || offair || gen || per !== "h1";
   const scopeChip = [t("filter.scope_sites", { n: fInt(scope.length) }), nop === "All NOPs" ? t("filter.all_nops") : nop, classes.length ? classes.join(", ") : t("filter.all_classes")].join(" · ");
   return (
     <NavCtx.Provider value={{ navigate, hrefFor, state: cur }}>
@@ -155,7 +174,7 @@ export default function Page() {
                 title={t("header.cfg_tip", { h: cfgH, s: t(cfgEdited ? "cfg.is_edited" : "cfg.is_default") })}>{t("header.cfg")} {cfgH}{cfgEdited ? " ✎" : ""}</span>
             </div>
             <nav className="flex items-stretch h-full ml-1" aria-label={t("nav.main")}>
-              {GROUPS.map(([g, tabs]) => (
+              {groups.map(([g, tabs]) => (
                 <button key={g} onClick={() => activeGroup !== g && setTab(tabs[0][0])} aria-current={activeGroup === g ? "true" : undefined}
                   className={`px-3 text-[13px] font-semibold border-b-[3px] whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn ${activeGroup === g ? "border-warn text-white" : "border-transparent text-white/70 hover:text-white"}`}>{t(`nav.${g}`)}</button>
               ))}
@@ -193,6 +212,7 @@ export default function Page() {
             </div>
             <Toggle label={t("filter.inactive")} checked={inactive} onChange={setInactive} />
             <Toggle label={t("filter.offair", { n: fInt(offairSites.length) })} checked={offair} onChange={setOffair} />
+            <span title={t("filter.genset_tip")}><Toggle label={t("filter.genset", { n: fInt(gensetSites.length) })} checked={gen} onChange={setGen} /></span>
             <div className="ml-auto flex items-center gap-2 min-w-0">
               <span className="px-2 py-[3px] rounded-full bg-surface border border-line text-[12px] text-ink tabular truncate max-w-[330px]" title={`${scopeChip} — ${t("filter.scope_tip", { r: cfg.mbp.max_radius_km })}`}>{t("filter.scope")}: <b>{scopeChip}</b></span>
               <button onClick={resetFilters} disabled={!filtered} className="px-2 py-[3px] rounded-md border border-line text-[12px] text-slate bg-white hover:border-slate disabled:opacity-40 whitespace-nowrap shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1">{t("filter.reset")}</button>
@@ -215,6 +235,10 @@ export default function Page() {
           {tab === "mbp" && <MbpTab {...ctx} part="map" />}
           {tab === "list" && <MbpTab {...ctx} part="list" />}
           {tab === "place" && <Placement {...ctx} />}
+          {tab === "mgmt" && <MbpOverview {...ctx} />}
+          {tab === "prod" && <Performance {...ctx} />}
+          {tab === "bt" && <Backtest {...ctx} />}
+          {tab === "disp" && <Dispatch {...ctx} />}
           {tab === "sim" && <SimTab {...ctx} />}
           {tab === "bbs" && <BbsActions {...ctx} />}
           {tab === "corr" && <BbsAnalysis {...ctx} part="corr" />}
@@ -224,8 +248,11 @@ export default function Page() {
           {tab === "cfg" && <ConfigTab {...ctx} />}
         </div>}
       </main>
-      <footer className="max-w-[1560px] mx-auto px-5 pb-6 text-[11px] text-mut">{t("footer.legend")}</footer>
+      <footer className="max-w-[1560px] mx-auto px-5 pb-6 text-[11px] text-mut">{t("footer.legend")}
+        {" "}<button className="underline hover:text-ink" onClick={() => navigate(full || activeGroup === HIDDEN_GROUP ? { view: VIEW_OF[DEFAULT_TAB], full: false } : { view: "overview.health", full: true })}>
+          {t(full || activeGroup === HIDDEN_GROUP ? "nav.overview_hide" : "nav.overview_show")}</button></footer>
       <SiteDrawer site={pick} cfg={cfg} onClose={() => setPick(null)} />
+      <MbpPanel mbp={pickMbp} ctx={ctx} onClose={() => setPickMbp(null)} />
       <DrillPanel drill={drill} scope={drill?.sites || scope} nop={nop} cfg={cfg} onClose={() => setDrill(null)} />
     </div>
     </NavCtx.Provider>

@@ -13,6 +13,9 @@
 | **Penanggung jawab** | Hanya bila tiket punya akar masalah; selain itu disimpulkan/tidak diketahui | Porsi besar disimpulkan (dipicu PLN, belum terkonfirmasi) | Akar masalah wajib diisi di tiket |
 | **Sumber yang hanya bulanan** | Ringkasan BBT bulanan; PLN bulanan untuk site tanpa kejadian | Dibagi proporsional di dalam bulan pada filter periode (ditandai) | Data tingkat kejadian untuk semua site |
 | **Rentang filter periode** | Dibuat untuk Jan–Jun 2026 | Periode baru butuh daftar tahun/bulan di `lib/period.js` | Buat rentang mengikuti data |
+| **Genset tetap** | Dapot + New_BBT (ekspor SWFM belum diterima) | Sebagian genset bisa terlewat atau usang | Ekspor genset tetap SWFM per site |
+| **Target respons** | 30 mnt diasumsikan sudah termasuk mobilisasi 15 mnt (konfirmasi ke Pak Nizar) | Kalau hanya waktu tempuh, ada kelonggaran 15 mnt | Konfirmasi definisi; atur `travel.mobilization_minutes` |
+| **Center of gravity** | Garis lurus × faktor jalan; site tetap di base camp-nya | Pindah lintas selat/sungai bisa terlihat lebih dekat dari kenyataannya (tag "beda kabupaten") | Cek jalan/penyeberangan; API routing |
 | **Korelasi** | Sebagian mekanis (sensor) | Tidak dipakai untuk mengestimasi BBT | — (catatan terdokumentasi) |
 | **Cakupan** | Snapshot AREA1, H1-2026; bukan live | Keputusan mencerminkan snapshot | Pipeline terjadwal / API |
 | **Tata kelola config** | What-if hanya di browser (DEMO) | Tidak ada jejak persetujuan di server | Mode operasional (di bawah) |

@@ -40,8 +40,25 @@ export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, set
   const visKeys = COLOR_MODES_LEGEND[mapMode].filter((k) => !mapHidden.includes(k));
   const bd = useMemo(() => coverageBreakdown(vis), [vis]);
   const avg = (f, L = cov) => { const v = L.map(f).filter(isNum); return v.length ? v.reduce((a, x) => a + x, 0) / v.length : null; };
+  const pc2 = (v, n) => fPct((100 * v) / Math.max(1, n), 0);
   const pc = (v) => fPct((100 * v) / Math.max(1, bd.total), 0);
   const B = cfg.basecamp_signal;
+  // v3.6 — response-time distribution (fastest MBP within radius, ETA incl. mobilisation) vs the ops target
+  const RT = cfg.mbp.response_target_min ?? 30, BANDS = cfg.mbp.response_bands_min || [30, 60, 120];
+  const eb = useMemo(() => {
+    const o = { b0: 0, b1: 0, b2: 0, b3: 0, beyond: 0, island: 0, total: 0, inT: 0 };
+    for (const s of vis) {
+      o.total++;
+      if (s.access_class === "island") { o.island++; continue; }
+      const e = s.eta_fastest_min;
+      if (!isNum(e)) { o.beyond++; continue; }
+      if (e <= RT) o.inT++;
+      if (e <= BANDS[0]) o.b0++; else if (e <= BANDS[1]) o.b1++; else if (e <= BANDS[2]) o.b2++; else o.b3++;
+    }
+    return o;
+  }, [vis, RT, BANDS]);
+  const EB = [["b0", "#0ca30c", t("mbp.eta.le", { m: BANDS[0] })], ["b1", "#fab219", t("mbp.eta.range", { a: BANDS[0], b: BANDS[1] })], ["b2", "#ec835a", t("mbp.eta.range", { a: BANDS[1], b: BANDS[2] })],
+    ["b3", "#d03b3b", t("mbp.eta.gt", { m: BANDS[2] })], ["beyond", "#7a1414", t("mbp.seg.beyond")], ["island", "#9DB7DE", t("mbp.eta.island")]];
 
   return (
     <div className="space-y-4">
@@ -50,17 +67,20 @@ export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, set
           <b>{t("map.legfilter.title")}</b> {t("map.legfilter.body", { h: mapHidden.length, n: fInt(vis.length), N: fInt(scope.length) })}
           <Go to={{ view: "mbp.sitelist", sel: `map_${mapMode}~${visKeys.join("+")}` }}>{t("drill.view_sites", { n: fInt(vis.length) })}</Go>
           <button onClick={() => setMapHidden([])} className="ml-auto text-slate underline">{t("map.leg_all")}</button></div>}
-        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
           <Kpi scope="filtered" fixed={fx} onClick={() => openDrill("cov", "within")} label={t("mbp.kpi.within")} value={fInt(bd.within)} sub={t("mbp.kpi.within_sub", { r: R, n: fInt(bd.beyond) })} tone={bd.beyond ? "warn" : "good"} help={t("mbp.kpi.formula")} />
           <Kpi scope="filtered" fixed={fx} onClick={() => openDrill("cov", "arrive")} label={t("mbp.seg.arrive")} value={fInt(bd.arrive)} sub={t("mbp.kpi.pct_scope", { p: pc(bd.arrive) })} tone="good" help={t("mbp.kpi.formula")} />
           <Kpi scope="filtered" fixed={fx} onClick={() => openDrill("cov", "late_dark")} label={t("mbp.seg.late_dark")} value={fInt(bd.late_dark)} sub={t("mbp.kpi.late_dark_sub", { m: cfg.availability.dark_min_months })} tone="crit" help={t("mbp.kpi.formula")} />
           <Kpi scope="filtered" fixed={fx} onClick={() => openDrill("cov", "bbt_unknown")} label={t("mbp.seg.bbt_unknown")} value={fInt(bd.bbt_unknown)} sub={t("mbp.kpi.unknown_sub")} tone="slate" help={t("mbp.kpi.formula")} />
+          <Kpi scope="filtered" fixed={fx} label={t("mbp.kpi.in_target", { m: RT })} value={pc2(eb.inT, eb.total)} sub={t("mbp.kpi.in_target_sub", { n: fInt(eb.inT), mob: cfg.travel.mobilization_minutes })} tone={eb.inT / Math.max(1, eb.total) >= 0.8 ? "good" : "warn"} help={t("mbp.kpi.in_target_help")} />
           <Kpi scope="filtered" label={t("mbp.kpi.avg_eta")} value={fMin(avg((s) => s.eta_min, vis))} sub={t("mbp.kpi.avg_eta_sub")} />
           <Kpi scope="portfolio" label={t("mbp.kpi.underserved")} value={fInt([...mbpStats.values()].filter((b) => b.load_signal === "Under-served").length)} sub={t("mbp.kpi.underserved_sub", { n: B.criteria_needed })} />
         </div>
         <Card title={t("mbp.bd.title")} sub={t("mbp.bd.sub")}>
           <Bar100 height={16} parts={SEG.map(([k, c]) => ({ label: t(`mbp.seg.${k}`), c, v: bd[k], txt: `${fInt(bd[k])} · ${pc(bd[k])}` }))} />
           <div className="text-[11.5px] text-mut mt-1.5 tabular">{t("mbp.bd.sum", { a: fInt(bd.arrive), d: fInt(bd.late_dark), o: fInt(bd.late_other), u: fInt(bd.bbt_unknown), b: fInt(bd.beyond), n: fInt(bd.total) })}</div>
+          <div className="text-[11.5px] text-slate mt-3 mb-1">{t("mbp.eta.title", { m: RT, mob: cfg.travel.mobilization_minutes })}</div>
+          <Bar100 height={12} parts={EB.map(([k, c, l]) => ({ label: l, c, v: eb[k], txt: `${fInt(eb[k])} · ${pc2(eb[k], eb.total)}` }))} />
         </Card>
         <Card title={t("mbp.map.title")} sub={t("mbp.map.sub")}>
           <MapView sites={scope} mbps={mbpsScope} cfg={cfg} onRadius={setRadius} onPickSite={setPick} mbpStats={mbpStats} fitKey={nop} mode={mapMode} onMode={setMapMode} hidden={mapHidden} onHidden={setMapHidden} height={560} />

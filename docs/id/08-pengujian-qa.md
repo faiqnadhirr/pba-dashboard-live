@@ -5,7 +5,7 @@ PBA punya tiga gerbang otomatis dan satu checklist manual. Semua tes otomatis be
 ```text
 python engine/build.py     → cek kewajaran build → npm test (38) → build gagal bila ada error
 python engine/validate.py  → 25 cek              → docs/VALIDATION_REPORT.md
-npm test                   → 38 tes regresi pada lib/logic.js dan helper UI
+npm test                   → 47 tes regresi pada lib/logic.js dan helper UI
 ```
 
 ## 1. Tes regresi (`tests/logic.test.mjs`, `npm test`)
@@ -50,6 +50,15 @@ npm test                   → 38 tes regresi pada lib/logic.js dan helper UI
 | 36 | v3.4 periode | H1 dari file harian = snapshot; Q1 + Q2 = H1; hari berjumlah sama dengan bulan; keputusan tidak berubah |
 | 37 | v3.4 legenda | filter legenda peta = filter Daftar site |
 | 38 | v3.5 roll-up | untuk setiap mode peta, NOP = Σ cluster = Σ site; site pemicu adalah site bermasalah NOP itu |
+| 39 | v3.6 genset tetap | site genset tidak pernah butuh MBP, bukan target penempatan |
+| 40 | v3.6 gap BBT | rasio = terukur ÷ desain hanya untuk baterai terukur dengan desain terhitung |
+| 41 | v3.6 target respons | jangkauan sekarang = site dengan ETA tercepat ≤ 30 mnt; lokasi baru = site kecamatan; tiap langkah menambah jangkauan |
+| 42 | v3.6 center of gravity | rekomendasi = site kecamatan aktif nyata; tidak pernah lebih buruk pada jangkauan berbobot |
+| 43 | v3.6 ekspor | persentil konkurensi berurutan; hitungan produktivitas konsisten |
+| 44 | v3.7 performa MBP | setiap job dihitung sekali; kelas valid; tepat waktu hanya job PLN off; jumlah per NOP |
+| 45 | v3.7 backtest | replay mencakup setiap job; pindah ke titik yang sama tidak mengubah apa pun; kandidat berurutan, filter cluster sama |
+| 46 | v3.7 dispatch | yang bisa diselamatkan dulu, lalu skor; audit hanya saat ada job lain menunggu |
+| 47 | v3.7 BBS | jenis aksi mencakup setiap aksi; Kritis baterai muda → cek setting (R6c) |
 
 ## 2. Cek validasi (`engine/validate.py`)
 

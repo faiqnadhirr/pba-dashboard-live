@@ -194,6 +194,114 @@ def run_js_tests():
         raise SystemExit("JS rule tests failed — see `npm test`")
 
 
+# ---------------------------------------------------------------------- v3.6 operations
+GENSET_OFF_WORDS = ("POWER OFF", "SHUTDOWN", "DISMANTLE", "RUSAK", "CUT OFF")
+
+
+def add_ops_fields(t, tk, qa):
+    """Fixed genset per site (PROVISIONAL: Dapot + New_BBT; SWFM is the reference when available) and PLN-off tickets per site.
+    fixed_genset: ACTIVE = Dapot 'Genset : Active' with a backup/main-power genset type, or New_BBT backup power = GENSET /
+    Genset Fix Telkomsel 1-2 / Genset Fix = active; OFF = genset recorded but powered off / shut down / dismantled; NONE otherwise."""
+    gt = t["genset_type"].fillna("").str.upper()
+    dap = (t["genset_active"] == 1) & (gt.str.contains("BACKUP POWER") | gt.str.contains("MAIN POWER"))
+    fx, st, bk = t["genset_fix_tsel"].fillna(""), t["genset_fix_state"].fillna(""), t["backup_power"].fillna("")
+    mp = t["main_power"].fillna("")
+    nb = fx.isin(["1", "2"]) | st.eq("GENSET ACTIVE") | bk.eq("GENSET") | mp.str.contains("GENSET")
+    off = (fx.str.contains("|".join(GENSET_OFF_WORDS)) | st.str.contains("|".join(GENSET_OFF_WORDS))) & ~dap & ~nb
+    t["fixed_genset"] = np.select([dap | nb, off], ["ACTIVE", "OFF"], default="NONE")
+    basis = []
+    for d_, n_, o_, g_, f_, s_, b_ in zip(dap, nb, off, gt, fx, st, bk):
+        if d_: basis.append(f"Dapot: Genset Active, {g_.title()}")
+        elif n_: basis.append(f"New_BBT: backup {b_ or '—'} · Genset Fix TSEL {f_ or '—'} · {s_ or '—'}")
+        elif o_: basis.append(f"New_BBT: {f_ or s_}")
+        else: basis.append(None)
+    t["fixed_genset_basis"] = basis
+    qa["fixed_genset_active"] = int((t["fixed_genset"] == "ACTIVE").sum())
+    qa["fixed_genset_active_dapot"] = int(dap.sum()); qa["fixed_genset_active_newbbt_only"] = int((nb & ~dap).sum())
+    qa["fixed_genset_off"] = int((t["fixed_genset"] == "OFF").sum())
+    p = tk[(tk["is_pln_off"] == 1) & (tk["status"].str.upper() != "CANCELED")]
+    g = p.groupby("site_id")
+    t["tk_plnoff_n"] = t["site_id"].map(g.size()).fillna(0).astype(int)
+    t["tk_plnoff_visit_n"] = t["site_id"].map(g["checkin_at"].count()).fillna(0).astype(int)
+    t["tk_plnoff_rh_h"] = t["site_id"].map(g["rh_hours"].sum(min_count=1)).round(2)
+
+
+def mbp_productivity(tk):
+    """Per base camp (ticket PIC → base camp): tickets handled, PLN-off tickets, visits (check-in), RH genset hours and response time."""
+    d = tk[(tk["status"].str.upper() != "CANCELED") & tk["mbp_id"].notna()]
+    g = d.groupby("mbp_id")
+    out = pd.DataFrame({
+        "prod_tickets": g.size(), "prod_plnoff": g["is_pln_off"].sum(), "prod_visits": g["checkin_at"].count(),
+        "prod_sites": g["site_id"].nunique(), "prod_rh_total_h": g["rh_hours"].sum(min_count=1), "prod_rh_mean_h": g["rh_hours"].mean(),
+        "prod_rh_median_h": g["rh_hours"].median(), "prod_resp_median_h": g["takeover_to_checkin_h"].median(),
+    }).reset_index()
+    for c in out.columns:
+        if c.startswith("prod_rh") or c == "prod_resp_median_h": out[c] = out[c].round(2)
+    return out
+
+
+def export_tickets(tk, qa):
+    """v3.7 — MBP jobs (not cancelled, PIC = base camp; rc: P = PLN off, B = battery, S = power rental, O = other) for MBP performance, relocation backtest and dispatch audit.
+    Times in minutes from 2026-01-01 00:00 (WIB as recorded). to = take-over − occurred, arr = check-in − occurred, job = take-over →
+    RH stop (0–48 h, else RH hours), out: G = genset connected, P = PLN back on arrival, N = no check-in, O = other resolution."""
+    d = tk[(tk["status"].str.upper() != "CANCELED") & tk["mbp_id"].notna() & tk["occurred_at"].notna()].copy()
+    t0 = pd.Timestamp("2026-01-01")
+    mins = lambda x: (x - t0).dt.total_seconds() / 60
+    occ = mins(d["occurred_at"])
+    to = (d["takeover_at"] - d["occurred_at"]).dt.total_seconds() / 60
+    arr = (d["checkin_at"] - d["occurred_at"]).dt.total_seconds() / 60
+    job = (d["rh_stop_time"] - d["takeover_at"]).dt.total_seconds() / 3600
+    job = job.where(job.between(0, 48)).fillna(d["rh_hours"].astype(float))
+    res = d["resolution"].fillna("").str.upper()
+    out = np.select([d["checkin_at"].isna(), res.str.contains("GENSET"), res.str.contains("PLN SUDAH")], ["N", "G", "P"], default="O")
+    df = pd.DataFrame({"site": d["site_id"].values, "mbp": d["mbp_id"].values, "occ": occ.round(0).astype("Int64").values,
+                       "to": to.where(to.between(0, 7 * 1440)).round(0).astype("Int64").values, "arr": arr.where(arr.between(0, 7 * 1440)).round(0).astype("Int64").values,
+                       "job": job.round(2).values, "out": out,
+                       "rc": np.select([d["is_pln_off"] == 1, d["rc1"].fillna("").str.upper().str.contains("BATERAI"), d["rc1"].fillna("").str.upper().str.contains("SEWA")], ["P", "B", "S"], default="O")})
+    df = df.sort_values("occ").reset_index(drop=True)
+    qa["tickets_exported"] = len(df)
+    return df
+
+
+def read_dependency(t, qa):
+    """v3.7 — optional NOP-officer dependency file engine/data/site_dependency.csv (template from the Dispatch tab):
+    site_id, dependency_role, child_sites. Filled values become ACTUAL dependency; empty = keep the HUB-bucket PROXY."""
+    f = ROOT / "data" / "site_dependency.csv"
+    t["dep_children_actual"] = np.nan; t["dep_role"] = None
+    if not f.exists():
+        qa["dependency_file"] = "absent"; return
+    d = pd.read_csv(f, dtype=str)
+    d.columns = [c.strip().lower() for c in d.columns]
+    d["site_id"] = d["site_id"].str.strip().str.upper()
+    d = d.drop_duplicates("site_id", keep="last").set_index("site_id")
+    if "child_sites" in d: t["dep_children_actual"] = pd.to_numeric(t["site_id"].map(d["child_sites"]), errors="coerce")
+    if "dependency_role" in d: t["dep_role"] = t["site_id"].map(d["dependency_role"].str.strip().str.upper())
+    qa["dependency_file"] = int(t["dep_children_actual"].notna().sum())
+
+
+def plnoff_concurrency(tk, t):
+    """How many MBP jobs run AT THE SAME TIME per NOP (PLN-off tickets with an MBP). Job = take-over (or occurrence) → RH stop
+    (or + RH hours, else + median job length). Sampled every hour over the period: max, p99, p95, p90 of simultaneous jobs."""
+    d = tk[(tk["is_pln_off"] == 1) & (tk["status"].str.upper() != "CANCELED") & tk["mbp_id"].notna()].copy()
+    d["nop"] = d["site_id"].map(t.set_index("site_id")["nop"]).fillna(d["nop"])
+    start = d["takeover_at"].fillna(d["occurred_at"])
+    end = d["rh_stop_time"].where((d["rh_stop_time"] - start).dt.total_seconds().between(0, 48 * 3600))
+    end = end.fillna(start + pd.to_timedelta(d["rh_hours"], unit="h"))
+    med = (end - start).dt.total_seconds().median()
+    end = end.fillna(start + pd.to_timedelta(med if pd.notna(med) else 3 * 3600, unit="s"))
+    d["s"], d["e"] = start, end
+    d = d.dropna(subset=["s", "e"])
+    hours = pd.date_range("2026-01-01", "2026-07-01", freq="1h", inclusive="left")
+    H = hours.values.astype("datetime64[s]").astype(np.int64)
+    out = []
+    for nop, g in d.groupby("nop"):
+        s_ = np.sort(g["s"].values.astype("datetime64[s]").astype(np.int64)); e_ = np.sort(g["e"].values.astype("datetime64[s]").astype(np.int64))
+        conc = np.searchsorted(s_, H, side="right") - np.searchsorted(e_, H, side="right")
+        out.append(dict(nop=nop, jobs=int(len(g)), max=int(conc.max()), p99=float(np.percentile(conc, 99)), p95=float(np.percentile(conc, 95)),
+                        p90=float(np.percentile(conc, 90)), mean=round(float(conc.mean()), 2), median_job_h=round(float(((g["e"] - g["s"]).dt.total_seconds() / 3600).median()), 2)))
+    return out
+
+
 def read_ran_daily(cache: str | None):
     if cache and os.path.exists(cache):
         return pickle.load(open(cache, "rb"))
@@ -455,6 +563,8 @@ def main():
     t = assemble(sites, bbt_k, pwr, mbp_k, cov, est, vendor, cfg)
     t = B.build_features(t)
     t["in_ticket_file"] = t["site_id"].isin(tk_sites).astype(int)
+    add_ops_fields(t, tk, qa)
+    read_dependency(t, qa)
     assert len(t) == len(sites) and t["site_id"].is_unique, "row multiplication!"
     # decision logic (coverage, survival, status, priority, action, cause, responsibility) lives in ONE place:
     # lib/logic.js — the dashboard, simulation, map, exports and tests all use it. Python only prepares evidence.
@@ -479,6 +589,11 @@ def main():
         "ran_ran_down_h", "ran_other_down_h", "m_hours", "m_out", "m_pw", "q1_hours", "q1_outage_h", "q1_power_h", "q2_hours", "q2_outage_h", "q2_power_h",
         # MBP history
         "in_ticket_file", "mbp_primary_hist", "mbp_deployments", "mbp_backup_h",
+        # v3.6 operations: fixed genset (PROVISIONAL until SWFM), location detail, PLN-off tickets & visits
+        "fixed_genset", "fixed_genset_basis", "genset_kva", "kecamatan", "desa", "battery_brand",
+        "tk_plnoff_n", "tk_plnoff_visit_n", "tk_plnoff_rh_h",
+        # v3.7 dependency from NOP officers (ACTUAL when filled)
+        "dep_children_actual", "dep_role",
     ] + rc_cols
     for c in rc_cols:
         t[c] = t[c].fillna(0).astype(int)
@@ -492,9 +607,10 @@ def main():
     sanity(t, corr, f, mbps, tickets, merge_map, qa)
     sz = {}
     sz["sites.json"] = dump(columnar(t[site_cols]), "sites.json")
-    mbp_out = mbps.merge(wl, on="mbp_id", how="left")
+    mbp_out = mbps.merge(wl, on="mbp_id", how="left").merge(mbp_productivity(tk), on="mbp_id", how="left")
     sz["mbps.json"] = dump(records(mbp_out), "mbps.json")
     sz["familiarity.json"] = dump(columnar(fam), "familiarity.json")
+    sz["tickets.json"] = dump(columnar(export_tickets(tk, qa)), "tickets.json")
     # per-NOP detail files (lazy-loaded by the site drawer)
     ran2 = ran.assign(power_h=ran["power_sec"] / 3600, transport_h=ran["transport_sec"] / 3600, outage_h=ran["outage_sec"] / 3600,
                       avail_wc=100 * (1 - ran["outage_sec"] / (ran["days"] * 86400)))
@@ -554,7 +670,7 @@ def main():
                 "chosen_estimator": chosen, "estimator_mae_min": mae, "km_curves": curves_out,
                 "naive_vs_km": {"naive_median_all": jclean(km["naive_exhausted_median_min"].median()),
                                 "km_median_all": jclean(km["km_median_min"].median())}},
-        "mbp": {"pic_matches": records(pm), "duplicates": records(dups)},
+        "mbp": {"pic_matches": records(pm), "duplicates": records(dups), "concurrency": plnoff_concurrency(tk, t)},
         "dq": {"unmatched": unmatched,
                "sources": [
                    dict(source="Dapot ALL Site (AREA1)", raw=qa["dapot_rows_area"], clean=len(sites), grain="site"),

@@ -2,7 +2,7 @@
 // v3.5 — justification of a map unit (NOP or cluster), built bottom-up from its sites: share of problem sites, the clusters
 // behind a NOP, and the sites that drive it, each with its own one-line reason. Breadcrumb AREA › NOP › cluster › site.
 import React, { useEffect, useMemo } from "react";
-import { fInt, fH, fPct, Bar100 } from "./ui";
+import { fInt, fH, fMin, fPct, Bar100 } from "./ui";
 import { t } from "@/lib/i18n";
 import { Go } from "@/lib/nav";
 import { MAP_MODES } from "@/lib/mapmodes";
@@ -13,7 +13,7 @@ export default function RollupPanel({ unit, sites, mode, onOpen, onClose, onPick
   useEffect(() => { if (!unit) return; const k = (e) => e.key === "Escape" && onClose(); window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [unit, onClose]);
   const J = useMemo(() => (unit ? justify(sites, unit.level, unit.id, mode) : null), [unit, sites, mode]);
   if (!unit || !J) return null;
-  const M = MAP_MODES[mode], u = J.unit, hrs = M.sizeUnit === "h";
+  const M = MAP_MODES[mode], u = J.unit, hrs = M.sizeUnit === "h" || M.sizeUnit === "min", fS = M.sizeUnit === "min" ? fMin : fH;
   const badLabels = M.bad.filter((k) => u.counts[k]).map((k) => keyLabel(mode, k)).join(", ");
   const badKeys = M.bad.filter((k) => u.counts[k]);
   const sel = mode !== "trend" && badKeys.length ? `map_${mode}~${badKeys.join("+")}` : null;
@@ -40,7 +40,7 @@ export default function RollupPanel({ unit, sites, mode, onOpen, onClose, onPick
             <div className="text-[11px] uppercase tracking-wide text-mut font-semibold">{t("roll.why_title")}</div>
             <div className="text-[15px] text-ink mt-1 leading-snug">
               {t("roll.why", { p: fPct(100 * u.badShare, 0), b: fInt(u.bad), n: fInt(u.n), k: badLabels || "—" })}
-              {M.size && u.size > 0 && <> {t(hrs ? "roll.size_h" : "roll.size", { v: fH(u.sizeBad), all: fH(u.size), p: fPct((100 * u.sizeBad) / u.size, 0), m: t(`map.size.${mode}`) })}</>}
+              {M.size && u.size > 0 && <> {t(hrs ? "roll.size_h" : "roll.size", { v: fS(u.sizeBad), all: fS(u.size), p: fPct((100 * u.sizeBad) / u.size, 0), m: t(`map.size.${mode}`) })}</>}
             </div>
             <div className="text-[11.5px] text-mut mt-1">{t("roll.basis")}</div>
             <div className="mt-3"><Bar100 height={14} parts={J.keys.map((k) => ({ k, label: keyLabel(mode, k), c: keyColor(mode, k), v: u.counts[k], txt: `${fInt(u.counts[k])} · ${fPct((100 * u.counts[k]) / u.n, 0)}` }))} /></div>
@@ -76,7 +76,7 @@ export default function RollupPanel({ unit, sites, mode, onOpen, onClose, onPick
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: keyColor(mode, M.key(s)) }} />
                       <b className="text-navy">{s.site_id}</b><span className="text-slate truncate">{s.site_name}</span>
                       <span className="text-mut text-[11px] truncate">{s.cluster_to}</span>
-                      {M.size && <span className="ml-auto tabular text-[11.5px] text-ink whitespace-nowrap">{fH(M.size(s))}</span>}
+                      {M.size && <span className="ml-auto tabular text-[11.5px] text-ink whitespace-nowrap">{fS(M.size(s))}</span>}
                     </div>
                     <div className="text-[11.5px] text-slate pl-4.5 ml-[18px] line-clamp-2">{siteWhy(mode, s)}</div>
                   </button></li>))}

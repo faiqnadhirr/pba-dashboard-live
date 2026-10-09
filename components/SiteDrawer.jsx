@@ -37,7 +37,7 @@ export default function SiteDrawer({ site, cfg, onClose }) {
         <header className="sticky top-0 bg-navy text-white px-5 py-3 flex items-start justify-between z-10">
           <div>
             <div className="text-[18px] font-bold">{s.site_id} · {s.site_name}</div>
-            <div className="text-[12px] opacity-80">{s.site_class} · {s.nop} · {s.cluster_to} · {s.city} · {tv("access", s.access_class) || "—"} · {s.vip ? "VIP" : t("drawer.non_vip")} · {t(s.site_active ? "drawer.active" : "drawer.inactive")}</div>
+            <div className="text-[12px] opacity-80">{s.site_class} · {s.nop} · {s.cluster_to} · {s.kecamatan ? `${t("col.kecamatan")} ${s.kecamatan} · ` : ""}{s.city} · {tv("access", s.access_class) || "—"} · {s.vip ? "VIP" : t("drawer.non_vip")} · {t(s.site_active ? "drawer.active" : "drawer.inactive")}</div>
           </div>
           <button autoFocus onClick={onClose} className="text-white/80 hover:text-white text-[22px] leading-none px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn" aria-label={t("drawer.close")}>×</button>
         </header>
@@ -52,7 +52,10 @@ export default function SiteDrawer({ site, cfg, onClose }) {
             {!s.covered && <Tag tone="crit">{t("drawer.no_mbp_radius", { r: cfg?.mbp?.max_radius_km })}</Tag>}
             {s.nop_flag && <Tag tone="warn">{te(s.nop_flag, "nop_flag")}</Tag>}
             {s.offair && <Tag tone="crit" title={te(s.offair, "offair")}>{t("drawer.offair_tag")}</Tag>}
+            {s.fixed_genset === "ACTIVE" && <Tag tone="good">⚡ {t("drawer.genset_tag")}</Tag>}
+            {A.ticket && A.source !== "TICKET" && <Tag tone="warn">{t("drawer.ticket_flag", { n: s.tk_no_battery })}</Tag>}
           </div>
+          {s.fixed_genset === "ACTIVE" && <Note>{t("drawer.genset_note", { b: s.fixed_genset_basis || "—", k: s.genset_kva ?? "—" })}</Note>}
 
           {s.offair && <Note tone="warn">{te(s.offair, "offair")}. {t("drawer.offair_note")}</Note>}
           <Box title={t("drawer.action")}>
@@ -105,6 +108,7 @@ export default function SiteDrawer({ site, cfg, onClose }) {
               <Row k={t("drawer.can_arrive")} v={t("drawer.n_mbp", { n: fInt(s.feasible_mbps) })} />
               <Row k={t("drawer.assigned")} v={s.mbp_assigned || "—"} />
               <Row k={<>{t("drawer.eta_vs_bbt")}<Gloss k="eta_gap" /></>} v={isNum(s.eta_min) ? <span className={s.can_arrive_before_bbt ? "" : "text-[#b42318] font-semibold"}>{s.can_arrive_before_bbt ? "✔" : "✖"} {fMin(s.eta_min)} vs {fMin(s.bbt_effective_min)}</span> : "—"} />
+              <Row k={t("drawer.eta_fastest", { m: cfg?.mbp?.response_target_min ?? 30 })} v={isNum(s.eta_fastest_min) ? <span className={s.eta_fastest_min <= (cfg?.mbp?.response_target_min ?? 30) ? "" : "text-[#8a5a00]"}>{fMin(s.eta_fastest_min)}</span> : "—"} />
               <Row k={t("drawer.eta_conf")} v={te(s.eta_confidence, "eta_conf")} />
               <Row k={t("drawer.access")} v={tv("access", s.access_class) || "—"} />
               <div className="text-[11.5px] text-slate mt-1">{t("drawer.access_basis")}: {te(s.access_basis, "access") || "—"}</div>

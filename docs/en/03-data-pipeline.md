@@ -86,7 +86,7 @@ Raw files are **Telkomsel-confidential**: they are never committed (`engine/data
 ## 7. Quality gates
 
 1. **Build sanity** (`build.py`): correlation n equals the exported fields; battery banks exported; merged base camps removed and tickets remapped; base camp IDs unique; monthly power series has 6 months and never exceeds hours in the month; coordinates keep their precision.
-2. **JS rule tests** (`npm test`, 38 tests) run automatically at the end of `build.py`; the build fails if any test fails (skip only with `PBA_SKIP_JS_TESTS=1`).
+2. **JS rule tests** (`npm test`, 47 tests) run automatically at the end of `build.py`; the build fails if any test fails (skip only with `PBA_SKIP_JS_TESTS=1`).
 3. **Validation** (`validate.py`, 25 checks in data / sanity / analytics / decision groups) → `docs/VALIDATION_REPORT.md`.
 
 ## 8. How to rebuild the data
@@ -110,3 +110,12 @@ Optional environment variables (speed up repeated builds while developing):
 | `PBA_SKIP_JS_TESTS=1` | Do not run `npm test` at the end (not for production builds) |
 
 After a rebuild, commit/upload the changed `public/data/` files; Vercel redeploys automatically (see [07](07-deployment-operations.md)).
+
+## 9. v3.6 additional fields
+- Sites: `fixed_genset` (ACTIVE / OFF / NONE) + `fixed_genset_basis`, `genset_kva`, `kecamatan`, `desa` (Dapot Subdistrict / Village), `battery_brand`, `tk_plnoff_n`, `tk_plnoff_visit_n`, `tk_plnoff_rh_h` (PLN-off tickets, with check-in, RH hours; cancelled excluded).
+- Base camps: `prod_tickets`, `prod_plnoff`, `prod_visits`, `prod_sites`, `prod_rh_total_h`, `prod_rh_mean_h`, `prod_rh_median_h`, `prod_resp_median_h`.
+- `meta.mbp.concurrency`: per NOP jobs, max, p99, p95, p90, mean, median job hours.
+
+## 10. v3.7 additional outputs and inputs
+- `public/data/tickets.json` (≈ 2.4 MB): MBP jobs — `site, mbp, occ, to, arr, job, out, rc` (minutes from 2026-01-01; see 04 §17).
+- Optional input `engine/data/site_dependency.csv` (git-ignored): `site_id, dependency_role, child_sites` from NOP officers (template in MBP › Dispatch priority) → site fields `dep_children_actual`, `dep_role` (ACTUAL dependency).

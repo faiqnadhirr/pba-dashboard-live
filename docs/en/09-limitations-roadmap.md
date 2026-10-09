@@ -13,6 +13,9 @@
 | **Responsibility** | Only where tickets have a root cause; otherwise inferred/unknown | Large share inferred (PLN-triggered, not confirmed) | Mandatory root cause in tickets |
 | **Monthly-only sources** | BBT monthly summary; PLN monthly fallback for sites without events | Prorated inside a month in the period filter (flagged) | Event-level data for all sites |
 | **Period filter range** | Built for Jan–Jun 2026 | New periods need the year/month list in `lib/period.js` | Make the range data-driven |
+| **Fixed genset** | Dapot + New_BBT (SWFM export not yet received) | Some gensets may be missing or stale | SWFM fixed-genset export per site |
+| **Response target** | 30 min assumed to include 15 min mobilisation (to confirm with Pak Nizar) | Switching to travel-only adds 15 min of slack | Confirm the definition; set `travel.mobilization_minutes` accordingly |
+| **Centre of gravity** | Straight line × road factor; sites keep their current base camp | Moves across straits/rivers may look closer than they are ("other regency" tag) | Road/ferry check; routing API |
 | **Correlation** | Partly mechanical (censoring) | Not used to estimate BBT | — (documented caveat) |
 | **Scope** | AREA1, H1-2026 snapshot; not live | Decisions reflect the snapshot | Scheduled pipeline / API |
 | **Config governance** | What-if in the browser only (DEMO) | No server-side approval trail | Operational mode (below) |
