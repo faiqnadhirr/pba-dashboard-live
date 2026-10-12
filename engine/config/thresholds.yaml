@@ -52,7 +52,7 @@ load_high_ampere: 45           # NE load considered "high" (upgrade capacity ins
 mbp:
   same_nop_only: true          # coverage + candidates restricted to MBP's own NOP
   assignment_mode: history_then_nearest   # history_then_nearest | nearest
-  max_radius_km: 120           # v4.0: PREFERRED radius (assignment preference, map ring) — NOT a hard cut; adjustable in the app
+  max_radius_km: 20           # v4.0: PREFERRED radius (assignment preference, map ring) — NOT a hard cut; adjustable in the app
   reach_cap_km: 250            # v4.0: hard search cap; a site is covered when some MBP within this cap arrives before its BBT
   radius_presets: [20, 30, 40, 60, 120]   # v3.7 quick buttons on MBP overview (Dudi: mainland ≈ 40 km)
   rh_max_hours_per_ticket: 48  # RH meter diff above this = outlier
