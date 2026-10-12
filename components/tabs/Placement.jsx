@@ -18,9 +18,9 @@ function Seg({ label, value, onChange, options }) {
   );
 }
 
-export default function Placement({ model, data, cfg, nop: gNop, setPick, setRadius, full }) {
-  const nops = useMemo(() => [...new Set(model.map((s) => s.nop).filter(Boolean))].sort(), [model]);
-  const [nop, setNop] = useState(gNop !== "All NOPs" ? gNop : "NOP PALEMBANG");
+export default function Placement({ model, data, cfg, nop: gNop, setPick, setRadius, full, allNops }) {
+  const nops = allNops;
+  const [nop, setNop] = useState(gNop !== "All NOPs" ? gNop : allNops.includes("NOP PALEMBANG") ? "NOP PALEMBANG" : allNops[0]);
   useEffect(() => { if (gNop !== "All NOPs") setNop(gNop); }, [gNop]);
   const [target, setTarget] = useState(Math.round((cfg.placement?.target_share ?? 0.9) * 100));
   // v3.6 — response target: "bbt" (arrive before battery runs out) or minutes (ops standard, ETA incl. mobilisation); scope P1/P2 or all active

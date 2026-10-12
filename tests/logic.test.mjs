@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
-  buildModel, travelMinutes, dependencyChildren, pctRank, statusOf, aggregateAvailability, aggregateResponsibility,
+  buildModel, buildModelByArea, travelMinutes, dependencyChildren, pctRank, statusOf, aggregateAvailability, aggregateResponsibility,
   clusterTable, topWorstSites, simulate, basecampSummary, PROBLEM, trendLabel, bbtDisplay, placementPlan, basecampGravity, kecamatanAnchors,
 } from "../lib/logic.js";
 import { fromColumnar } from "../lib/data.js";
@@ -674,4 +674,21 @@ test("v4.0 AREA 4 in the AREA 1 shape: same site columns, model runs, KPIs recon
   const K = computeKpis(S, b4, [], [], m4.config);
   assert.deepEqual(reconcile(K), []);
   assert.equal(K.area.served_pct, null); assert.equal(K.area.jobs_ontime_pct, null);
+});
+
+test("v4.1 one dataset: AREA 1 + AREA 4 merged, AREA is a filter; KPIs reconcile per AREA and combined", () => {
+  if (!fs.existsSync("public/data/a4/meta.json")) return;
+  const rd = (f) => JSON.parse(fs.readFileSync(`public/data/a4/${f}`, "utf8"));
+  const ids = new Set(sites.map((s) => s.site_id));
+  const s4 = fromColumnar(rd("sites.json")).filter((s) => !ids.has(s.site_id)).map((s) => ({ ...s, area: "AREA 4" }));
+  const all = [...sites.map((s) => ({ ...s, area: "AREA 1" })), ...s4], mb = [...mbps.map((m) => ({ ...m, area: "AREA 1" })), ...rd("mbps.json").map((m) => ({ ...m, area: "AREA 4" }))];
+  const MM = buildModelByArea(all, mb, cfg).filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected);
+  const K = computeKpis(MM, mb, TK, EV, cfg), K1 = computeKpis(MM.filter((s) => s.area === "AREA 1"), mb.filter((m) => m.area === "AREA 1"), TK, EV, cfg);
+  assert.deepEqual(reconcile(K), []);
+  const K4 = computeKpis(MM.filter((s) => s.area === "AREA 4"), mb.filter((m) => m.area === "AREA 4"), TK, EV, cfg);
+  assert.equal(K.area.sites, K1.area.sites + K4.area.sites);
+  assert.equal(K.area.need, K1.area.need);                        // AREA 4 has no PLN events yet
+  // AREA 1 numbers do not change when AREA 4 is loaded next to it
+  const A1 = M.filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected);
+  assert.equal(K1.area.p12_reach, computeKpis(A1, mbps, TK, EV, cfg).area.p12_reach);
 });

@@ -34,7 +34,7 @@ export default function Health(props) {
   const rows = useMemo(() => groupAvail(scope, byKey), [scope, byKey]);
   const below = scope.filter((s) => isNum(s.avail_delta_pp) && s.avail_delta_pp < 0).length;
   const monthly = useMemo(() => {
-    const r = data.meta.monthly_nop.filter((m) => (nop === "All NOPs" || m.nop === nop) && (inactive || m.site_active === 1));
+    const r = data.meta.monthly_nop.filter((m) => (props.area === "all" || !m.area || m.area === props.area) && (nop === "All NOPs" || m.nop === nop) && (inactive || m.site_active === 1));
     const by = new Map();
     r.forEach((m) => { const g = by.get(m.ym) || { ym: m.ym, hours: 0, outage: 0, power: 0, target_h: 0 }; g.hours += m.hours; g.outage += m.outage; g.power += m.power; g.target_h += m.target_h; by.set(m.ym, g); });
     return [...by.values()].sort((x, y) => x.ym.localeCompare(y.ym)).map((g) => ({ month: monthName(+g.ym.slice(4) - 1), availability: 100 * (1 - g.outage / g.hours), target: g.target_h / g.hours, power_h: g.power }));

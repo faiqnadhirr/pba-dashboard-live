@@ -12,7 +12,7 @@ import { t } from "@/lib/i18n";
 const med = (v) => { const a = v.filter(isNum).sort((x, y) => x - y); if (!a.length) return null; const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
 const pct = (v, d = 0) => (isNum(v) ? fPct(100 * v, d) : "—");
 
-export default function Performance({ mbpsScope, perf, cfg, openMbp, data, K, nop, names, setNames }) {
+export default function Performance({ mbpsScope, perf, cfg, openMbp, data, K, nop, names, setNames, hasJobs }) {
   const rows = useMemo(() => mbpsScope.map((m) => perf.get(m.mbp_id)).filter(Boolean), [mbpsScope, perf]);
   const [hide, setHide] = useState([]), [all, setAll] = useState(false);
   const vis = rows.filter((r) => !hide.includes(r.key));
@@ -24,7 +24,7 @@ export default function Performance({ mbpsScope, perf, cfg, openMbp, data, K, no
   const open = (id) => openMbp(data.mbps.find((m) => m.mbp_id === id));
   const counts = Object.fromEntries(PERF_KEYS.map((x) => [x, rows.filter((r) => r.key === x).length]));
   const nm = (r) => (names ? r.mbp_id : r.code || campCode(r.mbp_id));
-  if (!(data.tickets || []).length) return <Note tone="warn">{t("perf.na")}</Note>;
+  if (!hasJobs) return <Note tone="warn">{t("perf.na")}</Note>;
   const base = [
     { key: "code", label: "col.basecamp", sortVal: (r) => nm(r), render: (r) => nm(r), csv: (r) => nm(r) }, { key: "nop", label: "col.nop" },
     { key: "key", label: "col.mbp_status", sortVal: (r) => PERF_KEYS.indexOf(r.key) * 1000 + (r.ontime_rate ?? 1) * 100, render: (r) => <PerfTag k={r.key} />, csv: (r) => r.key },

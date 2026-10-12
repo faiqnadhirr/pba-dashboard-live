@@ -2,6 +2,14 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## v4.1 — one dataset (AREA = filter), 4 MBP tabs with the map as hero, plain language
+- AREA 1 + AREA 4 are loaded and merged into ONE dataset (`lib/data.js › loadAll`); **Area** is a filter like NOP, plus a new **Cluster** filter. The model is built per AREA (`buildModelByArea`) so AREA 1 numbers never change when AREA 4 is added; the AREA-wide travel calibration applies to AREA 1 only.
+- Header labels removed (snapshot, demo, config hash, AREA buttons). Inactive / off-air / own-genset toggles moved under "Also show".
+- MBP menu 9 → 4: **Map** (headline numbers + map, with a "Simulation (drag MBP)" switch on the same screen) · Base camps · Add units? · Site list. Outage scenario, coverage, backtest, dispatch, telemetry stay under `?full=1`.
+- Plain wording (ID / EN): "priority sites reachable before the battery runs out", "working time", "often late", "model trusted?", "Jan–Jun" instead of H1, etc.
+- Tests 54 → 55 (merged dataset reconciles; AREA 1 unchanged by AREA 4).
+- *ID:* Satu dataset (Area jadi filter seperti NOP + filter Cluster), label header dihapus, menu MBP jadi 4 dengan peta sebagai hero, bahasa dibuat sederhana.
+
 ## v4.0 — practical: one KPI layer, event-pair need, calibration first, drag-and-drop simulation, AREA 4 in the AREA 1 shape
 - **ONE KPI layer** `lib/kpi.js` (every tab reads it) + `scripts/kpi_check.mjs`, run by `engine/build.py`: writes `kpi.json` and **fails the build** when Σ NOP ≠ AREA, a share is outside 0–100 % or served > need.
 - **Need coverage** (was "serapan", 133 % / 733 %) = event pairs: PLN outages longer than the site BBT that have a matched MBP job (new `pln_ev.json`), ≤ 100 % by construction; other jobs shown separately.
