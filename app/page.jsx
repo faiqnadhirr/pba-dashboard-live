@@ -30,6 +30,7 @@ import Area4 from "@/components/Area4";
 import DataInventory from "@/components/DataInventory";
 import { mbpPerformance, groupEvents } from "@/lib/mbpperf";
 import { computeKpis } from "@/lib/kpi";
+import { basecampFinal, areaCoverage } from "@/lib/basecamp";
 import SimMap from "@/components/tabs/SimMap";
 import Story from "@/components/tabs/Story";
 
@@ -83,7 +84,7 @@ function readUrl() {
     if (v && !TAB_OF[v]) { const g = v.split(".")[0]; tab = FIRST_OF[g] || DEFAULT_TAB; notice = v; }
     if (v === "mbp.productivity") { tab = "prod"; notice = null; }        // v3.6 link → v3.7 Performance
     if (v === "mbp.simmap") { tab = "mgmt"; notice = null; window.__pbaSim = 1; }   // v4.0 link → v4.1 map in simulation mode
-    return { tab, notice, full: q.get("full") === "1", area: q.get("area") === "4" ? "AREA 4" : q.get("area") === "1" ? "AREA 1" : "all", clu: q.get("clu") || "", nop: q.get("nop") || "All NOPs", cls: (q.get("cls") || "").split(",").filter(Boolean), inactive: q.get("inactive") === "1", offair: q.get("offair") === "1", gen: q.get("gen") === "1", sel: q.get("sel") || null, per: parsePeriod(q.get("per")).key };
+    return { tab, notice, full: q.get("full") === "1", area: q.get("area") === "4" ? "AREA 4" : q.get("area") === "1" ? "AREA 1" : "all", clu: q.get("clu") || "", partial: q.get("partial") === "1", nop: q.get("nop") || "All NOPs", cls: (q.get("cls") || "").split(",").filter(Boolean), inactive: q.get("inactive") === "1", offair: q.get("offair") === "1", gen: q.get("gen") === "1", sel: q.get("sel") || null, per: parsePeriod(q.get("per")).key };
   } catch { return { tab: DEFAULT_TAB, full: false, nop: "All NOPs", cls: [], inactive: false, offair: false, gen: false, sel: null, per: "h1" }; }
 }
 const CLASSES = ["Diamond", "Platinum", "Gold", "Silver", "Bronze"];
@@ -102,12 +103,12 @@ export default function Page() {
   const [lang, setLangState] = useState("id");
   const [sel, setSel] = useState(null), [notice, setNotice] = useState(null), [drill, setDrill] = useState(null), [per, setPer] = useState("h1"), [gen, setGen] = useState(false), [pf, setPf] = useState(null);
   const [full, setFull] = useState(false), [pickMbp, setPickMbp] = useState(null), [area, setArea] = useState("all"), [clu, setClu] = useState("");
-  const [names, setNames] = useState(false);
+  const [names, setNames] = useState(false), [partial, setPartial] = useState(false);
   setLang(lang);                                   // module-level language for t() and number formatters (set before children render)
   useEffect(() => {
     document.title = "PBA — Power Backup Analytic";
     const l = initialLang(); setLangState(l); persistLang(l);       // ?lang= is remembered
-    const apply = () => { const u = readUrl(); setTabState(u.tab); setNop(u.nop); setClasses(u.cls); setInactive(u.inactive); setOffair(u.offair); setGen(u.gen); setSel(u.sel); setNotice(u.notice); setPer(u.per); setFull(u.full); setArea(u.area); setClu(u.clu); };
+    const apply = () => { const u = readUrl(); setTabState(u.tab); setNop(u.nop); setClasses(u.cls); setInactive(u.inactive); setOffair(u.offair); setGen(u.gen); setSel(u.sel); setNotice(u.notice); setPer(u.per); setFull(u.full); setArea(u.area); setClu(u.clu); setPartial(u.partial); };
     apply();
     const onPop = () => apply();
     window.addEventListener("popstate", onPop);
@@ -115,7 +116,7 @@ export default function Page() {
   }, []);
   useEffect(() => { document.documentElement.lang = lang; }, [lang]);
   // URL builder: current state + overrides. Language is always carried so shared links open in the same language.
-  const cur = { view: VIEW_OF[tab], nop, cls: classes, inactive, offair, gen, sel, per, lang, full, area, clu };
+  const cur = { view: VIEW_OF[tab], nop, cls: classes, inactive, offair, gen, sel, per, lang, full, area, clu, partial };
   const hrefFor = (o = {}) => {
     const st = { ...cur, sel: null, ...o }, q = new URLSearchParams();
     q.set("view", st.view);
@@ -129,6 +130,7 @@ export default function Page() {
     if (st.full) q.set("full", "1");
     if (st.area && st.area !== "all") q.set("area", st.area.replace("AREA ", ""));
     if (st.clu) q.set("clu", st.clu);
+    if (st.partial) q.set("partial", "1");
     q.set("lang", st.lang);
     return `?${q.toString()}`;
   };
@@ -141,9 +143,9 @@ export default function Page() {
   };
   const setTab = (k) => { if (k !== tab) navigate({ view: VIEW_OF[k] }); };
   // filter changes replace the URL (no history spam) but keep it shareable
-  useEffect(() => { try { if (window.location.search !== hrefFor({ sel })) window.history.replaceState({}, "", hrefFor({ sel })); } catch {} }, [nop, classes, inactive, offair, gen, lang, sel, per, full, area, clu]); // eslint-disable-line
+  useEffect(() => { try { if (window.location.search !== hrefFor({ sel })) window.history.replaceState({}, "", hrefFor({ sel })); } catch {} }, [nop, classes, inactive, offair, gen, lang, sel, per, full, area, clu, partial]); // eslint-disable-line
   const chooseLang = (l) => { setLangState(l); persistLang(l); };
-  const resetFilters = () => { setArea("all"); setClu(""); setNop("All NOPs"); setClasses([]); setInactive(false); setOffair(false); setGen(false); setSel(null); setPer("h1"); };
+  const resetFilters = () => { setArea("all"); setClu(""); setPartial(false); setNop("All NOPs"); setClasses([]); setInactive(false); setOffair(false); setGen(false); setSel(null); setPer("h1"); };
 
   // v4.1 — ONE dataset: AREA 1 + AREA 4 are merged on load; AREA is a filter like NOP (lib/data.js › loadAll)
   useEffect(() => {
@@ -178,34 +180,45 @@ export default function Page() {
   // A5 — suspected off-air / dismantle / data-issue sites are excluded from every KPI unless the toggle is on
   // v3.6 — sites with an active fixed genset stand on their own: excluded unless "+ fixed genset" is on
   const genOn = gen || cfg?.fixed_genset?.exclude_by_default === false;
-  const inArea = (x) => area === "all" || x.area === area;
-  const active = useMemo(() => pmodel.filter((s) => inArea(s) && (inactive || s.site_active === 1) && (offair || !s.offair) && (genOn || !s.genset_protected)), [pmodel, inactive, offair, genOn, area]); // eslint-disable-line
-  const gensetSites = useMemo(() => pmodel.filter((s) => inArea(s) && s.genset_protected && (inactive || s.site_active === 1)), [pmodel, inactive, area]); // eslint-disable-line
-  const offairSites = useMemo(() => pmodel.filter((s) => inArea(s) && s.offair && (inactive || s.site_active === 1)), [pmodel, inactive, area]); // eslint-disable-line
+  // v4.2 (FIX-04) — "All areas" means the areas with FULL data (MBP jobs + PLN events); PARTIAL areas join only with the toggle
+  const coverage = useMemo(() => areaCoverage(data?.meta.areas || []), [data]);
+  const inArea = (x) => (area === "all" ? partial || (coverage[x.area] || "FULL") === "FULL" : x.area === area);
+  const active = useMemo(() => pmodel.filter((s) => inArea(s) && (inactive || s.site_active === 1) && (offair || !s.offair) && (genOn || !s.genset_protected)), [pmodel, inactive, offair, genOn, area, partial, coverage]); // eslint-disable-line
+  const gensetSites = useMemo(() => pmodel.filter((s) => inArea(s) && s.genset_protected && (inactive || s.site_active === 1)), [pmodel, inactive, area, partial, coverage]); // eslint-disable-line
+  const offairSites = useMemo(() => pmodel.filter((s) => inArea(s) && s.offair && (inactive || s.site_active === 1)), [pmodel, inactive, area, partial, coverage]); // eslint-disable-line
   const nopCounts = useMemo(() => { const m = new Map(); active.forEach((s) => m.set(s.nop, (m.get(s.nop) || 0) + 1)); return m; }, [active]);
-  const allNops = useMemo(() => [...new Set(model.filter(inArea).map((s) => s.nop).filter(Boolean))].sort(), [model, area]); // eslint-disable-line
+  const allNops = useMemo(() => [...new Set(model.filter(inArea).map((s) => s.nop).filter(Boolean))].sort(), [model, area, partial, coverage]); // eslint-disable-line
   const clusters = useMemo(() => [...new Set(active.filter((s) => nop === "All NOPs" || s.nop === nop).map((s) => s.cluster_to).filter(Boolean))].sort(), [active, nop]);
   const scope = useMemo(() => active.filter((s) => (nop === "All NOPs" || s.nop === nop) && (!clu || s.cluster_to === clu) && (!classes.length || classes.includes(s.site_class))), [active, nop, clu, classes]);
-  const mbpsScope = useMemo(() => (data ? data.mbps.filter((m) => inArea(m) && (nop === "All NOPs" || m.nop === nop)) : []), [data, nop, area]); // eslint-disable-line
+  const mbpsScope = useMemo(() => (data ? data.mbps.filter((m) => inArea(m) && (nop === "All NOPs" || m.nop === nop)) : []), [data, nop, area, partial, coverage]); // eslint-disable-line
   const mbpStats = useMemo(() => (data && cfg ? new Map(basecampSummary(model, data.mbps, cfg).map((r) => [r.mbp_id, r])) : new Map()), [model, data, cfg]);
   // v3.7 — MBP performance & utilisation from the H1 PLN-off job tickets (full snapshot, like coverage)
   // v4.0 — need = event pairs (PLN outage longer than BBT ↔ matched MBP job), ≤ 100 % by construction
   const evBySite = useMemo(() => (data ? groupEvents(data.events) : new Map()), [data]);
-  const perf = useMemo(() => (data && cfg ? mbpPerformance(model, data.mbps, data.tickets || [], cfg, evBySite) : new Map()), [model, data, cfg, evBySite]);
+  const perf0 = useMemo(() => (data && cfg ? mbpPerformance(model, data.mbps, data.tickets || [], cfg, evBySite) : new Map()), [model, data, cfg, evBySite]);
+  // v4.2 (FIX-01/02/03) — basecamp_final: one row per base camp with ONE status; every widget reads it (same function the build runs)
+  const bc = useMemo(() => (data && cfg ? basecampFinal(model, data.mbps, perf0, cfg, { areas: data.meta.areas, mergeReview: data.meta.mbp?.merge_review || [] }) : []), [model, data, cfg, perf0]);
+  const perf = useMemo(() => { const m = new Map(); for (const b of bc) m.set(b.mbp_id, { ...(perf0.get(b.mbp_id) || {}), ...b, key: b.status }); return m; }, [bc, perf0]);
+  const bcScope = useMemo(() => { const ids = new Set(mbpsScope.map((m) => m.mbp_id)); return bc.filter((b) => ids.has(b.mbp_id)); }, [bc, mbpsScope]);
   // v4.0 — ONE KPI layer (lib/kpi.js, checked at build time by scripts/kpi_check.mjs): every tab reads these numbers
   const kpiSites = useMemo(() => active.filter((s) => (!clu || s.cluster_to === clu) && (!classes.length || classes.includes(s.site_class))), [active, clu, classes]);
-  const kpiMbps = useMemo(() => (data ? data.mbps.filter(inArea) : []), [data, area]); // eslint-disable-line
-  const K = useMemo(() => (data && cfg ? computeKpis(kpiSites, kpiMbps, data.tickets || [], data.events || [], cfg, { evBySite, perf, unmatchedByNop: data.meta.dq?.ticket_gaps }) : null), [kpiSites, kpiMbps, data, cfg, evBySite, perf]);
+  const kpiMbps = useMemo(() => (data ? data.mbps.filter(inArea) : []), [data, area, partial, coverage]); // eslint-disable-line
+  const K = useMemo(() => (data && cfg ? computeKpis(kpiSites, kpiMbps, data.tickets || [], data.events || [], cfg, { evBySite, perf: perf0, unmatchedByNop: data.meta.dq?.ticket_gaps, coverage }) : null), [kpiSites, kpiMbps, data, cfg, evBySite, perf0, coverage]);
 
   if (err) return <div className="p-8 text-crit">{t("app.load_error", { err })}</div>;
   if (!data || !cfg) return <div className="min-h-screen flex items-center justify-center text-slate" role="status">{t("app.loading")}</div>;
   const snap = data.meta.snapshot || {};
-  const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setNop, setPick, classes, inactive, offairSites, includeOffair: offair, gensetSites, includeGenset: genOn, sel, setSel, navigate, hrefFor, per, period: P, periodText: periodLabel(P), openDrill: (id, focus, sites) => setDrill({ id, focus, sites }), perf, tickets: data.tickets || [], openMbp: setPickMbp, allNops, active, K, names, setNames, area, resetCfg, cfgEdited: false, full, hasJobs: (K?.area.jobs || 0) > 0 };
+  const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setNop, setPick, classes, inactive, offairSites, includeOffair: offair, gensetSites, includeGenset: genOn, sel, setSel, navigate, hrefFor, per, period: P, periodText: periodLabel(P), openDrill: (id, focus, sites) => setDrill({ id, focus, sites }), perf, tickets: data.tickets || [], openMbp: setPickMbp, allNops, active, K, names, setNames, area, resetCfg, cfgEdited: false, full, hasJobs: (K?.area.jobs || 0) > 0, bc, bcScope, coverage, partial };
   const empty = scope.length === 0 && !["dq", "tel", "cfg", "corr", "est", "inv", "field"].includes(tab);
 
   const cfgH = configHash(cfg), cfgEdited = cfgH !== configHash(data.meta.config);
   ctx.cfgEdited = cfgEdited;
-  const scopeA4 = scope.some((s) => s.area === "AREA 4");
+  const scopeA4 = scope.some((s) => coverage[s.area] === "PARTIAL");
+  const partialAreas = Object.entries(coverage).filter(([, v]) => v === "PARTIAL").map(([a]) => a);
+  // v4.2 (FIX-14) — freshness badge on every page: period of the data + last refresh; orange when older than Config › freshness
+  const maxAge = cfg.freshness?.max_age_days ?? 45;
+  const ageDays = Math.round((Date.now() - Date.parse((snap.period_end || "2026-06-30") + "T23:59:00+07:00")) / 86400000);
+  const fmtD = (d) => { try { return new Date(d + "T12:00:00").toLocaleDateString(lang === "id" ? "id-ID" : "en-GB", { day: "numeric", month: "short", year: "numeric" }); } catch { return d; } };
   const visibleTabs = (g) => GROUPS.find(([x]) => x === g)[1].filter(([k]) => !HIDDEN_TABS.has(k) || full || k === tab);
   const activeGroup = groupOf(tab);
   const groups = GROUPS.filter(([g]) => g !== HIDDEN_GROUP || full || activeGroup === HIDDEN_GROUP);
@@ -228,7 +241,8 @@ export default function Page() {
               ))}
             </nav>
             <div className="ml-auto flex items-center gap-3 text-[11.5px] text-white/80 shrink-0">
-              <span className="hidden 2xl:inline whitespace-nowrap" title={t("header.refresh_tip")}>{t("header.data_to", { d: snap.period_end })}</span>
+              <span className={`px-2 py-[2px] rounded text-[11.5px] whitespace-nowrap ${ageDays > maxAge ? "bg-[#eb6834] text-white" : "bg-white/15 text-white"}`} title={t("header.fresh_tip", { n: fInt(ageDays), m: maxAge })}>
+                {t("header.fresh", { a: fmtD(snap.period_start), b: fmtD(snap.period_end), r: String(snap.refreshed_at || data.meta.built_at).replace(/ \d\d:\d\d.*$/, "") })}{ageDays > maxAge ? " ⚠" : ""}</span>
               <div className="flex rounded-md overflow-hidden border border-white/40" role="group" aria-label={t("header.language")}>
                 {["en", "id"].map((l) => (
                   <button key={l} onClick={() => chooseLang(l)} aria-pressed={lang === l}
@@ -272,11 +286,12 @@ export default function Page() {
                   className={`px-1.5 py-[3px] rounded-md border text-[12px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1 ${on ? "bg-navy text-white border-navy" : "bg-white text-slate border-line hover:border-slate"}`}>{on ? "✓ " : ""}{c}</button>); })}
             </div>
             <details className="relative shrink-0">
-              <summary className={`list-none cursor-pointer px-2 py-[3px] rounded-md border text-[12px] whitespace-nowrap ${inactive || offair || gen ? "bg-navy text-white border-navy" : "bg-white text-slate border-line"}`}>{t("filter.more")}{inactive || offair || gen ? ` (${[inactive, offair, gen].filter(Boolean).length})` : ""} ▾</summary>
+              <summary className={`list-none cursor-pointer px-2 py-[3px] rounded-md border text-[12px] whitespace-nowrap ${inactive || offair || gen || partial ? "bg-navy text-white border-navy" : "bg-white text-slate border-line"}`}>{t("filter.more")}{inactive || offair || gen || partial ? ` (${[inactive, offair, gen, partial].filter(Boolean).length})` : ""} ▾</summary>
               <div className="absolute z-[600] mt-1 bg-white border border-line rounded-md shadow p-2 space-y-1.5 w-64">
                 <Toggle label={t("filter.inactive")} checked={inactive} onChange={setInactive} />
                 <Toggle label={t("filter.offair", { n: fInt(offairSites.length) })} checked={offair} onChange={setOffair} />
                 <span title={t("filter.genset_tip")}><Toggle label={t("filter.genset", { n: fInt(gensetSites.length) })} checked={gen} onChange={setGen} /></span>
+                {partialAreas.length > 0 && <span title={t("filter.partial_tip", { a: partialAreas.join(", ") })}><Toggle label={t("filter.partial", { a: partialAreas.join(", ") })} checked={partial} onChange={setPartial} /></span>}
               </div>
             </details>
             <div className="ml-auto flex items-center gap-2 min-w-0">
@@ -292,6 +307,7 @@ export default function Page() {
       <main id="main" className="max-w-[1560px] mx-auto p-5">
         <>
         {scopeA4 && (NEEDS_JOBS.has(tab) || tab === "mgmt") && <div role="status" className="mb-3 text-[12.5px] border border-warn/60 bg-warn/10 rounded-md px-3 py-1.5">{t("a4.note")}</div>}
+        {area === "all" && !partial && partialAreas.length > 0 && <div role="status" className="mb-3 text-[12.5px] text-slate">{t("scope.full_only", { f: Object.entries(coverage).filter(([, v]) => v === "FULL").map(([a]) => a).join(", "), p: partialAreas.join(", ") })}</div>}
         {notice && <div role="status" className="mb-3 text-[12.5px] border border-warn/60 bg-warn/10 rounded-md px-3 py-1.5 flex items-center gap-2">{t("nav.unknown_view", { v: notice, to: t(`nav.${VIEW_OF[tab]}`) })}<button onClick={() => setNotice(null)} className="ml-auto text-slate" aria-label={t("common.close")}>×</button></div>}
         {!isFull(P) && FIXED_TABS.has(tab) && <div role="status" className="mb-3 text-[12.5px] border border-s1/30 bg-s1/5 rounded-md px-3 py-1.5">{t("per.tab_fixed", { p: periodLabel(P) })}</div>}
         {empty ? <Empty>{t("empty.no_sites")}</Empty> : <div key={lang}>

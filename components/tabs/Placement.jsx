@@ -18,7 +18,7 @@ function Seg({ label, value, onChange, options }) {
   );
 }
 
-export default function Placement({ model, data, cfg, nop: gNop, setPick, setRadius, full, allNops }) {
+export default function Placement({ model, data, cfg, nop: gNop, setPick, setRadius, full, allNops, K }) {
   const nops = allNops;
   const [nop, setNop] = useState(gNop !== "All NOPs" ? gNop : allNops.includes("NOP PALEMBANG") ? "NOP PALEMBANG" : allNops[0]);
   useEffect(() => { if (gNop !== "All NOPs") setNop(gNop); }, [gNop]);
@@ -33,7 +33,8 @@ export default function Placement({ model, data, cfg, nop: gNop, setPick, setRad
   const [maxB, setMaxB] = useState(cfg.placement?.max_new ?? 15), [maxD, setMaxD] = useState(cfg.placement?.max_new_deadline ?? 60);
   const maxNew = Math.min(deadline == null ? maxB : maxD, maxCap), setMaxNew = deadline == null ? setMaxB : setMaxD;
   const opt = useMemo(() => ({ target: target / 100, maxNew, deadline, scopeMode }), [target, maxNew, deadline, scopeMode]);
-  const conc = useMemo(() => new Map((data.meta?.mbp?.concurrency || []).map((c) => [c.nop, c])), [data.meta]);
+  // v4.2 (FIX-06) — busy at peak from the ONE KPI layer (distinct own base camps on a job at the same time, ≤ units)
+  const conc = useMemo(() => new Map((K?.nops || []).filter((r) => r.conc_p95 != null).map((r) => [r.nop, { p95: r.conc_p95, max: r.conc_max }])), [K]);
   const inNop = useMemo(() => model.filter((s) => s.nop === nop), [model, nop]);
   const plan = useMemo(() => placementPlan(inNop, data.mbps, cfg, opt), [inNop, data.mbps, cfg, opt]);
   const all = useMemo(() => nops.map((n) => { const p = placementPlan(model.filter((s) => s.nop === n), data.mbps, cfg, opt), c = conc.get(n);

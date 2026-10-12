@@ -1,6 +1,8 @@
 "use client";
 import React, { useMemo } from "react";
-import { Card, Note, DataTable, EvTag, Tag, Gloss, fInt, fPct, fNum, precisionNote } from "@/components/ui";
+import { Card, Note, DataTable, EvTag, Tag, Gloss, fInt, fPct, fNum, precisionNote, LowCov } from "@/components/ui";
+import { needsCleanup } from "@/lib/basecamp";
+import { isNum } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { EVCOLS } from "@/lib/drill";
@@ -10,16 +12,17 @@ const EV = ["ACTUAL", "DERIVED", "ESTIMATED", "PROXY", "UNAVAILABLE"];
 const pct = (n, d) => fPct((100 * n) / Math.max(1, d), 1);
 
 export default function DataQuality(props) {
-  const { scope: scopeAll, data, offairSites = [], gensetSites = [], mbpStats, cfg, setPick, openDrill: od0 } = props;
+  const { scope: scopeAll, data, offairSites = [], gensetSites = [], mbpStats, cfg, setPick, openDrill: od0, bcScope = [], names } = props;
   const L = useMapLegend(scopeAll, "dq"), scope = L.vis;
   const openDrill = (id, f) => od0(id, f, L.hidden.length ? scope : undefined);
   const snap = data.meta.snapshot || {}, mb = data.meta.mbp || {}, m = data.meta, qa = m.qa;
-  const prec = useMemo(() => { const c = {}; scope.forEach((x) => { const d = x.lat == null ? "none" : x.coord_decimals ?? "none"; c[d] = (c[d] || 0) + 1; }); return Object.entries(c).sort((a, b) => String(b[0]).localeCompare(String(a[0]))); }, [scope]);
+  const prec = useMemo(() => { const c = {}; scope.forEach((x) => { const d = !(isNum(x.lat) && isNum(x.lon)) ? "none" : x.coord_decimals ?? "unknown"; c[d] = (c[d] || 0) + 1; }); return Object.entries(c).sort((a, b) => String(b[0]).localeCompare(String(a[0]))); }, [scope]);
   const acc = useMemo(() => { const c = {}; scope.forEach((x) => { c[x.access_class] = (c[x.access_class] || 0) + 1; }); return c; }, [scope]);
   const dz = useMemo(() => { const c = { DERIVED: 0, ESTIMATED: 0, PROXY: 0 }; scope.forEach((x) => { c[x.bbt_design_evidence] = (c[x.bbt_design_evidence] || 0) + 1; }); return c; }, [scope]);
   const unk = useMemo(() => ({ pln: scope.filter((x) => !x.pln_known).length, hist: scope.filter((x) => !x.mbp_hist_known).length, o25: scope.filter((x) => !x.o25_known).length }), [scope]);
-  const hiddenBc = useMemo(() => [...(mbpStats?.values() || [])].filter((b) => b.coord_status === "MISSING" || b.sites_covered === 0)
-    .map((b) => ({ ...b, reason: b.coord_status === "MISSING" ? "no location" : "0 sites assigned" })), [mbpStats]);
+  // v4.2 (FIX-03) — base camps to clean up first = basecamp_final.selectable = false (same list as on the MBP map)
+  const hiddenBc = useMemo(() => needsCleanup(bcScope), [bcScope]);
+  const noCoord = useMemo(() => scopeAll.filter((x) => !(isNum(x.lat) && isNum(x.lon))), [scopeAll]);
   const unver = useMemo(() => scope.filter((x) => x.battery.unverified), [scope]);
   const picStat = (mb.pic_matches || []).reduce((a, r) => { const k = r.status + (r.confidence ? ` · ${r.confidence}` : ""); a[k] = (a[k] || 0) + 1; return a; }, {});
   const ev = useMemo(() => EVCOLS.map(([k, label, f]) => {
@@ -38,8 +41,11 @@ export default function DataQuality(props) {
       <div className="grid xl:grid-cols-2 gap-4">
         <Card title={t("dq.sources.title")} sub={t("dq.sources.sub")}>
           <DataTable rows={m.dq.sources} pageSize={20} filename="pba_dq_sources.csv" columns={[
-            { key: "source", label: "dq.col.source" }, { key: "grain", label: "dq.col.grain" },
-            { key: "raw", label: "dq.col.raw", num: true, render: (r) => fInt(r.raw), csv: (r) => r.raw }, { key: "clean", label: "dq.col.clean", num: true, render: (r) => fInt(r.clean), csv: (r) => r.clean }]} />
+            { key: "area", label: "filter.area" }, { key: "source", label: "dq.col.source" }, { key: "grain", label: "dq.col.grain" },
+            { key: "raw", label: "dq.col.raw", num: true, render: (r) => fInt(r.raw), csv: (r) => r.raw }, { key: "clean", label: "dq.col.clean", num: true, render: (r) => fInt(r.clean), csv: (r) => r.clean },
+            { key: "derived_from", label: "dq.col.derived_from", wrap: true, render: (r) => r.derived_from || "—", csv: (r) => r.derived_from || "" },
+            { key: "data_max_date", label: "dq.col.data_max", render: (r) => r.data_max_date || "—", csv: (r) => r.data_max_date || "" }]} />
+          <div className="text-[11.5px] text-mut mt-1">{t("dq.sources.sitesum", { a: fInt((m.dq.sources || []).filter((r) => r.grain === "site" && /Dapot/i.test(r.source)).reduce((a, r) => a + (r.clean || 0), 0)), b: fInt(data.sites.length) })}</div>
         </Card>
         <Card title={t("dq.evidence.title")}>
           <div className="overflow-x-auto"><table className="w-full text-[12.5px] tabular">
@@ -57,7 +63,7 @@ export default function DataQuality(props) {
           </tbody></table>
         </Card>
         <Card title={t("dq.missing.title")}>
-          <table className="w-full text-[12.5px] tabular"><tbody>{miss.map((r) => <tr key={r.field} className="border-b border-line/60"><td className="py-1"><code className="text-[11.5px]">{r.field}</code></td><td className="text-right">{fPct(r.missing_pct, 1)}</td></tr>)}</tbody></table>
+          <table className="w-full text-[12.5px] tabular"><tbody>{miss.map((r) => <tr key={r.field} className="border-b border-line/60"><td className="py-1"><code className="text-[11.5px]">{r.field}</code>{r.missing_pct > 50 && <LowCov />}</td><td className="text-right">{fPct(r.missing_pct, 1)}</td></tr>)}</tbody></table>
         </Card>
         <Card title={t("dq.unmatched.title")}>
           <table className="w-full text-[12.5px] tabular"><tbody>{Object.entries(um).map(([k, v]) => <tr key={k} className="border-b border-line/60"><td className="py-1">{k}</td><td className="text-right">{fInt(v)}</td></tr>)}</tbody></table>
@@ -97,27 +103,34 @@ export default function DataQuality(props) {
         ]} />
       </Card>
       <div className="grid xl:grid-cols-2 gap-4">
-        <Card title={t("dq.hidden.title", { n: hiddenBc.length })} sub={t("dq.hidden.sub")}>
-          <DataTable rows={hiddenBc} pageSize={15} filename="pba_dq_basecamps_hidden.csv" columns={[{ key: "mbp_id", label: "col.basecamp" }, { key: "pic_name", label: "col.pic" }, { key: "nop", label: "col.nop" },
-            { key: "reason", label: "dq.col.reason", render: (r) => t(r.coord_status === "MISSING" ? "dq.reason.noloc" : "dq.reason.nosites"), csv: (r) => r.reason }, { key: "deployments_h1", label: "dq.col.h1_tickets", num: true }]} />
+        <Card title={t("dq.hidden.title2", { n: hiddenBc.length })} sub={t("dq.hidden.sub2")}>
+          <DataTable rows={hiddenBc} pageSize={15} filename="pba_dq_basecamps_cleanup.csv" columns={[{ key: "mbp_id", label: "col.basecamp", render: (r) => (names ? r.mbp_id : r.code), csv: (r) => r.mbp_id }, { key: "area", label: "filter.area" }, { key: "nop", label: "col.nop" },
+            { key: "clean_reasons", label: "dq.col.reason", wrap: true, render: (r) => r.clean_reasons.map((x) => t(`clean.${x}`)).join(" · ") + (r.dup_with.length ? ` (${r.dup_with.join(", ")})` : ""), csv: (r) => r.clean_reasons.join("; ") + (r.dup_with.length ? ` (${r.dup_with.join(", ")})` : "") },
+            { key: "jobs", label: "dq.col.h1_tickets", num: true }]} />
         </Card>
-        <Card title={t("dq.merge.title")} sub={t("dq.merge.sub", { a: qa.basecamp_merge?.applied ?? 0, b: qa.basecamp_merge?.basecamps_before, c: qa.basecamp_merge?.basecamps_after })}>
-          <DataTable rows={data.mbps.filter((x) => x.merged_from)} pageSize={15} filename="pba_dq_basecamps_merged.csv" columns={[{ key: "mbp_id", label: "dq.col.kept" }, { key: "merged_from", label: "dq.col.merged_from" }, { key: "pic_name", label: "col.pic" }, { key: "nop", label: "col.nop" }]} />
+        <Card title={t("dq.merge.title2")} sub={t("dq.merge.sub2", { a: qa.basecamp_merge?.applied ?? 0, p: qa.basecamp_merge?.pending ?? 0, r: qa.basecamp_merge?.rejected ?? 0 })}>
+          <DataTable rows={mb.merge_review || []} pageSize={15} filename="pba_dq_basecamp_merge_review.csv" initialSort={{ key: "review_state", dir: 1 }} columns={[
+            { key: "review_state", label: "dq.col.review_state", render: (r) => <Tag tone={r.review_state === "APPLIED" ? "good" : r.review_state === "PENDING" ? "warn" : "crit"}>{r.review_state}</Tag>, csv: (r) => r.review_state },
+            { key: "keep", label: "dq.col.kept" }, { key: "drop", label: "dq.col.merged_from" }, { key: "km_apart", label: "dq.col.km_apart", num: true },
+            { key: "reviewed_by", label: "dq.col.reviewed_by", render: (r) => r.reviewed_by || "—" }, { key: "reviewed_at", label: "dq.col.reviewed_at", render: (r) => r.reviewed_at || "—" },
+            { key: "status", label: "dq.col.assessment", wrap: true, render: (r) => te(r.status, "pic"), csv: (r) => r.status }]} />
+          <div className="text-[11.5px] text-mut mt-1">{t("dq.merge.how")}</div>
         </Card>
       </div>
       <Card title={t("dq.snap.title")} sub={t("dq.snap.sub")}>
         <div className="text-[12.5px] mb-2">{t("dq.snap.line", { a: snap.period_start, b: snap.period_end, r: snap.refreshed_at })}</div>
         <DataTable rows={snap.sources || []} pageSize={20} filename="pba_dq_source_status.csv" columns={[
           { key: "source", label: "dq.col.source" }, { key: "files", label: "dq.col.files", num: true }, { key: "status", label: "dq.col.status", render: (r) => <Tag tone={r.status === "OK" ? "good" : "crit"}>{r.status === "OK" ? "✔ OK" : `✖ ${r.status}`}</Tag>, csv: (r) => r.status },
-          { key: "latest_file_time", label: "dq.col.latest" }]} />
+          { key: "latest_file_time", label: "dq.col.latest" }, { key: "data_max_date", label: "dq.col.data_max", render: (r) => r.data_max_date || "—", csv: (r) => r.data_max_date || "" }]} />
       </Card>
       <div className="grid xl:grid-cols-3 gap-4">
         <Card title={t("dq.access.title")} sub={t("dq.access.sub")}>
           <table className="w-full text-[12.5px] tabular"><tbody>{Object.entries(acc).sort((a, b) => b[1] - a[1]).map(([k, v]) => <tr key={k} className="border-b border-line/60"><td className="py-1">{tv("access", k)}</td><td className="text-right">{fInt(v)}</td></tr>)}</tbody></table>
           <div className="text-[11.5px] text-mut mt-2">{t("dq.access.note")}</div>
         </Card>
-        <Card title={t("dq.coord.title")} sub={t("dq.coord.sub")}>
-          <table className="w-full text-[12.5px] tabular"><tbody>{prec.map(([d, v]) => <tr key={d} className="border-b border-line/60"><td className="py-1">{d === "none" ? t("dq.coord.none") : t("dq.coord.decimals", { n: d })}</td><td className="text-slate">{d === "none" ? "" : precisionNote(+d)}</td><td className="text-right">{fInt(v)}</td></tr>)}</tbody></table>
+        <Card title={t("dq.coord.title")} sub={t("dq.coord.sub2")}>
+          <table className="w-full text-[12.5px] tabular"><tbody>{prec.map(([d, v]) => <tr key={d} className="border-b border-line/60"><td className="py-1">{d === "none" ? t("dq.coord.none") : d === "unknown" ? t("dq.coord.unknown") : t("dq.coord.decimals", { n: d })}</td><td className="text-slate">{d === "none" || d === "unknown" ? "" : precisionNote(+d)}</td><td className="text-right">{fInt(v)}</td></tr>)}</tbody></table>
+          <div className="text-[11.5px] text-mut mt-2">{t("dq.coord.plotted", { a: fInt(scopeAll.length - noCoord.length), n: fInt(noCoord.length), t: fInt(scopeAll.length) })}{noCoord.length ? `: ${noCoord.slice(0, 20).map((x) => x.site_id).join(", ")}` : ""}</div>
         </Card>
         <Card title={t("dq.pic.title")} sub={t("dq.pic.sub")}>
           <table className="w-full text-[12.5px] tabular"><tbody>{Object.entries(picStat).map(([k, v]) => <tr key={k} className="border-b border-line/60"><td className="py-1">{k}</td><td className="text-right">{fInt(v)}</td></tr>)}</tbody></table>
@@ -135,6 +148,10 @@ export default function DataQuality(props) {
           { key: "mbp_a", label: "dq.col.camp_a" }, { key: "mbp_b", label: "dq.col.camp_b" }, { key: "nop_a", label: "dq.col.nop_a" }, { key: "nop_b", label: "dq.col.nop_b" },
           { key: "similarity", label: "dq.col.similarity", num: true, render: (r) => fNum(r.similarity, 2), csv: (r) => r.similarity }, { key: "km_apart", label: "dq.col.km_apart", num: true, render: (r) => (r.km_apart == null ? "—" : fNum(r.km_apart, 1)), csv: (r) => r.km_apart },
           { key: "status", label: "dq.col.assessment", wrap: true, render: (r) => te(r.status, "pic"), csv: (r) => r.status }]} />
+      </Card>
+      <Card title={t("dq.rejects.title")} sub={t("dq.rejects.sub")}>
+        {!(m.dq.rejects || []).length ? <div className="text-[12.5px] text-good">✔ {t("dq.rejects.none")}</div> :
+          <DataTable rows={m.dq.rejects} pageSize={10} filename="pba_dq_rejected_ids.csv" columns={[{ key: "area", label: "filter.area" }, { key: "source", label: "dq.col.source" }, { key: "field", label: "dq.col.field" }, { key: "rows", label: "dq.col.rows", num: true }, { key: "examples", label: "dq.col.examples" }]} />}
       </Card>
       <Card title={t("dq.unmatchedl.title")}><DataTable rows={m.dq.unmatched} pageSize={20} filename="pba_dq_unmatched.csv" columns={[{ key: "source", label: "dq.col.source" }, { key: "id", label: "ID" }, { key: "n", label: "dq.col.tickets", num: true, render: (r) => (r.n == null ? "" : fInt(r.n)), csv: (r) => r.n }, { key: "note", label: "dq.col.note", wrap: true, render: (r) => te(r.note, "pic"), csv: (r) => r.note }]} /></Card>
       <Note>{t("dq.footer", { area: m.scope.area, a: m.scope.period_start, b: m.scope.period_end, r: snap.refreshed_at || m.built_at })}</Note>

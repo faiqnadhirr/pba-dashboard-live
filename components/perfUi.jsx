@@ -4,7 +4,7 @@ import React from "react";
 import { PERF_KEYS, UTIL_KEYS, ONTIME_KEYS } from "@/lib/mbpperf";
 import { t } from "@/lib/i18n";
 
-export const PERF_COLOR = { low: "#d03b3b", watch: "#fab219", good: "#0ca30c", over: "#2a78d6", high: "#6b4bd8", under: "#A3ABB9", nodata: "#ffffff", none: "#E3E7ED" };
+export const PERF_COLOR = { low: "#d03b3b", watch: "#fab219", good: "#0ca30c", high: "#6b4bd8", under: "#A3ABB9", few: "#ffffff", none: "#E3E7ED", nodata: "#cfd6e2", noloc: "#7c8798" };
 export const RESP_COLOR = { low: "#d03b3b", watch: "#fab219", good: "#0ca30c", nodata: "#ffffff" };
 export const UTIL_COLOR = { high: "#6b4bd8", normal: "#2a78d6", under: "#A3ABB9", none: "#E3E7ED" };
 export const ONTIME_COLOR = { low: "#d03b3b", watch: "#fab219", good: "#0ca30c", nodata: "#ffffff" };
@@ -34,3 +34,7 @@ export function PerfFormula({ cfg }) {
     </div>
   );
 }
+
+/** v4.2 (FIX-11) — "possible duplicate" badge on every base-camp view until the merge map row is reviewed */
+export const DupBadge = ({ p }) => (p?.dup_state === "PENDING" ? <span title={t("dup.tip", { w: (p.dup_with || []).join(", ") })}
+  className="ml-1 text-[10.5px] px-1.5 py-[1px] rounded bg-warn/25 text-[#8a5a00] whitespace-nowrap">{t("dup.badge")}</span> : null);

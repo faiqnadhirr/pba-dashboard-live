@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell, LineChart, Line, Legend, ReferenceLine } from "recharts";
-import { Card, Note, DataTable, Select, Tag, Gloss, fInt, fMin, f2, f1, fPct } from "@/components/ui";
+import { Card, Note, DataTable, Select, Tag, Gloss, LowCov, fInt, fMin, f2, f1, fPct } from "@/components/ui";
 import { t, tv } from "@/lib/i18n";
 
 const SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"];
@@ -36,7 +36,7 @@ export default function BbsAnalysis({ data, cfg, part = "corr" }) {
         </Card>}
         {C && <Card title={<>{t("corr.table.title")} <Tag tone="slate">{t("kpi.portfolio").toUpperCase()}</Tag></>} sub={t("corr.table.sub")}>
           <DataTable rows={b.correlation} filename="pba_bbt_correlation.csv" pageSize={25} columns={[
-            { key: "label", label: "col.factor", wrap: true, render: (r) => <span className="block min-w-[120px] max-w-[190px]">{tv("feat", r.feature)}</span>, csv: (r) => r.label }, { key: "n", label: "col.n_sites", num: true, render: (r) => fInt(r.n), csv: (r) => r.n },
+            { key: "label", label: "col.factor", wrap: true, render: (r) => <span className="block min-w-[120px] max-w-[190px]">{tv("feat", r.feature)}{(data.meta.dq?.field_coverage?.[r.feature] ?? 1) < 0.5 && <LowCov />}</span>, csv: (r) => r.label }, { key: "n", label: "col.n_sites", num: true, render: (r) => fInt(r.n), csv: (r) => r.n },
             { key: "pearson", label: "Pearson r", short: "r", num: true, render: (r) => f2(r.pearson) }, { key: "spearman", label: "Spearman ρ", short: "ρ", num: true, render: (r) => f2(r.spearman) },
             { key: "strength", label: "col.strength", render: (r) => tv("strength", r.strength), csv: (r) => r.strength }, { key: "required_by_management", label: "col.requested", short: "★", render: (r) => (r.required_by_management ? "★" : "") },
             { key: "caveat", label: "col.caveat", short: "⚠", render: (r) => (r.caveat ? <span title={t("corr.row_caveat")} aria-label={t("corr.row_caveat")} className="cursor-help text-[#8a5a00]">⚠</span> : ""), csv: (r) => r.caveat || "" },

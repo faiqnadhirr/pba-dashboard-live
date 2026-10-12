@@ -2,6 +2,16 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## v4.2 — review fixes FIX-01 … FIX-17 (one source of truth + build guardrails)
+- **basecamp_final** (`lib/basecamp.js`, written to `public/data/basecamps.json` by the build): one row per base camp with `nop` (or "Unassigned / no location"), `area`, `has_location`, `selectable`, `status`. Header, legend, NOP table, lists and KPIs all read it (FIX-01/02). One status per camp, order: no location → no data (area) → no jobs → too few jobs → idle → busy → often late → sometimes late → on time.
+- Recommendation lists hold selectable camps only; "Clean up first" panel lists no location / no NOP / no sites / possible duplicate with the reason (FIX-03). Base-camp codes are unique (BPS004-BJI·2).
+- Data coverage per AREA (FULL / PARTIAL): "All areas" = FULL areas by default, toggle "areas with partial data"; AREA 4 reach / need / on time = N/A, base-camp status "No data" (FIX-04).
+- Reach counts only ACTUAL / ESTIMATED / DERIVED (monthly summary) battery values, basis shown; design BBT (banks × Ah) never used for reach and now calibrated × 0.28 in Config (FIX-05).
+- Busy at peak = distinct own base camps on a job (≤ units); build fails otherwise (FIX-06). One definition for BBT unknown / RAN unavailable; the data-quality map is labelled "first missing input" (FIX-07). Coordinates panel covers AREA 4; "N without coordinates (not drawn)" with IDs (FIX-08). Median working time shows its n (FIX-09). Long-outage columns for priority sites and all sites (FIX-10).
+- Base-camp merge only with apply = yes AND reviewed_by; review state APPLIED / PENDING / REJECTED; "possible duplicate" badge (FIX-11). The 8 auto-applied merges are now PENDING until reviewed.
+- Sources: area, raw, clean, derived from, last record date; AREA 4 rows; freshness badge in the header with a Config threshold (FIX-12/13/14). Placeholder IDs rejected and logged; low-coverage badge (FIX-15). Ticket match % per NOP with ⚠ below 90 % (FIX-16).
+- `scripts/kpi_check.mjs` (run by `engine/build.py`) fails the build on any mismatch; tests 55 → 68 with TC-01 … TC-17 (FIX-17).
+
 ## v4.1 — one dataset (AREA = filter), 4 MBP tabs with the map as hero, plain language
 - AREA 1 + AREA 4 are loaded and merged into ONE dataset (`lib/data.js › loadAll`); **Area** is a filter like NOP, plus a new **Cluster** filter. The model is built per AREA (`buildModelByArea`) so AREA 1 numbers never change when AREA 4 is added; the AREA-wide travel calibration applies to AREA 1 only.
 - Header labels removed (snapshot, demo, config hash, AREA buttons). Inactive / off-air / own-genset toggles moved under "Also show".

@@ -9,8 +9,8 @@ const NONE = "#E3E7ED";
 const COLORS = {
   priority: Object.fromEntries(Object.entries(LEVEL_KIND.MBP).map(([k, v]) => [k, v.c])),
   design: Object.fromEntries(Object.entries(STATUS).map(([k, v]) => [k, v.c === "#EEF1F5" ? "#C9CFD9" : v.c === "#DDE3EC" ? "#9DB7DE" : v.c])),
-  survival: { arrive: "#0ca30c", late: "#ec835a", unknown: "#A3ABB9", beyond: "#7a1414" },
-  gap: { big: "#b42318", small: "#ec835a", meets: "#0ca30c", nodata: "#C9CFD9" },
+  survival: { arrive: "#0ca30c", late: "#ec835a", unknown: "#A3ABB9", unverified: "#d9b8f5", beyond: "#7a1414" },
+  gap: { big: "#b42318", small: "#ec835a", meets: "#0ca30c", notarget: "#9DB7DE", nodata: "#C9CFD9" },
   cause: { ...CAUSE_COLOR, none: NONE },
   resp: { ...RESP_COLOR, none: NONE },
   batch: { ...Object.fromEntries(Object.entries(LEVEL_KIND.BBS).map(([k, v]) => [k, v.c === "#C9CFD9" ? "#8A94A6" : v.c])), none: NONE },

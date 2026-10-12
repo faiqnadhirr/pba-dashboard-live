@@ -34,7 +34,7 @@ export default function Story({ K, nop, navigate, hasJobs }) {
           line={hasEv ? t("st.need_line", { s: fInt(k.served_p12), n: fInt(k.need_p12) }) : t("st.na")} tip={t("st.need_tip", { a: pc(k.served_pct) })}
           onClick={hasJobs ? () => navigate({ view: "mbp.performance" }) : null} />
         <Tile tone="warn" title={t("st.idle")} big={hasJobs ? pc(k.occupancy_median) : t("common.na")}
-          line={hasJobs ? (kp?.conc_p95 != null ? t("st.idle_line_nop", { c: fInt(kp.conc_p95), u: fInt(kp.mbp) }) : t("st.idle_line", { u: fInt(k.mbp) })) : t("st.na")} tip={t("st.idle_tip")} />
+          line={hasJobs ? (kp?.conc_p95 != null ? t("st.idle_line_nop", { c: fInt(kp.conc_p95), u: fInt(kp.mbp) }) : t("st.idle_line", { u: fInt(k.occupancy_n) })) : t("st.na")} tip={t("st.idle_tip")} />
         <Tile tone="good" title={t("st.bat")} big={fInt(k.bbs_p1 + k.setting)}
           line={t("st.bat_line", { p1: fInt(k.bbs_p1), set: fInt(k.setting) })} tip={t("st.bat_tip", { rep: fInt(k.replace), up: fInt(k.upgrade) })}
           onClick={() => navigate({ view: "bbs.actions" })} />

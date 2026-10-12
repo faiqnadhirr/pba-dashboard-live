@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid, Legend } from "recharts";
 import { loadDetail } from "@/lib/data";
-import { LevelTag, BbtCell, ActionLabel, StatusTag, EvTag, Tag, Note, EvidenceTable, AvailTriple, Gloss, fInt, fMin, fH, fKm, fPct, fPP, f3, f1, fNum, fCoord, precisionNote, isNum, monthName } from "./ui";
+import { LowCov, LevelTag, BbtCell, ActionLabel, StatusTag, EvTag, Tag, Note, EvidenceTable, AvailTriple, Gloss, fInt, fMin, fH, fKm, fPct, fPP, f3, f1, fNum, fCoord, precisionNote, isNum, monthName } from "./ui";
 import { t, tv, locale } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { showCoverageGap } from "@/lib/view";
@@ -89,7 +89,7 @@ export default function SiteDrawer({ site, cfg, onClose }) {
             <Box title={t("drawer.fields14")}>
               <Row k={t("col.s14.priority")} v={<span title={t("prio.cutoffs", { p1: prio.P1, p2: prio.P2, p3: prio.P3 })}><LevelTag kind="MBP" v={s.mbp_priority_level} /> {f3(s.mbp_priority_score)}</span>} />
               <Row k={t("drawer.id_name_class")} v={`${s.site_id} · ${s.site_name} · ${s.site_class}`} />
-              <Row k={t("col.s14.dependency")} v={isNum(s.dependency_children) ? `${s.dependency_children} (PROXY: ${s.hub_site})` : <NA />} />
+              <Row k={<>{t("col.s14.dependency")}<LowCov /></>} v={isNum(s.dependency_children) ? `${s.dependency_children} (PROXY: ${s.hub_site})` : <NA />} />
               <Row k={t("col.s14.nop")} v={s.nop} />
               <Row k={<>{t("col.s14.bbt_design")}<Gloss k="bbt_design" /></>} v={<span title={cfg.bbt.criteria_basis === "site" ? t("design.site_tip") : t("design.std_tip")}>{fMin(design)}</span>} />
               <Row k={t("col.s14.bbt_measured")} v={<BbtCell r={s} />} />
@@ -126,8 +126,8 @@ export default function SiteDrawer({ site, cfg, onClose }) {
             {s.bbt_value_evidence === "ESTIMATED" && <Row k={t("drawer.est_range")} v={`${fMin(s.bbt_est_low_min)}–${fMin(s.bbt_est_high_min)} · ${te(s.bbt_est_confidence, "conf")}`} />}
             <Row k={t("drawer.events")} v={`${fInt(s.evt_exhaustion)} / ${fInt(s.evt_censored)}`} />
             <Row k={t("drawer.lower_bound")} v={fMin(s.bbt_lower_bound_min)} />
-            <Row k={t("drawer.type_age")} v={`${s.battery_type || "—"} · ${isNum(s.battery_age_y) ? f1(s.battery_age_y) + " " + t("drawer.years") : "—"}`} />
-            <Row k={t("drawer.load")} v={isNum(s.load_a) ? `${fInt(s.load_a)} A` : "—"} />
+            <Row k={<>{t("drawer.type_age")}<LowCov /></>} v={`${s.battery_type || "—"} · ${isNum(s.battery_age_y) ? f1(s.battery_age_y) + " " + t("drawer.years") : "—"}`} />
+            <Row k={<>{t("drawer.load")}<LowCov /></>} v={isNum(s.load_a) ? `${fInt(s.load_a)} A` : "—"} />
             <Row k={t("metric.'Tidak Ada Baterai' tickets")} v={fInt(s.tk_no_battery)} />
             <Row k={t("drawer.coords")} v={isNum(s.lat) ? `${fCoord(s.lat, s.coord_decimals)}, ${fCoord(s.lon, s.coord_decimals)} (${t("drawer.coord_precision", { p: precisionNote(s.coord_decimals) })})` : "UNAVAILABLE"} />
             <details className="mt-2 text-[12px]" open={showComputed} onToggle={(e) => setShowComputed(e.currentTarget.open)}>

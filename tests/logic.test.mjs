@@ -692,3 +692,134 @@ test("v4.1 one dataset: AREA 1 + AREA 4 merged, AREA is a filter; KPIs reconcile
   const A1 = M.filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected);
   assert.equal(K1.area.p12_reach, computeKpis(A1, mbps, TK, EV, cfg).area.p12_reach);
 });
+
+// ---------------------------------------------------------------- v4.2 — review fixes as ISTQB-style test cases (TC-xx ↔ FIX-xx)
+import { basecampFinal, basecampCounts, areaCoverage, recommendable, needsCleanup, statusOf as bcStatusOf, LIST_STATUS, BC_STATUS } from "../lib/basecamp.js";
+import { mergeAreas } from "../lib/data.js";
+import { bbtUnknown, reachOk, REACH_EVIDENCE } from "../lib/logic.js";
+import { MAP_KEYS } from "../lib/mapmodes.js";
+const has4 = fs.existsSync("public/data/a4/meta.json") && fs.existsSync("public/data/basecamps.json");
+const V42 = (() => {
+  if (!has4) return null;
+  const ld = (d) => { const rd = (f, x) => (fs.existsSync(`${d}/${f}`) ? JSON.parse(fs.readFileSync(`${d}/${f}`, "utf8")) : x); const E = { cols: [], rows: [] };
+    return { meta: rd("meta.json"), sites: fromColumnar(rd("sites.json")), mbps: rd("mbps.json", []), fam: fromColumnar(rd("familiarity.json", E)), tickets: fromColumnar(rd("tickets.json", E)), events: fromColumnar(rd("pln_ev.json", E)) }; };
+  const D = mergeAreas([{ a: "AREA 1", d: ld("public/data") }, { a: "AREA 4", d: ld("public/data/a4") }]);
+  const MM = buildModelByArea(D.sites, D.mbps, D.meta.config);
+  const ev = groupEvents(D.events), pf = mbpPerformance(MM, D.mbps, D.tickets, D.meta.config, ev);
+  const BC = basecampFinal(MM, D.mbps, pf, D.meta.config, { areas: D.meta.areas, mergeReview: D.meta.mbp?.merge_review || [] });
+  const cov = areaCoverage(D.meta.areas), act = MM.filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected);
+  const full = act.filter((s) => cov[s.area] === "FULL");
+  const KA = computeKpis(act, D.mbps, D.tickets, D.events, D.meta.config, { evBySite: ev, perf: pf, unmatchedByNop: D.meta.dq.ticket_gaps, coverage: cov });
+  const KF = computeKpis(full, D.mbps.filter((m) => cov[m.area] === "FULL"), D.tickets, D.events, D.meta.config, { evBySite: ev, perf: pf, unmatchedByNop: D.meta.dq.ticket_gaps, coverage: cov });
+  return { D, MM, BC, cov, act, KA, KF, json: JSON.parse(fs.readFileSync("public/data/basecamps.json", "utf8")), kpi: JSON.parse(fs.readFileSync("public/data/kpi.json", "utf8")) };
+})();
+
+test("TC-01 (FIX-01) one source for the base-camp count: header = Σ legend = Σ NOP table = all base camps", { skip: !V42 }, () => {
+  const { BC, D, KA } = V42, C = basecampCounts(BC);
+  assert.equal(C.total, D.mbps.length);
+  assert.equal(BC_STATUS.reduce((a, k) => a + (C.by[k] || 0), 0), C.total);
+  assert.equal(KA.nops.reduce((a, r) => a + r.mbp, 0), C.total);
+  assert.ok(KA.byNop.get("Unassigned / no location")?.mbp >= 1, "camps without NOP / location get their own row");
+});
+
+test("TC-02 (FIX-02) status: exactly one per base camp, decided in the documented order", () => {
+  const c = cfg, base = { jobs: 60, judged: 50, busy: 0.1, ontime_rate: 0.7 };
+  assert.equal(bcStatusOf(base, c, { hasLoc: false, coverage: "FULL" }), "noloc");
+  assert.equal(bcStatusOf(base, c, { hasLoc: true, coverage: "PARTIAL" }), "nodata");
+  assert.equal(bcStatusOf({ jobs: 0 }, c, { hasLoc: true, coverage: "FULL" }), "none");
+  assert.equal(bcStatusOf({ ...base, judged: 5, ontime_rate: null }, c, { hasLoc: true }), "few");
+  assert.equal(bcStatusOf({ ...base, busy: 0.01 }, c, { hasLoc: true }), "under");
+  assert.equal(bcStatusOf({ ...base, busy: 0.4, ontime_rate: 0.1 }, c, { hasLoc: true }), "high");
+  assert.equal(bcStatusOf({ ...base, ontime_rate: 0.2 }, c, { hasLoc: true }), "low");
+  assert.equal(bcStatusOf({ ...base, ontime_rate: 0.5 }, c, { hasLoc: true }), "watch");
+  assert.equal(bcStatusOf(base, c, { hasLoc: true }), "good");
+  if (V42) assert.ok(V42.BC.every((r) => BC_STATUS.includes(r.status)));
+});
+
+test("TC-03 (FIX-03) recommendation lists hold selectable camps only; listed artefacts sit in 'clean up first'", { skip: !V42 }, () => {
+  const { BC } = V42;
+  for (const st of LIST_STATUS) assert.ok(recommendable(BC, st).every((r) => r.selectable && r.sites_assigned > 0 && r.dup_state !== "PENDING"));
+  const clean = new Set(needsCleanup(BC).map((r) => r.mbp_id)), listed = new Set([...LIST_STATUS].flatMap((st) => recommendable(BC, st).map((r) => r.mbp_id)));
+  for (const pre of ["BPS004-RHL", "BPS007-RHL", "BPS006-SLK-AFRI", "BPS007-SLK- RIDHO", "BPS004-BJI-MUHAMMAD"]) {
+    const r = BC.find((x) => x.mbp_id.startsWith(pre)); assert.ok(r, pre);
+    assert.ok(clean.has(r.mbp_id) && !listed.has(r.mbp_id), `${pre} must be in clean-up, not in a recommendation list`);
+  }
+  assert.equal(new Set(BC.map((r) => r.code)).size, BC.length, "base-camp codes are unique");
+});
+
+test("TC-04 (FIX-04) partial-data AREA does not dilute the KPI; its reach is N/A, never 0 %", { skip: !V42 }, () => {
+  const { KA, KF, cov } = V42;
+  assert.equal(cov["AREA 1"], "FULL"); assert.equal(cov["AREA 4"], "PARTIAL");
+  assert.equal(KA.area.p12_reach, KF.area.p12_reach); assert.equal(KA.area.p12_eval, KF.area.p12_eval);
+  for (const r of KA.nops.filter((x) => x.area === "AREA 4")) { assert.equal(r.p12_reach_pct, null, r.nop); assert.equal(r.served_pct, null); assert.equal(r.jobs_ontime_pct, null); }
+  assert.ok(V42.BC.filter((r) => r.area === "AREA 4" && r.has_location).every((r) => r.status === "nodata"));
+});
+
+test("TC-05 (FIX-05) reach rests only on ACTUAL / ESTIMATED / DERIVED battery values, with its basis shown", { skip: !V42 }, () => {
+  const { act, KF } = V42;
+  assert.ok(act.filter(reachOk).every((s) => REACH_EVIDENCE.has(s.battery.display.evidence)));
+  assert.ok(!act.some((s) => reachOk(s) && ["PROXY", "TICKET", "UNAVAILABLE", "DERIVED-UNVERIFIED"].includes(s.battery.display.evidence)));
+  const A = KF.area; assert.equal(A.p12_reach, A.p12_reach_actual + A.p12_reach_estimated + A.p12_reach_derived);
+  assert.ok(cfg.bbt.design_from_battery.calibration_scale > 0 && cfg.bbt.design_from_battery.calibration_scale < 1, "design calibration factor in Config");
+});
+
+test("TC-06 (FIX-06) busy at peak never exceeds the units of the NOP; ratios within 0–100 %", { skip: !V42 }, () => {
+  const { KA } = V42;
+  for (const r of KA.nops) { if (r.conc_max != null) assert.ok(r.conc_max <= r.mbp, `${r.nop} ${r.conc_max}/${r.mbp}`); }
+  const rp = KA.byNop.get("NOP RANTAU PRAPAT"); assert.ok(rp.conc_p95 <= 17 && rp.conc_p95 <= rp.mbp);
+  assert.deepEqual(reconcile(KA), []);
+});
+
+test("TC-07 (FIX-07) one definition: BBT unknown and RAN unavailable give the same count on every page", { skip: !V42 }, () => {
+  const { act, KA } = V42, n = act.filter(bbtUnknown).length;
+  assert.equal(KA.area.bbt_unknown, n);
+  assert.equal(act.filter((s) => MAP_KEYS.survival(s) === "unknown").length, n, "map legend");
+  assert.equal(act.filter((s) => (bbtUnknown(s) ? "UNAVAILABLE" : s.bbt_value_evidence || "UNAVAILABLE") === "UNAVAILABLE").length, n, "evidence table");
+  const ran = act.filter((s) => !Number.isFinite(s.avail_wc_pct)).length;
+  assert.equal(act.filter((s) => MAP_KEYS.gap(s) === "nodata").length, ran);
+  assert.ok(act.filter((s) => MAP_KEYS.dq(s) === "no_bbt").length <= n, "first-missing-input map is a subset (labelled as such)");
+});
+
+test("TC-08 (FIX-08) plotted + not plotted = all sites; AREA 4 coordinates carry their precision", { skip: !V42 }, () => {
+  const { MM, kpi } = V42;
+  assert.equal(kpi.plotted + kpi.not_plotted.length, MM.length);
+  const a4 = MM.filter((s) => s.area === "AREA 4" && Number.isFinite(s.lat));
+  assert.ok(a4.filter((s) => Number.isFinite(s.coord_decimals)).length / a4.length > 0.95);
+});
+
+test("TC-09/10 (FIX-09/10) median n = units used; long-outage columns reconcile with the KPI", { skip: !V42 }, () => {
+  const { KF } = V42;
+  assert.equal(KF.area.occupancy_n, KF.nops.reduce((a, r) => a + r.occupancy_n, 0));
+  assert.equal(KF.nops.reduce((a, r) => a + r.need_p12, 0), KF.area.need_p12);
+  assert.equal(KF.nops.reduce((a, r) => a + r.served_p12, 0), KF.area.served_p12);
+});
+
+test("TC-11 (FIX-11) every applied merge has a reviewer; unreviewed pairs are PENDING and badged", { skip: !V42 }, () => {
+  const R = V42.D.meta.mbp.merge_review;
+  assert.ok(R.every((r) => ["APPLIED", "PENDING", "REJECTED"].includes(r.review_state)));
+  assert.ok(R.filter((r) => r.review_state === "APPLIED").every((r) => r.reviewed_by && r.reviewed_by.trim()));
+  for (const r of R.filter((x) => x.review_state === "PENDING")) { const a = V42.BC.find((b) => b.mbp_id === r.keep); if (a) assert.equal(a.dup_state, "PENDING", r.keep); }
+});
+
+test("TC-12/13/14 (FIX-12/13/14) sources: raw, clean, parent and last record date; AREA 4 listed", { skip: !V42 }, () => {
+  const S = V42.D.meta.dq.sources;
+  assert.ok(S.some((r) => r.area === "AREA 4" && /Dapot/.test(r.source)));
+  const pln = S.find((r) => /PLN/.test(r.source)); assert.ok(pln.derived_from && /BBT events/.test(pln.derived_from));
+  assert.ok(S.find((r) => r.source === "RAN availability").raw > 0);
+  for (const r of S.filter((x) => /Ticket|BBT events|RAN|PLN|monthly/.test(x.source) && x.area === "AREA 1")) assert.ok(r.data_max_date, r.source);
+  assert.ok(cfg.freshness?.max_age_days > 0);
+});
+
+test("TC-15/16 (FIX-15/16) no placeholder IDs in the output; low match rate per NOP is visible", { skip: !V42 }, () => {
+  const PH = /^\s*(|-+|X+\d*|N\/?A|NULL|NONE|0+|\?+|TBD|NAN|<NA>)\s*$/i;
+  assert.ok(!V42.MM.some((s) => PH.test(String(s.site_id ?? ""))) && !V42.D.mbps.some((m) => PH.test(String(m.mbp_id ?? ""))));
+  assert.ok(V42.D.meta.dq.field_coverage && V42.D.meta.dq.field_coverage.load_a < 0.5, "low-coverage fields reported");
+  const rp = V42.KA.byNop.get("NOP RANTAU PRAPAT"); assert.ok(rp.ticket_match_pct < 0.9, `RANTAU PRAPAT match ${rp.ticket_match_pct}`);
+});
+
+test("TC-17 (FIX-17) the dashboard does not recount: its basecamp_final equals the engine JSON row by row", { skip: !V42 }, () => {
+  const J = new Map(V42.json.rows.map((r) => [r.mbp_id, r]));
+  assert.equal(J.size, V42.BC.length);
+  for (const r of V42.BC) { const j = J.get(r.mbp_id); assert.ok(j, r.mbp_id); for (const k of ["status", "selectable", "nop", "area", "sites_assigned", "code", "dup_state"]) assert.deepEqual(r[k], j[k], `${r.mbp_id}.${k}`); }
+  assert.deepEqual(V42.kpi.problems, []);
+});

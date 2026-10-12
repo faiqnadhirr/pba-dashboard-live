@@ -114,6 +114,43 @@ def source_status():
 
 MERGE_CSV = ROOT / "config" / "basecamp_merge.csv"
 
+# v4.2 (FIX-15) — placeholder IDs are rejected at cleaning time and logged (meta.dq.rejects + engine/data/rejects.csv)
+PLACEHOLDER = re.compile(r"^\s*(|-+|X+|N/?A|NULL|NONE|0+|\?+|TBD|NAN|<NA>)\s*$", re.I)
+REJECTS: list = []
+
+
+def reject_placeholder_ids(df, col, source):
+    v = df[col].astype("string").fillna("")
+    bad = v.str.match(PLACEHOLDER) | v.str.fullmatch(r"X{2,}\d*", case=False)
+    if bad.any():
+        REJECTS.append(dict(source=source, field=col, rows=int(bad.sum()), examples=" | ".join(sorted(set(v[bad].tolist()))[:5]) or "(blank)"))
+    return df[~bad].copy()
+
+
+def max_date(df, col):
+    if col not in df or not len(df):
+        return None
+    m = pd.to_datetime(df[col], errors="coerce").max()
+    return None if pd.isna(m) else m.strftime("%Y-%m-%d")
+
+
+def max_month(df, col, year=2026):
+    if col not in df or not len(df):
+        return None
+    v = df[col]
+    if pd.api.types.is_numeric_dtype(v) and v.max() <= 12:          # month number within the snapshot year
+        v = v.map(lambda x: f"{year}{int(x):02d}" if pd.notna(x) else None)
+    m = pd.to_datetime(v.astype(str).str[:6] + "01", format="%Y%m%d", errors="coerce").max()
+    return None if pd.isna(m) else (m + pd.offsets.MonthEnd(0)).strftime("%Y-%m-%d")
+
+
+LOW_COVERAGE_FIELDS = ["load_a", "battery_age_y", "hub_site", "battery_banks", "battery_type", "battery_qty", "dep_children_actual", "pln_source"]
+
+
+def field_coverage(t):
+    """v4.2 (FIX-15) — share of sites with a value, per input field; < 50 % = 'low coverage' badge in the UI."""
+    return {c: round(float(t[c].notna().mean()), 4) for c in LOW_COVERAGE_FIELDS if c in t}
+
 
 def apply_basecamp_merge(mbps, tickets, dups, qa):
     """Merge duplicate base-camp records using engine/config/basecamp_merge.csv (created on first run).
@@ -128,10 +165,19 @@ def apply_basecamp_merge(mbps, tickets, dups, qa):
             keep, drop = (b, a) if (coded(b) and not coded(a)) or (pd.isna(ma["lat"]) and pd.notna(mb["lat"])) else (a, b)
             rows.append(dict(keep=keep, drop=drop, status=r.status, km_apart=r.km_apart, similarity=r.similarity,
                              apply="yes" if r.status.startswith("LIKELY SAME PERSON") else "no",
-                             reviewer_note=""))
+                             reviewed_by="", reviewed_at="", reviewer_note=""))
         pd.DataFrame(rows).to_csv(MERGE_CSV, index=False)
     mm = pd.read_csv(MERGE_CSV, dtype=str).fillna("")
-    ap = mm[mm["apply"].str.lower().isin(["yes", "y", "1", "true"])]
+    for c in ("reviewed_by", "reviewed_at"):
+        if c not in mm:
+            mm[c] = ""
+    # v4.2 (FIX-11) — a merge is applied ONLY when apply = yes AND a reviewer is named. Review state per pair:
+    # APPLIED (apply=yes + reviewer) · REJECTED (apply=no + reviewer, or auto: "probably different people") · PENDING (everything else)
+    yes = mm["apply"].str.lower().isin(["yes", "y", "1", "true"]); rev = mm["reviewed_by"].str.strip() != ""
+    auto_rej = mm["status"].str.contains("probably different people", case=False)
+    mm["review_state"] = np.where(yes & rev, "APPLIED", np.where((~yes & rev) | auto_rej, "REJECTED", "PENDING"))
+    mm.loc[auto_rej & ~rev, "reviewed_by"] = "auto (> 100 km apart)"
+    ap = mm[mm["review_state"] == "APPLIED"]
     ids = set(mbps["mbp_id"])
     ap = ap[ap["keep"].isin(ids) & ap["drop"].isin(ids) & (ap["keep"] != ap["drop"])]
     remap = dict(zip(ap["drop"], ap["keep"]))
@@ -144,7 +190,8 @@ def apply_basecamp_merge(mbps, tickets, dups, qa):
     m["pic_name"] = m["mbp_id"].map(display_name)       # person (PIC) vs base camp record (location)
     tickets = tickets.copy()
     tickets["mbp_id"] = tickets["mbp_id"].map(lambda x: remap.get(x, x) if isinstance(x, str) else x)
-    qa["basecamp_merge"] = {"pairs_in_map": int(len(mm)), "applied": int(len(remap)), "basecamps_before": int(len(mbps)), "basecamps_after": int(len(m))}
+    qa["basecamp_merge"] = {"pairs_in_map": int(len(mm)), "applied": int(len(remap)), "pending": int((mm["review_state"] == "PENDING").sum()),
+                            "rejected": int((mm["review_state"] == "REJECTED").sum()), "basecamps_before": int(len(mbps)), "basecamps_after": int(len(m))}
     return m, tickets, mm
 
 
@@ -161,8 +208,9 @@ def sanity(t, corr, f, mbps, tickets, merge_map, qa):
         chk(f"A6 correlation n({r.feature}) = site table non-null with measured BBT", n_site == r.n, f"{r.n} vs {n_site}")
     chk("A6 battery_banks exported and populated", t["battery_banks"].notna().sum() > 0, int(t["battery_banks"].notna().sum()))
     # B3: merge map applied, no dropped base camp left in master or tickets
-    ap = merge_map[merge_map["apply"].str.lower().isin(["yes", "y", "1", "true"])]
+    ap = merge_map[merge_map["review_state"] == "APPLIED"]
     gone = set(ap["drop"])
+    chk("B3 every applied merge has a reviewer (FIX-11)", (ap["reviewed_by"].str.strip() != "").all(), int((ap["reviewed_by"].str.strip() == "").sum()))
     chk("B3 merged base camps removed from master", not (set(mbps["mbp_id"]) & gone), len(gone))
     chk("B3 tickets remapped to surviving base camp", not tickets["mbp_id"].isin(gone).any())
     chk("B3 base camp ids unique", mbps["mbp_id"].is_unique)
@@ -469,7 +517,10 @@ def main():
     dec = d1.drop_duplicates("sid").set_index("sid")["Lat"].astype(str).str.split(".").str[1].str.len()
     sites["coord_decimals"] = sites["site_id"].map(dec).fillna(0).clip(upper=6).astype(int)
     qa["access_class"] = sites["access_class"].value_counts().to_dict()
+    sites = reject_placeholder_ids(sites, "site_id", "Dapot site master")
+    mbps = reject_placeholder_ids(mbps, "mbp_id", "MBP Team")
     tickets, q = C.clean_tickets(track, set(mbps["mbp_id"]), cfg["mbp"]["rh_max_hours_per_ticket"]); qa.update(q)
+    tickets = reject_placeholder_ids(tickets, "site_id", "Tracking Ticket")
     # ---- MBP identity: fuzzy / normalised matching of ticket PIC -> base camp (never blind-merged)
     pic = tickets.dropna(subset=["mbp_id"]).groupby("mbp_id").agg(
         n=("site_id", "size"), nop=("nop", lambda x: x.mode().iloc[0] if len(x.mode()) else None)).reset_index().rename(columns={"mbp_id": "pic"})
@@ -485,9 +536,13 @@ def main():
     # ---- reviewable merge map (B3): default = merge only "LIKELY SAME PERSON (<= 20 km, same NOP)"
     mbps, tickets, merge_map = apply_basecamp_merge(mbps, tickets, dups, qa)
     events, q = C.clean_bbt_events(events_raw); qa.update(q)
-    monthly = C.clean_bbt_monthly(monthly_raw)
+    events = reject_placeholder_ids(events, "site_id", "BBT events")
+    monthly = reject_placeholder_ids(C.clean_bbt_monthly(monthly_raw), "site_id", "BBT monthly")
     o25 = C.clean_outage_2025(out25)
     ran_m["site_id"] = norm_id(ran_m["site_id"])
+    ran_m = reject_placeholder_ids(ran_m, "site_id", "RAN availability")
+    if REJECTS:
+        pd.DataFrame(REJECTS).to_csv(ROOT / "data" / "rejects.csv", index=False)
     SID = set(sites["site_id"])
     nop_sites = sites["nop"].value_counts()
     qa["nop_small"] = {k: int(v) for k, v in nop_sites[nop_sites < 50].items()}
@@ -756,21 +811,30 @@ def main():
                 "chosen_estimator": chosen, "estimator_mae_min": mae, "km_curves": curves_out,
                 "naive_vs_km": {"naive_median_all": jclean(km["naive_exhausted_median_min"].median()),
                                 "km_median_all": jclean(km["km_median_min"].median())}},
-        "mbp": {"pic_matches": records(pm), "duplicates": records(dups), "concurrency": plnoff_concurrency(tk, t)},
+        "mbp": {"pic_matches": records(pm), "duplicates": records(dups), "concurrency": plnoff_concurrency(tk, t),
+                "merge_review": records(merge_map[["keep", "drop", "status", "km_apart", "apply", "reviewed_by", "reviewed_at", "review_state"]])},
         "dq": {"unmatched": unmatched, "ticket_gaps": ticket_gaps(tickets, t),
+               # v4.2 (FIX-12/13/14) — every source: raw rows, clean rows, parent source, last record date in the data
                "sources": [
-                   dict(source="Dapot ALL Site (AREA1)", raw=qa["dapot_rows_area"], clean=len(sites), grain="site"),
-                   dict(source="MBP Team", raw=len(team), clean=len(mbps), grain="MBP"),
-                   dict(source="Tracking Ticket", raw=qa["ticket_rows"], clean=len(tickets), grain="ticket"),
-                   dict(source="BBT events", raw=qa["bbt_event_rows"], clean=len(events), grain="event"),
-                   dict(source="PLN outage intervals (merged)", raw=len(ev), clean=len(iv), grain="interval"),
-                   dict(source="BBT monthly (6 CSV)", raw=len(monthly_raw), clean=len(monthly), grain="site-month"),
-                   dict(source="RAN availability", raw=None, clean=len(ran_m), grain="site-month (wall-clock)"),
-                   dict(source="New_BBT master", raw=len(newbbt), clean=int(t["hub_site"].notna().sum()), grain="site")],
+                   dict(area="AREA 1", source="Dapot ALL Site (AREA1)", raw=qa["dapot_rows_area"], clean=len(sites), grain="site", derived_from=None, data_max_date=None),
+                   dict(area="AREA 1", source="MBP Team", raw=len(team), clean=len(mbps), grain="MBP", derived_from=None, data_max_date=None),
+                   dict(area="AREA 1", source="Tracking Ticket", raw=qa["ticket_rows"], clean=len(tickets), grain="ticket", derived_from=None, data_max_date=max_date(tickets, "occurred_at")),
+                   dict(area="AREA 1", source="BBT events", raw=qa["bbt_event_rows"], clean=len(events), grain="event", derived_from=None, data_max_date=max_date(events, "mf_start")),
+                   dict(area="AREA 1", source="PLN outage intervals (merged)", raw=len(ev), clean=len(iv), grain="interval",
+                        derived_from="BBT events (mains-fail alarms of AREA 1 sites) — raw = BBT events kept for AREA 1 sites", data_max_date=max_date(iv, "end")),
+                   dict(area="AREA 1", source="BBT monthly (6 CSV)", raw=len(monthly_raw), clean=len(monthly), grain="site-month", derived_from=None, data_max_date=max_month(monthly, "month")),
+                   dict(area="AREA 1", source="RAN availability", raw=len(ran_m), clean=len(ran), grain="site-month (wall-clock)", derived_from=None, data_max_date=max_month(ran, "ym")),
+                   dict(area="AREA 1", source="New_BBT master", raw=len(newbbt), clean=int(t["hub_site"].notna().sum()), grain="site", derived_from=None, data_max_date=None)],
+               "rejects": REJECTS, "field_coverage": field_coverage(t),
                "mbp_coords": mbps["coord_status"].value_counts().to_dict()},
         "monthly_nop": records(monthly_nop),
         "sizes": sz,
     }
+    # v4.2 (FIX-14) — source status table also carries the last record date found in the data (not the file time)
+    dmax = {r["source"]: r.get("data_max_date") for r in meta["dq"]["sources"]}
+    alias = {"MBP tickets + base camps": "Tracking Ticket", "BBT monthly": "BBT monthly (6 CSV)", "BBT events": "BBT events", "RAN availability": "RAN availability"}
+    for r in meta["snapshot"]["sources"]:
+        r["data_max_date"] = dmax.get(alias.get(r["source"], r["source"]))
     sz["meta.json"] = dump(meta, "meta.json")
     # keep a parquet of the full site table for validation
     t.to_pickle(ROOT / "data" / "site_table.pkl")

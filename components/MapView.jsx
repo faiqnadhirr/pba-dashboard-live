@@ -92,7 +92,7 @@ function SiteLayer({ sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, onPick, zo
 
 export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSite, mbpStats, fitKey = "", height = 520, colorOverride, legendOverride, keyOverride,
   defaultMode = "priority", extraMbps = [], compact = false, mode: modeProp, onMode, hidden: hiddenProp, onHidden, modes = ["priority", "design", "survival"],
-  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true, mbpKeyOf, mbpLegend, mbpPerf, onOpenMbp, mbpLabel, hollowOverride, ttOverride, cardRows, hollowLabel, mbpLegendTitle, draggableMbps = false, onMbpDrag, onMapClick, mbpCardExtra, fitOnce = false }) {
+  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true, mbpKeyOf, mbpLegend, mbpPerf, onOpenMbp, mbpLabel, hollowOverride, ttOverride, cardRows, hollowLabel, mbpLegendTitle, draggableMbps = false, onMbpDrag, onMapClick, mbpCardExtra, fitOnce = false, mbpCountsOverride = null }) {
   const [mbpHidden, setMbpHidden] = useState([]);
   const [tileFail, setTileFail] = useState(0), [tileOk, setTileOk] = useState(0);
   const [showSites, setShowSites] = useState(true), [showMbps, setShowMbps] = useState(true), [coverage, setCoverage] = useState(false);
@@ -118,7 +118,8 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
   const counts = useMemo(() => { const c = {}; if (keyOf) located.forEach((s) => { const k = keyOf(s); c[k] = (c[k] || 0) + 1; }); return c; }, [located, keyOf]);
   const mbpsAll = useMemo(() => [...mbps, ...extraMbps].filter((m) => isNum(m.lat)), [mbps, extraMbps]);
   const mbpsLoc = useMemo(() => (mbpKeyOf && mbpHidden.length ? mbpsAll.filter((m) => m.is_new || !mbpHidden.includes(mbpKeyOf(m))) : mbpsAll), [mbpsAll, mbpKeyOf, mbpHidden]);
-  const mbpCounts = useMemo(() => { const c = {}; if (mbpKeyOf) mbpsAll.forEach((m) => { if (!m.is_new) { const k = mbpKeyOf(m); c[k] = (c[k] || 0) + 1; } }); return c; }, [mbpsAll, mbpKeyOf]);
+  // v4.2 (FIX-01) — legend counts come from basecamp_final (incl. base camps without location, which cannot be drawn)
+  const mbpCounts = useMemo(() => { if (mbpCountsOverride) return mbpCountsOverride; const c = {}; if (mbpKeyOf) mbpsAll.forEach((m) => { if (!m.is_new) { const k = mbpKeyOf(m); c[k] = (c[k] || 0) + 1; } }); return c; }, [mbpsAll, mbpKeyOf, mbpCountsOverride]);
   const mbpCol = (m) => (mbpKeyOf && mbpLegend ? mbpLegend.find((l) => l.k === mbpKeyOf(m))?.c : null);
   const fitPts = useMemo(() => [...located.map((s) => [s.lat, s.lon]), ...mbpsAll.map((m) => [m.lat, m.lon])], [located, mbpsAll]);
   // dot size = power downtime (sqrt scale, p95 = full size)
@@ -256,7 +257,8 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
       </div>}
       {/* legend = toggles: click a category to hide/show it (the KPIs and lists that follow the map use the same filter) */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 mt-2 text-[11.5px] text-slate" role="group" aria-label={t("map.legend")}>
-        <span className="tabular text-ink">{t("map.plotted", { a: fInt(shown.length), b: fInt(located.length) })}</span>
+        <span className="tabular text-ink" title={sites.length > located.length ? t("map.not_plotted_tip", { ids: sites.filter((s) => !(isNum(s.lat) && isNum(s.lon))).slice(0, 20).map((s) => s.site_id).join(", ") }) : undefined}>
+          {t("map.plotted", { a: fInt(shown.length), b: fInt(sites.length) })}{sites.length > located.length ? ` · ${t("map.not_plotted", { n: fInt(sites.length - located.length) })}` : ""}</span>
         {legend.map((l) => {
           const on = !l.k || !hidden.includes(l.k), n = l.k && keyOf ? counts[l.k] || 0 : null;
           return keyOf && l.k ? (

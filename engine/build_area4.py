@@ -92,7 +92,12 @@ def main():
         "is_island": d["Kepulauan"].astype("string").str.upper().eq("KEPULAUAN").fillna(False).astype(int),
         "last_pm": pd.to_datetime(d["Last Maintenance Site"], errors="coerce").dt.strftime("%Y-%m-%d"),
         "lat": to_num(d["Lat"]), "lon": to_num(d["Lon"]),
+        # v4.2 (FIX-08) — decimals as written in the source (coordinate precision panel covers AREA 4 too)
+        "coord_decimals": d["Lat"].astype("string").str.split(".").str[1].str.len().fillna(0).clip(upper=6),
     })
+    # v4.2 (FIX-15) — placeholder site IDs (blank, "-", "XXX", N/A …) are rejected and logged
+    ph = s["site_id"].fillna("").str.match(r"^\s*(|-+|X+\d*|N/?A|NULL|NONE|0+|\?+|TBD|NAN|<NA>)\s*$", case=False)
+    qa["rejected_placeholder_ids"] = int(ph.sum()); s = s[~ph].copy()
     s["is_urban"] = s["city"].str.upper().str.startswith("KOTA").fillna(False).astype(int)
     ok = s["lon"].between(*BBOX["lon"]) & s["lat"].between(*BBOX["lat"])
     qa["dapot_rows"] = len(s); qa["bad_coords"] = int((~ok).sum()); s.loc[~ok, ["lat", "lon"]] = np.nan
@@ -112,6 +117,7 @@ def main():
     wc = lambda c: (m[c] / m["ne"]).clip(upper=m["days"] * 86400) / 3600
     m["out_h"], m["pw_h"], m["tr_h"], m["ran_h"], m["oth_h"] = wc("outage (Sec)"), wc("duration_power (Sec)"), wc("duration_transport (Sec)"), wc("duration_ran (Sec)"), wc("duration_other (Sec)")
     m["hours"] = m["days"] * 24
+    qa["ran_rows"] = int(len(m))
     m = m.sort_values("period").drop_duplicates(["site_id", "period"], keep="last")
     inv.append(dict(source="RAN availability monthly", rows=len(m), period=f"{m['period'].min()}–{m['period'].max()}", status="OK"))
     g = m.groupby("site_id")
@@ -149,7 +155,8 @@ def main():
         "bbt_min_min": dur_to_sec(b["BBT Min Duration"]) / 60, "backup_min": dur_to_sec(b["Backup Duration"]) / 60,
         "pln_down_total_h": dur_to_sec(b["Total PLN Down"]) / 3600, "battery_backup_total_h": dur_to_sec(b["Total Battery Backups"]) / 3600,
         "ne_down_total_h": dur_to_sec(b["Total NE Down"]) / 3600, "pln_events": to_num(b["Repetitive"]),
-    }).drop_duplicates("site_id")
+    })
+    qa["bbt_rows"] = int(len(bb)); bb = bb.drop_duplicates("site_id")
     t = t.merge(bb, on="site_id", how="left")
     inv.append(dict(source="BBT Site Details", rows=len(bb), period="snapshot — period not written in the file", status="OK (period to confirm)"))
     qa["bbt_sites"] = int(t["bbt_category"].notna().sum())
@@ -251,7 +258,8 @@ def export_area1_shape(t, m, fme, cfg, meta4):
     x["avail_wc_pct"] = 100 * (1 - x["ran_outage_h"] / x["ran_hours"].replace(0, np.nan))
     # site name: Dapot keeps the spaces ("MUARA ENIM" not "MUARAENIM"); title-case only when the source is all upper-case
     x["site_name"] = x["site_name"].astype("string").str.replace(r"\s+", " ", regex=True).str.strip()
-    x["nop_flag"] = None; x["vip"] = 0; x["coord_decimals"] = None; x["hub_site"] = None
+    x["nop_flag"] = None; x["vip"] = 0; x["hub_site"] = None
+    x["coord_decimals"] = x["coord_decimals"].where(x["lat"].notna())
     x["access_class"] = np.where(x["is_island"] == 1, "island", np.where(x["lat"].notna(), "mainland", "unknown"))
     x["access_basis"] = "Dapot: Kepulauan flag"
     # battery: BBT Site Details. "BBT" = NE went down on mains fail → measured median BBT (ACTUAL); "Only Mains Fail" = the battery held
@@ -277,7 +285,7 @@ def export_area1_shape(t, m, fme, cfg, meta4):
     # base camps = BPS (MBP operators) with a position in the FME master; id = BPS-<NOP>-<n> (person name only as pic_name)
     b = fme[(fme["role"] == "BPS") & fme["lat"].notna()].copy()
     b["n"] = b.groupby("nop").cumcount() + 1
-    short = b["nop"].str.replace("NOP ", "", regex=False).str.replace(" ", "", regex=False).str[:3]
+    short = b["nop"].str.replace("NOP ", "", regex=False).str.replace(r"[^A-Z]", "", regex=True)   # full NOP name: PALU vs PALANGKARAYA stay distinct
     mb = [dict(mbp_id=f"BPS{int(r.n):03d}-{sh}", mbp_name=f"BPS{int(r.n):03d}-{sh}", lat=float(r.lat), lon=float(r.lon), coord_decimals=None,
                coord_status="ACTUAL", coord_evidence="ACTUAL", nop=r.nop, source="HW Master FME (BPS position)", merged_from=None, pic_name=r.name,
                mbp_tickets_h1=None, mbp_sites_served=None, mbp_run_hours_h1=None) for r, sh in zip(b.itertuples(), short)]
@@ -293,10 +301,16 @@ def export_area1_shape(t, m, fme, cfg, meta4):
                                                           outage=("out_h", "sum"), power=("pw_h", "sum"), transport=("tr_h", "sum"),
                                                           ran=("ran_h", "sum"), other=("oth_h", "sum")).reset_index().rename(columns={"period": "ym"})
     srcs = [dict(source=r["source"], files=1, status=r["status"], latest_file_time=r.get("period")) for r in meta4["inventory"]]
+    q4 = meta4["qa"]
+    dq_sources = [   # v4.2 (FIX-13/14) — AREA 4 rows of the Sources table (raw, clean, parent, last record date)
+        dict(area="AREA 4", source="Dapot ALL Site (AREA4)", raw=q4.get("dapot_rows"), clean=int(len(x)), grain="site", derived_from="Dapot ∪ RAN sites with RAN or BBT evidence", data_max_date=None),
+        dict(area="AREA 4", source="RAN availability monthly (AREA4)", raw=q4.get("ran_rows"), clean=int(len(h)), grain="site-month (Jan–Jun used)", derived_from=None, data_max_date=f"{H1[-1][:4]}-{H1[-1][4:]}-30"),
+        dict(area="AREA 4", source="BBT Site Details (AREA4)", raw=q4.get("bbt_rows"), clean=q4.get("bbt_sites"), grain="site (snapshot)", derived_from=None, data_max_date=None),
+        dict(area="AREA 4", source="HW Master FME — BPS as base camps", raw=sum(q4.get("fme", {}).values()) if q4.get("fme") else None, clean=len(mb), grain="person / base camp", derived_from="HW Master FME (role = BPS, with position)", data_max_date="2026-09-09")]
     meta = {**meta4, "config": cfg, "area": "AREA4", "scope": {"area": "AREA4", "period_start": "2026-01-01", "period_end": "2026-06-30"},
             "snapshot": {"period_start": "2026-01-01", "period_end": "2026-06-30", "refreshed_at": meta4["built_at"], "sources": srcs},
             "monthly_nop": mn.to_dict("records"), "bbs": {}, "mbp": {"pic_matches": [], "duplicates": [], "concurrency": []},
-            "dq": {"unmatched": [], "ticket_gaps": [], "sources": srcs, "mbp_coords": []},
+            "dq": {"unmatched": [], "ticket_gaps": [], "sources": dq_sources, "mbp_coords": [], "rejects": [], "field_coverage": {}},
             "na": ["tickets", "pln_events", "battery_inventory", "bbt_events", "daily", "dependency"]}
     dump(meta, "meta.json")
     log(f"AREA-1 shape: sites {len(x)} · base camps (BPS) {len(mb)}")

@@ -6,7 +6,7 @@ import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis, Toolti
 import { Card, Kpi, Note, DataTable, EvTag, fInt, fH, fPct, fNum, fMin, isNum } from "@/components/ui";
 import { PERF_KEYS, campCode } from "@/lib/mbpperf";
 import { kpiFor } from "@/lib/kpi";
-import { PERF_COLOR, PerfTag, UtilTag, OntimeTag, PerfFormula } from "@/components/perfUi";
+import { PERF_COLOR, PerfTag, UtilTag, OntimeTag, PerfFormula, DupBadge } from "@/components/perfUi";
 import { t } from "@/lib/i18n";
 
 const med = (v) => { const a = v.filter(isNum).sort((x, y) => x - y); if (!a.length) return null; const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
@@ -22,11 +22,12 @@ export default function Performance({ mbpsScope, perf, cfg, openMbp, data, K, no
   const pts = vis.filter((r) => r.ontime_rate != null).map((r) => ({ x: 100 * r.ontime_rate, y: 100 * r.busy, z: r.jobs, k: r.key, id: r.mbp_id, code: names ? r.mbp_id : r.code }));
   const flagged = vis.filter((r) => r.nobat_flag);
   const open = (id) => openMbp(data.mbps.find((m) => m.mbp_id === id));
-  const counts = Object.fromEntries(PERF_KEYS.map((x) => [x, rows.filter((r) => r.key === x).length]));
+  const counts = Object.fromEntries(PERF_KEYS.map((x) => [x, rows.filter((r) => r.key === x).length]));   // = basecamp_final status counts
   const nm = (r) => (names ? r.mbp_id : r.code || campCode(r.mbp_id));
   if (!hasJobs) return <Note tone="warn">{t("perf.na")}</Note>;
   const base = [
-    { key: "code", label: "col.basecamp", sortVal: (r) => nm(r), render: (r) => nm(r), csv: (r) => nm(r) }, { key: "nop", label: "col.nop" },
+    { key: "code", label: "col.basecamp", sortVal: (r) => nm(r), render: (r) => <span>{nm(r)}<DupBadge p={r} /></span>, csv: (r) => nm(r) }, { key: "nop", label: "col.nop" },
+    { key: "clean", label: "col.clean", sortVal: (r) => (r.selectable ? 1 : 0), render: (r) => (r.selectable ? "✔" : <span className="text-[11px] text-[#8a5a00]">{r.clean_reasons.map((x) => t(`clean.${x}`)).join(" · ")}</span>), csv: (r) => (r.selectable ? "ok" : r.clean_reasons.join(";")) },
     { key: "key", label: "col.mbp_status", sortVal: (r) => PERF_KEYS.indexOf(r.key) * 1000 + (r.ontime_rate ?? 1) * 100, render: (r) => <PerfTag k={r.key} />, csv: (r) => r.key },
     { key: "jobs_month", label: "perf.col.jobs_month", num: true, render: (r) => fNum(r.jobs_month, 1), csv: (r) => r.jobs_month.toFixed(2) },
     { key: "busy", label: "perf.col.busy", num: true, render: (r) => pct(r.busy, 1), csv: (r) => (100 * r.busy).toFixed(2) },

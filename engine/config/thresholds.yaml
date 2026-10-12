@@ -23,6 +23,7 @@ bbt:
     Bronze: 120
     Unknown: 120
   design_from_battery:         # per-site design BBT = banks x Ah/bank x usable DoD / NE load (A) x 60  (nominal V cancels: 48 V both sides)
+    calibration_scale: 0.28    # v4.2 (FIX-05) — measured BBT is median 28 % of the computed design (9,377 sites): design × this factor until Ah per bank and the meaning of "Jumlah Bank" are confirmed by the field team (null = off)
     ah_per_bank:               # ASSUMED — the source files have no Ah field; set to the standard module per type
       LITHIUM: 100
       VRLA: 100
@@ -208,3 +209,6 @@ worst_cluster_weights:
 unknown_handling:              # 3b: missing data is NOT zero
   neutral_rank: 0.5            # sites without PLN data (pln_source empty) / without MBP ticket history / without 2025 outage
                                # get this percentile rank in priority scores (median) and are flagged; the table shows "—"
+
+freshness:                     # v4.2 (FIX-14) — the header badge turns orange when the data period ended more than this many days ago
+  max_age_days: 45

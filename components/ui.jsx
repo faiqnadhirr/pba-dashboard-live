@@ -358,3 +358,6 @@ export function siteColumns(cfg, mode = "compact", { showComputed = false } = {}
   return [c.priority, c.site_id, c.site_name, c.site_class, c.dependency, c.nop, c.design, ...(showComputed ? [c.computed] : []), c.bbt, c.pln_freq, c.pln_dur,
     c.distance, c.eta, c.within, c.hist, c.backup, c.avail, c.mbp, c.arrives];
 }
+
+/** v4.2 (FIX-15) — field with > 50 % of sites empty: shown wherever the field is used */
+export const LowCov = ({ field }) => <span title={t("lowcov.tip", { f: field || "" })} className="ml-1 text-[10px] px-1 py-[1px] rounded bg-warn/25 text-[#8a5a00] align-middle whitespace-nowrap">{t("lowcov.badge")}</span>;

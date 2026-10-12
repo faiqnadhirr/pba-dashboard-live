@@ -57,7 +57,7 @@ export default function SimMap({ data, cfg, model, active, nop, setNop, allNops,
     </div>);
 
   // relocation advice (only when the model reproduces the actual): idle camps first
-  const idle = useMemo(() => mbpsN.map((m) => perf.get(m.mbp_id)).filter((p) => p && (p.key === "under" || p.key === "none")).sort((a, b) => a.jobs - b.jobs), [mbpsN, perf]);
+  const idle = useMemo(() => mbpsN.map((m) => perf.get(m.mbp_id)).filter((p) => p && p.key === "under" && p.selectable).sort((a, b) => a.jobs - b.jobs), [mbpsN, perf]);
   const sug = useMemo(() => {
     if (!sugFor || !calib?.ok) return null;
     const r = backtestMove(sitesN, mbpsN, ticketsN, cfg, sugFor, { candidates: 8 });
