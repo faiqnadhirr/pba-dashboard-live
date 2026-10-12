@@ -197,3 +197,11 @@ Opened from any site row, map card or panel. It shows, top to bottom: identity (
 - **AREA 4 tabs:** *AREA 4 overview* (KPIs, hero map coloured by availability gap / main cause / battery, per-NOP table) · *Availability & causes* (weekly W1–W31 and monthly Jan–Jul trend, per cluster and per kecamatan) · *Battery (BBT)* (status from the BBT Site Details snapshot, problem list; a warning explains that ≈ 77 % of measured sites show ≤ 5 min and the file period must be confirmed) · *Field staff & BPS* (BPS / TS / PM from the HW Master FME on the map, sites within the radius of a BPS, workload per person) · *Data available*.
 - **Data & Config › Data available** (both areas): feature matrix (✔ / ◐ / ✖ per AREA with the missing source), loaded sources, and the next files to send in priority order.
 - AREA 4 has no MBP tickets, BBT events, battery inventory or PLN intervals yet, so MBP performance / backtest / dispatch and BBS action rules stay AREA 1 only.
+
+
+## v4.0 — practical flow (summary → base camps → simulation map → fleet)
+1. **Summary** opens with four cards: P1/P2 outages backed up (event pairs), idle fleet (median occupancy, peak concurrent jobs), battery lever (BBS-P1, setting checks, replace / upgrade) and **model vs actual** (calibration). Every number comes from the one KPI layer (`lib/kpi.js`), so the NOP table below and the other tabs show the same figures.
+2. **Base camps**: one status per camp; on time and need coverage only from ≥ 10 judged jobs / events. Codes instead of names unless "show names" is ticked. "All columns" for the analyst view.
+3. **Simulation map (drag & drop)**: choose a NOP, drag a truck, add a unit (button, then click the map) or remove one from its card. KPIs: P1/P2 and all sites reachable before BBT (ESTIMATED) and H1 jobs on time replayed on the actual jobs. When the NOP is not calibrated (±5 pp) no relocation suggestion is shown.
+4. **Fleet size**: target "before BBT" by default; the table shows dark hours avoided by each extra unit and the cost per dark hour; the suggested number stops at the knee.
+5. **AREA 4** uses the same screens; N/A means the source has not been received for AREA 4.

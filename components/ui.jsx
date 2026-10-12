@@ -122,14 +122,23 @@ export function Note({ children, tone = "info" }) {
 export function Empty({ children }) {
   return <div role="status" className="border border-dashed border-slate/40 rounded-lg p-8 text-center text-slate bg-white"><div className="text-[15px] font-semibold text-navy">{children ?? t("empty.no_sites")}</div><div className="text-[12.5px] mt-1">{t("empty.hint")}</div></div>;
 }
+/** v4.0 — long lists (base camps, kecamatan) get a search box: type to narrow the options, the current value always stays */
 export function Select({ label, value, onChange, options, className = "" }) {
+  const [q, setQ] = React.useState("");
+  const norm = options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
+  const ql = q.trim().toLowerCase();
+  const shown = ql ? norm.filter((o) => String(o.value) === String(value) || String(o.label).toLowerCase().includes(ql)) : norm;
   return (
     <label className={`flex flex-col gap-1 text-[12px] text-mut ${className}`}>
       {label}
-      <select value={value} onChange={(e) => onChange(e.target.value)}
-        className="border border-line rounded-md px-2 py-1.5 text-[13px] text-ink bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1">
-        {options.map((o) => (typeof o === "string" ? <option key={o} value={o}>{o}</option> : <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>))}
-      </select>
+      <div className="flex gap-1">
+        {norm.length > 15 && <input value={q} onChange={(e) => { setQ(e.target.value); const L = e.target.value.trim().toLowerCase(); const hit = L && norm.find((o) => String(o.label).toLowerCase().includes(L)); if (hit) onChange(hit.value); }}
+          placeholder={t("common.search")} aria-label={t("common.search")} className="w-24 border border-line rounded-md px-2 py-1.5 text-[13px] text-ink bg-white" />}
+        <select value={value} onChange={(e) => onChange(e.target.value)}
+          className="flex-1 min-w-0 border border-line rounded-md px-2 py-1.5 text-[13px] text-ink bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1">
+          {shown.map((o) => <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>)}
+        </select>
+      </div>
     </label>
   );
 }

@@ -28,18 +28,26 @@ import Dispatch from "@/components/tabs/Dispatch";
 import MbpPanel from "@/components/MbpPanel";
 import Area4 from "@/components/Area4";
 import DataInventory from "@/components/DataInventory";
-import { mbpPerformance } from "@/lib/mbpperf";
+import { mbpPerformance, groupEvents } from "@/lib/mbpperf";
+import { computeKpis } from "@/lib/kpi";
+import SimMap from "@/components/tabs/SimMap";
+import Story from "@/components/tabs/Story";
 import ConfigTab from "@/components/tabs/ConfigTab";
 
 // Two-level navigation. Level 1 = group, level 2 = sub-tab. The active view lives in the URL (?view=group.sub) so it can be
 // shared / bookmarked and the browser Back button works.
 const GROUPS = [
   ["overview", [["health", "overview.health"], ["acc", "overview.accountability"], ["impact", "overview.impact"], ["trend", "overview.trend"]]],
-  // v3.7 — MBP first: management overview → coverage → performance → relocation backtest → dispatch → simulation → fleet → site list → telemetry
-  ["mbp", [["mgmt", "mbp.overview"], ["mbp", "mbp.coverage"], ["prod", "mbp.performance"], ["bt", "mbp.backtest"], ["disp", "mbp.dispatch"], ["sim", "mbp.simulation"], ["place", "mbp.placement"], ["list", "mbp.sitelist"], ["tel", "mbp.telemetry"]]],
+  // v4.0 — practical MBP flow: summary (the story) → base camps → drag-and-drop simulation → outage scenario → fleet size → site list.
+  // Coverage map, relocation backtest, dispatch and telemetry design stay reachable with ?full=1 (HIDDEN_TABS).
+  ["mbp", [["mgmt", "mbp.overview"], ["prod", "mbp.performance"], ["drag", "mbp.simmap"], ["sim", "mbp.simulation"], ["place", "mbp.placement"], ["list", "mbp.sitelist"],
+    ["mbp", "mbp.coverage"], ["bt", "mbp.backtest"], ["disp", "mbp.dispatch"], ["tel", "mbp.telemetry"]]],
   ["bbs", [["bbs", "bbs.actions"], ["est", "bbs.estimation"], ["corr", "bbs.correlation"]]],
-  ["data", [["dq", "data.quality"], ["inv", "data.inventory"], ["cfg", "data.config"]]],
+  ["data", [["dq", "data.quality"], ["inv", "data.inventory"], ["field", "data.field"], ["cfg", "data.config"]]],
 ];
+const HIDDEN_TABS = new Set(["mbp", "bt", "disp", "tel"]);
+// tabs that need data AREA 4 does not have yet (MBP jobs / PLN events / battery inventory) → an N/A banner explains it
+const NEEDS_JOBS = new Set(["prod", "bt", "disp"]);
 const VIEW_OF = Object.fromEntries(GROUPS.flatMap(([, tabs]) => tabs.map(([k, v]) => [k, v])));
 const TAB_OF = Object.fromEntries(Object.entries(VIEW_OF).map(([k, v]) => [v, k]));
 const groupOf = (tab) => GROUPS.find(([, tabs]) => tabs.some(([k]) => k === tab))[0];
@@ -47,7 +55,7 @@ const DEFAULT_TAB = "mgmt";
 // v3.7 — the Overview (availability) menu is hidden from the presentation flow; ?full=1 (or opening one of its views) shows it again
 const HIDDEN_GROUP = "overview";
 // tabs that do not follow the period filter (decisions / estimators / fixed Q1-vs-Q2 comparison)
-const FIXED_TABS = new Set(["inv", "trend", "sim", "place", "prod", "mgmt", "bt", "disp", "est", "corr", "tel", "cfg"]);
+const FIXED_TABS = new Set(["inv", "trend", "sim", "drag", "place", "prod", "mgmt", "bt", "disp", "est", "corr", "tel", "cfg", "field"]);
 const FIRST_OF = Object.fromEntries(GROUPS.map(([g, tabs]) => [g, tabs[0][0]]));
 /** everything the URL can carry; an unknown ?view= falls back to its group's first sub-tab (or Health) with a notice */
 function readUrl() {
@@ -61,7 +69,7 @@ function readUrl() {
   } catch { return { tab: DEFAULT_TAB, full: false, nop: "All NOPs", cls: [], inactive: false, offair: false, gen: false, sel: null, per: "h1" }; }
 }
 const CLASSES = ["Diamond", "Platinum", "Gold", "Silver", "Bronze"];
-const LS_KEY = "pba.config.v3";
+const LS_KEY = "pba.config.v4";
 
 function InventoryTab({ meta1 }) {
   const [m4, setM4] = useState(null);
@@ -76,6 +84,8 @@ export default function Page() {
   const [lang, setLangState] = useState("id");
   const [sel, setSel] = useState(null), [notice, setNotice] = useState(null), [drill, setDrill] = useState(null), [per, setPer] = useState("h1"), [gen, setGen] = useState(false), [pf, setPf] = useState(null);
   const [full, setFull] = useState(false), [pickMbp, setPickMbp] = useState(null), [area, setArea] = useState("1");
+  const [sets, setSets] = useState({}), [cfgs, setCfgs] = useState({}), [names, setNames] = useState(false);
+  if (typeof window !== "undefined") window.__pbaArea = area;
   setLang(lang);                                   // module-level language for t() and number formatters (set before children render)
   useEffect(() => {
     document.title = "PBA — Power Backup Analytic";
@@ -117,15 +127,21 @@ export default function Page() {
   const chooseLang = (l) => { setLangState(l); persistLang(l); };
   const resetFilters = () => { setNop("All NOPs"); setClasses([]); setInactive(false); setOffair(false); setGen(false); setSel(null); setPer("h1"); };
 
+  // v4.0 — both AREAs are loaded in the SAME shape (AREA 4 files live in /data/a4/); each keeps its own config copy
   useEffect(() => {
-    loadAll().then((d) => {
-      setData(d);
+    if (sets[area]) { setData(sets[area]); setCfg(cfgs[area]); return; }
+    setData(null);
+    let alive = true;                                  // a slower load of the other AREA must not overwrite this one
+    loadAll(area).then((d) => {
       let c = d.meta.config;
-      try { const saved = JSON.parse(localStorage.getItem(LS_KEY) || "null"); if (saved && saved.__built_at === d.meta.built_at) c = saved; } catch {}
-      setCfg(c);
-    }).catch((e) => setErr(String(e)));
-  }, []);
-  const saveCfg = (c) => { setCfg(c); try { localStorage.setItem(LS_KEY, JSON.stringify({ ...c, __built_at: data.meta.built_at })); } catch {} };
+      try { const saved = JSON.parse(localStorage.getItem(LS_KEY + "." + area) || "null"); if (saved && saved.__built_at === d.meta.built_at) c = saved; } catch {}
+      setSets((S) => ({ ...S, [area]: d })); setCfgs((C) => ({ ...C, [area]: c }));
+      if (alive) { setData(d); setCfg(c); }
+    }).catch((e) => alive && setErr(String(e)));
+    return () => { alive = false; };
+  }, [area]); // eslint-disable-line
+  const saveCfg = (c) => { setCfg(c); setCfgs((C) => ({ ...C, [area]: c })); try { localStorage.setItem(LS_KEY + "." + area, JSON.stringify({ ...c, __built_at: data.meta.built_at })); } catch {} };
+  const resetCfg = () => { const c = data.meta.config; setCfg(c); setCfgs((C) => ({ ...C, [area]: c })); try { localStorage.removeItem(LS_KEY + "." + area); } catch {} };
   const setRadius = (km) => saveCfg({ ...cfg, mbp: { ...cfg.mbp, max_radius_km: km } });
 
   // ONE model for every tab (single source of truth)
@@ -134,14 +150,14 @@ export default function Page() {
   const P = parsePeriod(per);
   const [perErr, setPerErr] = useState(null);
   useEffect(() => {
-    if (!data || isFull(P)) return;
+    if (!data || isFull(P) || area === "4") return;
     let alive = true; setPerErr(null);
     loadPeriodFiles(P).then((files) => { if (alive) setPf({ key: P.key, files }); }).catch((e) => alive && setPerErr(String(e)));
     return () => { alive = false; };
   }, [data, P.key]); // eslint-disable-line
-  const perLoading = !isFull(P) && (!pf || pf.key !== P.key) && !perErr;
+  const perLoading = area === "1" && !isFull(P) && (!pf || pf.key !== P.key) && !perErr;
   const pmodel = useMemo(() => {
-    if (isFull(P) || !pf || pf.key !== P.key || !model.length) return model;
+    if (isFull(P) || area === "4" || !pf || pf.key !== P.key || !model.length) return model;
     return applyPeriod(model, data.sites.map((s) => s.site_id), periodAgg(pf.files, P, data.sites.length), P);
   }, [model, pf, P.key]); // eslint-disable-line
   // A5 — suspected off-air / dismantle / data-issue sites are excluded from every KPI unless the toggle is on
@@ -156,15 +172,24 @@ export default function Page() {
   const mbpsScope = useMemo(() => (data ? data.mbps.filter((m) => nop === "All NOPs" || m.nop === nop) : []), [data, nop]);
   const mbpStats = useMemo(() => (data && cfg ? new Map(basecampSummary(model, data.mbps, cfg).map((r) => [r.mbp_id, r])) : new Map()), [model, data, cfg]);
   // v3.7 — MBP performance & utilisation from the H1 PLN-off job tickets (full snapshot, like coverage)
-  const perf = useMemo(() => (data && cfg ? mbpPerformance(model, data.mbps, data.tickets || [], cfg) : new Map()), [model, data, cfg]);
+  // v4.0 — need = event pairs (PLN outage longer than BBT ↔ matched MBP job), ≤ 100 % by construction
+  const evBySite = useMemo(() => (data ? groupEvents(data.events) : new Map()), [data]);
+  const perf = useMemo(() => (data && cfg ? mbpPerformance(model, data.mbps, data.tickets || [], cfg, evBySite) : new Map()), [model, data, cfg, evBySite]);
+  // v4.0 — ONE KPI layer (lib/kpi.js, checked at build time by scripts/kpi_check.mjs): every tab reads these numbers
+  const kpiSites = useMemo(() => active.filter((s) => !classes.length || classes.includes(s.site_class)), [active, classes]);
+  const K = useMemo(() => (data && cfg ? computeKpis(kpiSites, data.mbps, data.tickets || [], data.events || [], cfg, { evBySite, perf, unmatchedByNop: data.meta.dq?.ticket_gaps }) : null), [kpiSites, data, cfg, evBySite, perf]);
 
   if (err) return <div className="p-8 text-crit">{t("app.load_error", { err })}</div>;
   if (!data || !cfg) return <div className="min-h-screen flex items-center justify-center text-slate" role="status">{t("app.loading")}</div>;
   const snap = data.meta.snapshot || {};
-  const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setNop, setPick, classes, inactive, offairSites, includeOffair: offair, gensetSites, includeGenset: genOn, sel, setSel, navigate, hrefFor, per, period: P, periodText: periodLabel(P), openDrill: (id, focus, sites) => setDrill({ id, focus, sites }), perf, tickets: data.tickets || [], openMbp: setPickMbp, allNops, active };
-  const empty = scope.length === 0 && !["dq", "tel", "cfg", "corr", "est", "inv"].includes(tab);
+  const ctx = { data, cfg, saveCfg, setRadius, model, scope, mbpsScope, mbpStats, nop, setNop, setPick, classes, inactive, offairSites, includeOffair: offair, gensetSites, includeGenset: genOn, sel, setSel, navigate, hrefFor, per, period: P, periodText: periodLabel(P), openDrill: (id, focus, sites) => setDrill({ id, focus, sites }), perf, tickets: data.tickets || [], openMbp: setPickMbp, allNops, active, K, names, setNames, area, resetCfg, cfgEdited: false, full };
+  const empty = scope.length === 0 && !["dq", "tel", "cfg", "corr", "est", "inv", "field"].includes(tab);
 
   const cfgH = configHash(cfg), cfgEdited = cfgH !== configHash(data.meta.config);
+  ctx.cfgEdited = cfgEdited;
+  const noJobs = !(data.tickets || []).length;
+  const ageDays = Math.round((Date.now() - Date.parse((snap.period_end || "2026-06-30") + "T23:59:00+07:00")) / 86400000);
+  const visibleTabs = (g) => GROUPS.find(([x]) => x === g)[1].filter(([k]) => !HIDDEN_TABS.has(k) || full || k === tab).filter(([k]) => k !== "field" || area === "4");
   const activeGroup = groupOf(tab);
   const groups = GROUPS.filter(([g]) => g !== HIDDEN_GROUP || full || activeGroup === HIDDEN_GROUP);
   const filtered = nop !== "All NOPs" || classes.length > 0 || inactive || offair || gen || per !== "h1";
@@ -175,25 +200,24 @@ export default function Page() {
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 bg-white p-2 z-[2000]">{t("app.skip")}</a>
       <header className="sticky top-0 z-[500] shadow">
         <div className="bg-navy text-white">
-          <div className="max-w-[1560px] mx-auto px-4 h-11 flex items-center gap-3">
+          <div className="max-w-[1560px] mx-auto px-4 min-h-11 py-1 md:py-0 md:h-11 flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1">
             <div className="flex items-center gap-2 min-w-0 shrink-0">
-              <span className="text-[16px] font-bold whitespace-nowrap">PBA — Power Backup Analytic</span>
-              {area === "1" && <span className="hidden 2xl:inline px-1.5 py-[1px] rounded bg-white/15 text-[11px] whitespace-nowrap" title={t("header.snapshot_tip")}>{t("header.snapshot")} {snap.period_start} → {snap.period_end}</span>}
-              <span className="px-1.5 py-[1px] rounded bg-warn text-ink text-[11px] font-semibold whitespace-nowrap" title={t("header.demo_tip")}>{t("header.demo")}</span>
-              <span className={`px-1.5 py-[1px] rounded text-[11px] tabular whitespace-nowrap ${cfgEdited ? "bg-crit text-white" : "bg-white/15"}`}
+              <span className="text-[16px] font-bold whitespace-nowrap">PBA<span className="hidden md:inline"> — Power Backup Analytic</span></span>
+              <span className={`px-1.5 py-[1px] rounded text-[11px] whitespace-nowrap ${ageDays > 60 ? "bg-[#eb6834] text-white" : "bg-white/15"}`} title={t("header.age_tip", { a: snap.period_start, b: snap.period_end, r: snap.refreshed_at || data.meta.built_at })}>{t("header.age", { d: snap.period_end, n: fInt(ageDays) })}</span>
+              <span className="hidden md:inline px-1.5 py-[1px] rounded bg-warn text-ink text-[11px] font-semibold whitespace-nowrap" title={t("header.demo_tip")}>{t("header.demo")}</span>
+              <span className={`hidden md:inline px-1.5 py-[1px] rounded text-[11px] tabular whitespace-nowrap ${cfgEdited ? "bg-crit text-white" : "bg-white/15"}`}
                 title={t("header.cfg_tip", { h: cfgH, s: t(cfgEdited ? "cfg.is_edited" : "cfg.is_default") })}>{t("header.cfg")} {cfgH}{cfgEdited ? " ✎" : ""}</span>
             </div>
-            {area === "1" && <nav className="flex items-stretch h-full ml-1" aria-label={t("nav.main")}>
+            <nav className="flex items-stretch md:h-full h-8 ml-1" aria-label={t("nav.main")}>
               {groups.map(([g, tabs]) => (
                 <button key={g} onClick={() => activeGroup !== g && setTab(tabs[0][0])} aria-current={activeGroup === g ? "true" : undefined}
                   className={`px-3 text-[13px] font-semibold border-b-[3px] whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn ${activeGroup === g ? "border-warn text-white" : "border-transparent text-white/70 hover:text-white"}`}>{t(`nav.${g}`)}</button>
               ))}
-            </nav>}
-            {area === "4" && <span className="ml-2 text-[12.5px] text-white/85">{t("a4.header")}</span>}
+            </nav>
             <div className="ml-auto flex items-center gap-3 text-[11.5px] text-white/80 shrink-0">
               <div className="flex rounded-md overflow-hidden border border-white/40" role="group" aria-label={t("header.area")}>
                 {["1", "4"].map((a) => (
-                  <button key={a} onClick={() => { setArea(a); window.scrollTo({ top: 0 }); }} aria-pressed={area === a}
+                  <button key={a} onClick={() => { if (a !== area) { setArea(a); setPer("h1"); setNop("All NOPs"); setSel(null); setPick(null); setPickMbp(null); } window.scrollTo({ top: 0 }); }} aria-pressed={area === a}
                     className={`px-2 py-0.5 text-[12px] font-semibold whitespace-nowrap ${area === a ? "bg-warn text-ink" : "text-white/80 hover:text-white"}`}>AREA {a}</button>))}
               </div>
               <span className="hidden 2xl:inline whitespace-nowrap" title={t("header.refresh_tip")}>{t("header.refresh")} {snap.refreshed_at || data.meta.built_at}</span>
@@ -206,16 +230,19 @@ export default function Page() {
             </div>
           </div>
         </div>
-        {area === "1" && <><div className="bg-[#2a3655] text-white">
+        {cfgEdited && <div role="alert" className="bg-crit text-white text-[12.5px]"><div className="max-w-[1560px] mx-auto px-4 py-1 flex items-center gap-3">
+          <b>{t("whatif.title")}</b><span className="truncate">{t("whatif.body")}</span>
+          <button onClick={resetCfg} className="ml-auto px-2 py-0.5 rounded bg-white text-crit font-semibold whitespace-nowrap">{t("whatif.reset")}</button></div></div>}
+        <><div className="bg-[#2a3655] text-white">
           <nav className="max-w-[1560px] mx-auto px-3 flex overflow-x-auto" aria-label={t(`nav.${activeGroup}`)}>
-            {GROUPS.find(([g]) => g === activeGroup)[1].map(([k, v]) => (
+            {visibleTabs(activeGroup).map(([k, v]) => (
               <button key={k} onClick={() => setTab(k)} aria-current={tab === k ? "page" : undefined}
                 className={`px-3 py-1.5 text-[12.5px] whitespace-nowrap border-b-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn ${tab === k ? "border-warn text-white font-semibold" : "border-transparent text-white/75 hover:text-white"}`}>{t(`nav.${v}`)}</button>
             ))}
           </nav>
         </div>
         <div className="bg-white border-b border-line">
-          <div className="max-w-[1560px] mx-auto px-4 py-1.5 flex flex-nowrap items-center gap-x-3 overflow-hidden">
+          <div className="max-w-[1560px] mx-auto px-4 py-1.5 flex flex-nowrap items-center gap-x-3 overflow-x-auto md:overflow-hidden">
             <label className="flex items-center gap-1.5 text-[12px] text-mut">{t("filter.nop")}
               <select value={nop} onChange={(e) => setNop(e.target.value)} className="border border-line rounded-md px-2 py-1 text-[12.5px] text-ink bg-white w-48 focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1">
                 <option value="All NOPs">{t("filter.all_nops")} ({fInt(active.length)})</option>
@@ -234,14 +261,14 @@ export default function Page() {
               <button onClick={resetFilters} disabled={!filtered} className="px-2 py-[3px] rounded-md border border-line text-[12px] text-slate bg-white hover:border-slate disabled:opacity-40 whitespace-nowrap shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1">{t("filter.reset")}</button>
             </div>
           </div>
-          <div className="max-w-[1560px] mx-auto px-4 py-1 flex items-center gap-3 border-t border-line/70 overflow-x-auto">
+          {area === "1" && !FIXED_TABS.has(tab) && <div className="max-w-[1560px] mx-auto px-4 py-1 flex items-center gap-3 border-t border-line/70 overflow-x-auto">
             <PeriodBar per={per} setPer={setPer} loading={perLoading} error={perErr} />
-            {!isFull(P) && <span className="ml-auto text-[11px] text-mut whitespace-nowrap" title={t("per.fixed_tip")}>{t("per.fixed_short")}</span>}
-          </div>
-        </div></>}
+          </div>}
+        </div></>
       </header>
       <main id="main" className="max-w-[1560px] mx-auto p-5">
-        {area === "4" ? <div key={"a4" + lang}><Area4 cfg={cfg} setRadius={setRadius} setPick={setPick} meta1={data.meta} /></div> : <>
+        <>
+        {area === "4" && <div role="status" className="mb-3 text-[12.5px] border border-warn/60 bg-warn/10 rounded-md px-3 py-1.5">{t("a4.banner")}{NEEDS_JOBS.has(tab) || tab === "drag" || tab === "mgmt" ? " " + t("a4.banner_jobs") : ""}</div>}
         {notice && <div role="status" className="mb-3 text-[12.5px] border border-warn/60 bg-warn/10 rounded-md px-3 py-1.5 flex items-center gap-2">{t("nav.unknown_view", { v: notice, to: t(`nav.${VIEW_OF[tab]}`) })}<button onClick={() => setNotice(null)} className="ml-auto text-slate" aria-label={t("common.close")}>×</button></div>}
         {!isFull(P) && FIXED_TABS.has(tab) && <div role="status" className="mb-3 text-[12.5px] border border-s1/30 bg-s1/5 rounded-md px-3 py-1.5">{t("per.tab_fixed", { p: periodLabel(P) })}</div>}
         {empty ? <Empty>{t("empty.no_sites")}</Empty> : <div key={lang}>
@@ -252,7 +279,9 @@ export default function Page() {
           {tab === "mbp" && <MbpTab {...ctx} part="map" />}
           {tab === "list" && <MbpTab {...ctx} part="list" />}
           {tab === "place" && <Placement {...ctx} />}
-          {tab === "mgmt" && <MbpOverview {...ctx} />}
+          {tab === "mgmt" && <><Story {...ctx} /><MbpOverview {...ctx} /></>}
+          {tab === "drag" && <SimMap {...ctx} />}
+          {tab === "field" && <div key={"a4" + lang}><Area4 cfg={cfg} setRadius={setRadius} setPick={setPick} meta1={sets["1"]?.meta} /></div>}
           {tab === "prod" && <Performance {...ctx} />}
           {tab === "bt" && <Backtest {...ctx} />}
           {tab === "disp" && <Dispatch {...ctx} />}
@@ -265,7 +294,7 @@ export default function Page() {
           {tab === "cfg" && <ConfigTab {...ctx} />}
           {tab === "inv" && <InventoryTab meta1={data.meta} />}
         </div>}
-        </>}
+        </>
       </main>
       <footer className="max-w-[1560px] mx-auto px-5 pb-6 text-[11px] text-mut">{t("footer.legend")}
         {" "}<button className="underline hover:text-ink" onClick={() => navigate(full || activeGroup === HIDDEN_GROUP ? { view: VIEW_OF[DEFAULT_TAB], full: false } : { view: "overview.health", full: true })}>

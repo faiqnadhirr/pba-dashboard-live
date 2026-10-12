@@ -1,17 +1,18 @@
 "use client";
-// v3.7 — relocation backtest ("like a stock backtest"): move one base camp to a kecamatan site and REPLAY the NOP's H1 PLN-off jobs.
-// Baseline and scenario use the same replay rule, so the difference is the effect of the move. No extra unit is added.
+// v3.7 — relocation backtest ("like a stock backtest"): move one base camp to a kecamatan site and REPLAY the NOP's H1 MBP jobs.
+// v4.0 — the replay is anchored on the ACTUAL jobs (baseline = actual) and the tab is gated by the calibration check (±5 pp).
 import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { Card, Kpi, Note, DataTable, Select, EvTag, fInt, fPct, fNum, isNum } from "@/components/ui";
 import { backtestMove, PERF_KEYS } from "@/lib/mbpperf";
 import { kecamatanAnchors } from "@/lib/logic";
-import { perfLegend, PerfTag, UtilTag, PERF_COLOR } from "@/components/perfUi";
+import { perfLegend, PerfTag, PERF_COLOR } from "@/components/perfUi";
+import { CalibBadge } from "@/components/tabs/SimMap";
 import { t } from "@/lib/i18n";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 const pct = (v, d = 0) => (isNum(v) ? fPct(100 * v, d) : "—");
 
-export default function Backtest({ model, data, cfg, nop: gNop, allNops, perf, tickets, sel, setPick, setRadius, openMbp }) {
+export default function Backtest({ model, data, cfg, nop: gNop, allNops, perf, tickets, sel, setPick, setRadius, openMbp, K }) {
   const preset = sel ? data.mbps.find((m) => m.mbp_id === sel) : null;
   const [nop, setNop] = useState(preset?.nop || (gNop !== "All NOPs" ? gNop : "NOP BENGKULU"));
   useEffect(() => { if (gNop !== "All NOPs" && !preset) setNop(gNop); }, [gNop]); // eslint-disable-line
@@ -29,7 +30,8 @@ export default function Backtest({ model, data, cfg, nop: gNop, allNops, perf, t
   const bt = useMemo(() => (camp ? backtestMove(sitesN, mbpsN, ticketsN, cfg, camp, { candidates: 10, dest: dest === "auto" ? null : dest, sameCluster: same }) : null), [sitesN, mbpsN, ticketsN, cfg, camp, dest, same]);
   const [pickI, setPickI] = useState(0);
   useEffect(() => setPickI(0), [bt]);
-  const res = bt?.results || [];
+  const gated = !!(K?.byNop.get(nop)?.calib && !K.byNop.get(nop).calib.ok);
+  const res = gated ? [] : bt?.results || [];
   const S = dest !== "auto" ? res.find((r) => r.site_id === dest) || res[0] : res[pickI];
   const B = bt?.base.total;
   // map: scenario keys per base camp; the moved camp drawn at its new place (★), old place as a ghost
@@ -46,8 +48,11 @@ export default function Backtest({ model, data, cfg, nop: gNop, allNops, perf, t
   };
   useEffect(() => setBatch(null), [nop, same]);
 
+  const calib = K?.byNop.get(nop)?.calib || null;
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-2"><CalibBadge calib={calib} hasJobs={ticketsN.length > 0} /></div>
+      {calib && !calib.ok && <Note tone="crit">{t("bt.gated", { d: calib.diff_pp.toFixed(1) })}</Note>}
       <Note tone="warn"><b>{t("bt.note.title")}</b> {t("bt.note.body", { r: cfg.mbp.max_radius_km, cap: cfg.mbp_perf?.dispatch_lag_cap_min ?? 240 })}</Note>
       <div className="flex flex-wrap items-end gap-4">
         <div className="w-60"><Select label={t("filter.nop")} value={nop} onChange={setNop} options={allNops} /></div>
@@ -59,9 +64,9 @@ export default function Backtest({ model, data, cfg, nop: gNop, allNops, perf, t
         {camp && <button onClick={() => openMbp(data.mbps.find((m) => m.mbp_id === camp))} className="px-3 py-1.5 rounded border border-navy text-navy text-[12.5px]">{t("bt.open_camp")}</button>}
       </div>
       {bt && B && <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        <Kpi fixed label={t("bt.kpi.jobs")} value={fInt(B.tickets)} sub={t("bt.kpi.jobs_sub", { i: fInt(B.island), n: fInt(mbpsN.length) })} />
-        <Kpi fixed label={t("bt.kpi.base")} value={pct(B.ok_share)} sub={t("bt.kpi.base_sub", { a: fInt(B.ontime), u: fInt(B.busy + B.beyond) })} />
-        <Kpi fixed label={t("bt.kpi.after")} value={S ? pct(S.ok_share) : "—"} sub={S ? t("bt.kpi.after_sub", { g: `${S.ontime_gain >= 0 ? "+" : ""}${fInt(S.ontime_gain)}`, k: S.kecamatan }) : t("bt.none")} tone={S && S.ontime_gain > 0 ? "good" : "slate"} />
+        <Kpi fixed label={t("bt.kpi.jobs")} value={fInt(B.tickets)} sub={t("bt.kpi.jobs_sub", { i: "0", n: fInt(mbpsN.length) })} />
+        <Kpi fixed label={t("bt.kpi.base")} value={pct(B.ontime_rate)} sub={t("bt.kpi.base_sub", { a: fInt(B.ontime), u: fInt(B.unserved) })} />
+        <Kpi fixed label={t("bt.kpi.after")} value={S ? pct(S.ontime_rate) : "—"} sub={S ? t("bt.kpi.after_sub", { g: `${S.ontime_gain >= 0 ? "+" : ""}${fInt(S.ontime_gain)}`, k: S.kecamatan }) : t("bt.none")} tone={S && S.ontime_gain > 0 ? "good" : "slate"} />
         <Kpi fixed label={t("bt.kpi.camp_jobs")} value={S ? `${fInt(S.was_jobs)} → ${fInt(S.me_jobs)}` : "—"} sub={S ? t("bt.kpi.camp_busy", { a: pct(S.was_busy, 1), b: pct(S.me_busy, 1) }) : ""} />
         <Kpi fixed label={t("bt.kpi.camp_color")} value={S ? <span className="inline-flex items-center gap-1 text-[15px]"><Dot k={S.was_key} />→<Dot k={S.me_key} /></span> : "—"} sub={S ? `${t(`perf.key.${S.was_key}`)} → ${t(`perf.key.${S.me_key}`)}` : ""} />
         <Kpi fixed label={t("bt.kpi.shift")} value={S && isNum(S.shift_km) ? `${fNum(S.shift_km, 0)} km` : "—"} sub={S ? `${S.kecamatan} · ${S.city || ""}` : ""} />
@@ -81,7 +86,7 @@ export default function Backtest({ model, data, cfg, nop: gNop, allNops, perf, t
                 { key: "ontime_gain", label: "bt.col.gain", num: true, render: (r) => <span className={r.ontime_gain > 0 ? "text-good font-semibold" : r.ontime_gain < 0 ? "text-crit" : ""}>{r.ontime_gain > 0 ? "+" : ""}{fInt(r.ontime_gain)}</span>, csv: (r) => r.ontime_gain },
                 { key: "unserved_change", label: "bt.col.unserved", num: true, render: (r) => `${r.unserved_change > 0 ? "+" : ""}${fInt(r.unserved_change)}`, csv: (r) => r.unserved_change },
                 { key: "me_jobs", label: "bt.col.camp_jobs", num: true, render: (r) => `${fInt(r.was_jobs)} → ${fInt(r.me_jobs)}`, csv: (r) => r.me_jobs },
-                { key: "me_key", label: "bt.col.color", render: (r) => <span className="inline-flex items-center gap-1"><Dot k={r.was_key} />→<Dot k={r.me_key} /> <UtilTag k={r.me_util} /></span>, csv: (r) => `${r.was_key}->${r.me_key}` },
+                { key: "me_key", label: "bt.col.color", render: (r) => <span className="inline-flex items-center gap-1"><Dot k={r.was_key} />→<Dot k={r.me_key} /></span>, csv: (r) => `${r.was_key}->${r.me_key}` },
               ]} />}
           <div className="mt-1 text-[11px] text-mut inline-flex items-center gap-1">{t("bt.foot")} <EvTag v="ESTIMATED" /></div>
         </Card>

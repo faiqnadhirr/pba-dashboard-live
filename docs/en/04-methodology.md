@@ -240,3 +240,12 @@ Changes agreed with operations (Ayatullah, Pak Nizar), all computed per site and
 - **Score** = percentile rank of serapan (35 %), on time (35 %) and occupancy (30 %).
 - **RC "Baterai / Tidak Ada Baterai" jobs:** counted as workload, never judged on time nor used for battery status; base camps with ≥ 30 % such jobs carry a ⚑ flag (provisional, to verify with ops).
 - **Radius** stays adjustable (MBP overview presets 20/30/40/60/120 km, map slider, Config); default 120 km.
+
+
+## v4.0 methodology changes
+- **Need coverage (event pairs)**: PLN intervals ≥ 15 min are matched to MBP PLN-off tickets of the same site (ticket within [start − 2 h, end + 2 h], each ticket to its nearest outage, one job per outage). need = outages with duration > site BBT; served = need outages with a job. ≤ 100 %. Only ~26 % of PLN-off tickets match an interval → lower bound.
+- **Reach**: calibrated ETA ≤ BBT for any base camp within `mbp.reach_cap_km` (250); the radius is a preference (assignment prefers camps inside it, +0.25 cost outside).
+- **Calibration**: factor = median(actual take-over → check-in) ÷ median(model ETA), per NOP with ≥ 50 trips, clipped 0.3–3. **Model check**: same PLN-off jobs, same camp, actual take-over delay + model ETA vs the actual check-in; ok when |Δ| ≤ 5 pp.
+- **Anchored replay**: baseline = actual arrival. Moved camp: actual + (ETA new − ETA old); if slower, an unchanged free camp may take the job (never earlier than actual). Moved / added camps take another camp's job only when closer than before and faster than the actual. Removed camp: fastest free camp, model arrival.
+- **Fleet knee**: marginal dark hours avoided per added unit; stop when < `placement.knee_share` (25 %) of the first unit; cost per dark hour = `unit_cost_idr_month` × 6 ÷ marginal dark hours (ASSUMED cost).
+- **KPI reconciliation** (`scripts/kpi_check.mjs`, build step): Σ NOP = AREA for every count, shares 0–100 %, served ≤ need, on-time ≤ served.

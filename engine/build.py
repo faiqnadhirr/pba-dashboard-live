@@ -194,6 +194,19 @@ def run_js_tests():
         raise SystemExit("JS rule tests failed — see `npm test`")
 
 
+def run_kpi_check(data_dir="public/data"):
+    """v4.0 — ONE KPI layer (lib/kpi.js) computed at build time → <data_dir>/kpi.json. The build FAILS when the per-NOP figures do not
+    add up to the AREA figure or a share is outside 0–100 % (e.g. need coverage > 100 %). Runs even with PBA_SKIP_JS_TESTS."""
+    import shutil, subprocess
+    if not shutil.which("node"):
+        log("KPI reconciliation skipped (node not found) — run `node scripts/kpi_check.mjs`")
+        return
+    r = subprocess.run(["node", "scripts/kpi_check.mjs", data_dir], cwd=ROOT.parent, capture_output=True, text=True)
+    print((r.stdout + r.stderr).strip(), flush=True)
+    if r.returncode != 0:
+        raise SystemExit("KPI reconciliation failed — figures differ between tabs (see above)")
+
+
 # ---------------------------------------------------------------------- v3.6 operations
 GENSET_OFF_WORDS = ("POWER OFF", "SHUTDOWN", "DISMANTLE", "RUSAK", "CUT OFF")
 
@@ -290,6 +303,60 @@ def add_pln_duration_hist(t, iv, qa):
     h = pd.crosstab(iv["site_id"], b).reindex(columns=range(len(PLN_DUR_EDGES)), fill_value=0)
     t["pln_dur_hist"] = t["site_id"].map(lambda s: [int(v) for v in h.loc[s].values] if s in h.index else None)
     qa["pln_dur_hist_sites"] = int(t["pln_dur_hist"].notna().sum())
+
+
+def export_pln_events(iv, tk, qa):
+    """v4.0 — event pairs for the MBP 'need' metric. Every PLN outage interval ≥ 15 min (shorter outages cannot be reached by any MBP:
+    mobilisation alone is 15 min) with the MBP PLN-off job matched to it: same site, ticket occurred within [start − 2 h, end + 2 h],
+    each ticket to its nearest event, at most one job per event. arr = check-in − outage start (min). Most tickets do NOT match a PLN
+    alarm interval (≈ 20 %), so the job-side and the outage-side are reported separately; the pair metric is ≤ 100 % by construction."""
+    ev = iv[iv["hours"] * 60 >= 15].copy().reset_index(drop=True)
+    ev["eid"] = np.arange(len(ev))
+    p = tk[(tk["status"].str.upper() != "CANCELED") & tk["mbp_id"].notna() & (tk["is_pln_off"] == 1) & tk["occurred_at"].notna()]
+    x = p[["ticket_inap", "site_id", "occurred_at", "checkin_at", "mbp_id"]].merge(ev[["eid", "site_id", "start", "end"]], on="site_id")
+    x = x[(x["occurred_at"] >= x["start"] - pd.Timedelta("2h")) & (x["occurred_at"] <= x["end"] + pd.Timedelta("2h"))].copy()
+    x["d"] = (x["occurred_at"] - x["start"]).abs()
+    x = x.sort_values("d").drop_duplicates("ticket_inap").sort_values(["eid", "occurred_at"]).drop_duplicates("eid")
+    x["arr"] = ((x["checkin_at"] - x["start"]).dt.total_seconds() / 60).where(lambda v: v.between(0, 7 * 1440))
+    ev = ev.merge(x[["eid", "arr", "mbp_id"]], on="eid", how="left")
+    out = pd.DataFrame({"site": ev["site_id"].values, "dur": (ev["hours"] * 60).round(0).astype("Int64").values,
+                        "arr": ev["arr"].round(0).astype("Int64").values, "mbp": ev["mbp_id"].values})
+    qa["pln_events_15min"] = len(out); qa["pln_events_with_job"] = int(out["mbp"].notna().sum())
+    qa["plnoff_tickets_matched_to_event"] = round(len(x) / max(1, len(p)), 4)
+    return out
+
+
+def travel_calibration(tk, mbps, t, cfg):
+    """v4.0 — calibrate the ETA model on real trips: take-over → check-in of PLN-off jobs vs the model ETA for the same base camp → site
+    distance. Factor = median(actual) ÷ median(model), per NOP (≥ 50 trips) and AREA-wide; the dashboard multiplies the ETA by it."""
+    tr = cfg["travel"]; p = tk[(tk["status"].str.upper() != "CANCELED") & tk["mbp_id"].notna() & (tk["is_pln_off"] == 1)]
+    m = mbps[["mbp_id", "lat", "lon"]].rename(columns={"lat": "mlat", "lon": "mlon"})
+    s = t[["site_id", "lat", "lon", "is_urban", "nop"]].rename(columns={"nop": "site_nop"})
+    q = p[["site_id", "mbp_id", "takeover_at", "checkin_at"]].merge(m, on="mbp_id").merge(s, on="site_id").dropna(subset=["lat", "mlat"])
+    km = haversine_km(q["lat"].values, q["lon"].values, q["mlat"].values, q["mlon"].values)
+    road = km * tr["road_factor"]
+    sp = np.where(q["is_urban"] == 1, tr["speed_kmh"]["urban"], np.where(road < 15, tr["speed_kmh"]["rural_short"], tr["speed_kmh"]["rural_long"]))
+    q = q.assign(km=km, model=tr["mobilization_minutes"] + road / sp * 60, actual=(q["checkin_at"] - q["takeover_at"]).dt.total_seconds() / 60)
+    q = q[q["actual"].between(1, 600) & (q["km"] <= 300)]
+    if not len(q):
+        return {"all": 1.0, "by_nop": {}, "n": 0}
+    f = lambda g: float(np.clip(g["actual"].median() / g["model"].median(), 0.3, 3.0))
+    by = {n: {"factor": round(f(g), 3), "n": int(len(g)), "km_median": round(float(g["km"].median()), 1)} for n, g in q.groupby("site_nop") if len(g) >= 50}
+    return {"all": round(f(q), 3), "by_nop": by, "n": int(len(q)), "actual_median_min": round(float(q["actual"].median()), 1),
+            "model_median_min": round(float(q["model"].median()), 1), "km_median": round(float(q["km"].median()), 1),
+            "share_beyond_20km": round(float((q["km"] > 20).mean()), 3), "share_beyond_120km": round(float((q["km"] > 120).mean()), 4)}
+
+
+def ticket_gaps(tickets, t):
+    """v4.0 — tickets whose PIC is not matched to a base camp, per NOP (they make that NOP's MBP figures lean)."""
+    d = tickets[(tickets["status"].str.upper() != "CANCELED") & tickets["pic_raw"].notna()].copy()
+    d["nop2"] = d["site_id"].map(t.set_index("site_id")["nop"]).fillna(d["nop"])
+    rows = []
+    for n, g in d.groupby("nop2"):
+        u = g[g["mbp_matched"] == 0]
+        rows.append({"nop": n, "tickets": int(len(g)), "unmatched": int(len(u)), "share": round(len(u) / len(g), 4),
+                     "pics": [{"pic": k, "n": int(v)} for k, v in u["pic_raw"].value_counts().head(5).items()]})
+    return rows
 
 
 def plnoff_concurrency(tk, t):
@@ -586,7 +653,8 @@ def main():
     # ------------------------------------------------------------------ export
     log("writing JSON")
     for old in OUT.glob("**/*.json"):
-        old.unlink()
+        if "a4" not in old.relative_to(OUT).parts:          # AREA 4 files are written by build_area4.py
+            old.unlink()
     rc_cols = [c for c in t.columns if c.startswith("rc_") and c != "rc_owner"]
     site_cols = [
         # identity & context
@@ -627,6 +695,8 @@ def main():
     sz["mbps.json"] = dump(records(mbp_out), "mbps.json")
     sz["familiarity.json"] = dump(columnar(fam), "familiarity.json")
     sz["tickets.json"] = dump(columnar(export_tickets(tk, qa)), "tickets.json")
+    sz["pln_ev.json"] = dump(columnar(export_pln_events(iv, tk, qa)), "pln_ev.json")
+    cal = travel_calibration(tk, mbps, t, cfg)
     # per-NOP detail files (lazy-loaded by the site drawer)
     ran2 = ran.assign(power_h=ran["power_sec"] / 3600, transport_h=ran["transport_sec"] / 3600, outage_h=ran["outage_sec"] / 3600,
                       avail_wc=100 * (1 - ran["outage_sec"] / (ran["days"] * 86400)))
@@ -681,13 +751,13 @@ def main():
         "snapshot": {"period_start": cfg["scope"]["period_start"], "period_end": cfg["scope"]["period_end"],
                      "refreshed_at": pd.Timestamp.now(tz="Asia/Jakarta").strftime("%d %b %Y %H:%M WIB"),
                      "sources": source_status()},
-        "scope": cfg["scope"], "config": cfg, "qa": qa,
+        "scope": cfg["scope"], "config": {**cfg, "travel": {**cfg["travel"], "calib": cal}}, "qa": qa, "area": "AREA1",
         "bbs": {"correlation": records(corr), "category_medians": records(cat), "time_split": records(ts),
                 "chosen_estimator": chosen, "estimator_mae_min": mae, "km_curves": curves_out,
                 "naive_vs_km": {"naive_median_all": jclean(km["naive_exhausted_median_min"].median()),
                                 "km_median_all": jclean(km["km_median_min"].median())}},
         "mbp": {"pic_matches": records(pm), "duplicates": records(dups), "concurrency": plnoff_concurrency(tk, t)},
-        "dq": {"unmatched": unmatched,
+        "dq": {"unmatched": unmatched, "ticket_gaps": ticket_gaps(tickets, t),
                "sources": [
                    dict(source="Dapot ALL Site (AREA1)", raw=qa["dapot_rows_area"], clean=len(sites), grain="site"),
                    dict(source="MBP Team", raw=len(team), clean=len(mbps), grain="MBP"),
@@ -706,6 +776,7 @@ def main():
     t.to_pickle(ROOT / "data" / "site_table.pkl")
     pd.to_pickle(dict(ev=ev, iv=iv, tk=tk, ran=ran, mo=mo), ROOT / "data" / "sources.pkl")
     log("sizes: " + ", ".join(f"{k} {v / 1e6:.1f} MB" for k, v in sz.items()))
+    run_kpi_check()
     run_js_tests()
     log("done")
 

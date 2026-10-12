@@ -240,3 +240,12 @@ Perubahan yang disepakati dengan operasional (Ayatullah, Pak Nizar), semuanya di
 - **Skor** = ranking persentil serapan (35 %), tepat waktu (35 %) dan okupansi (30 %).
 - **Job RC "Baterai / Tidak Ada Baterai":** dihitung sebagai beban kerja, tidak pernah dinilai tepat waktu maupun dipakai untuk status baterai; base camp dengan ≥ 30 % job seperti ini diberi flag ⚑ (sementara, perlu dicek ke ops).
 - **Radius** tetap bisa diatur (preset 20/30/40/60/120 km di Ringkasan MBP, slider peta, Config); default 120 km.
+
+
+## Perubahan metodologi v4.0
+- **Cakupan kebutuhan (pasangan event)**: interval PLN ≥ 15 mnt dicocokkan ke tiket MBP PLN-off di site yang sama (tiket dalam [mulai − 2 jam, selesai + 2 jam], tiap tiket ke padam terdekat, satu job per padam). kebutuhan = padam dengan durasi > BBT site; terlayani = padam kebutuhan yang punya job. ≤ 100 %. Hanya ~26 % tiket PLN-off cocok dengan interval → batas bawah.
+- **Jangkauan**: ETA terkalibrasi ≤ BBT untuk base camp mana pun dalam `mbp.reach_cap_km` (250); radius hanya preferensi (penugasan mengutamakan camp di dalamnya, biaya +0,25 di luar).
+- **Kalibrasi**: faktor = median(takeover → check-in aktual) ÷ median(ETA model), per NOP dengan ≥ 50 perjalanan, dibatasi 0,3–3. **Cek model**: job PLN-off yang sama, camp sama, jeda takeover aktual + ETA model vs check-in aktual; ok bila |Δ| ≤ 5 pp.
+- **Replay berbasis aktual**: baseline = waktu tiba aktual. Camp dipindah: aktual + (ETA baru − ETA lama); bila lebih lambat, camp lain yang kosong boleh mengambil (tidak pernah lebih cepat dari aktual). Camp dipindah / baru mengambil job camp lain hanya bila lebih dekat dari sebelumnya dan lebih cepat dari aktual. Camp dihapus: camp kosong tercepat, waktu tiba model.
+- **Knee armada**: jam mati yang dihindari per unit tambahan; berhenti bila < `placement.knee_share` (25 %) dari unit pertama; biaya per jam mati = `unit_cost_idr_month` × 6 ÷ jam mati marginal (biaya ASUMSI).
+- **Rekonsiliasi KPI** (`scripts/kpi_check.mjs`, langkah build): Σ NOP = AREA untuk tiap hitungan, porsi 0–100 %, terlayani ≤ kebutuhan, tepat waktu ≤ terlayani.

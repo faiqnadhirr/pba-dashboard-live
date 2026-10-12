@@ -6,7 +6,10 @@ What it does NOT have yet: MBP ticket tracking, BBT event export, New_BBT batter
 So AREA 4 gets: availability vs target + causes per site → cluster → NOP, monthly/weekly trend, battery status from BBT Site Details,
 field-staff map (BPS = MBP operators) with simple coverage; MBP performance / backtest / dispatch need the missing sources.
 
-Usage:  python build_area4.py            → ../public/data/a4/{sites,weekly,fme,meta}.json
+Usage:  python build_area4.py            → ../public/data/a4/
+  v4.0 — AREA 4 is ALSO written in the AREA 1 shape (sites.json with the same 80 columns, mbps.json, tickets.json, pln_ev.json,
+  familiarity.json, meta.json with config / monthly_nop / dq stubs) so every AREA 1 screen runs on it; what AREA 4 lacks is null
+  (shown as N/A) or an empty file. The light tables stay for the field-staff screen: field_sites.json, weekly.json, fme.json.
 Personal data rule: e-mail and phone numbers in the FME master are NEVER exported.
 """
 from __future__ import annotations
@@ -203,7 +206,7 @@ def main():
             "m_avail", "m_pw", "m_out",
             "bbt_category", "bbt_median_min", "bbt_max_min", "bbt_min_min", "backup_min", "pln_down_total_h", "battery_backup_total_h", "ne_down_total_h", "pln_events"]
     t = t[t["ran_months"].notna() | t["bbt_category"].notna()]      # on-air evidence (RAN or BBT); Dapot-only rows stay out
-    sz = {"sites.json": dump(columnar(t[cols]), "sites.json"), "weekly.json": dump(columnar(weekly), "weekly.json"),
+    sz = {"field_sites.json": dump(columnar(t[cols]), "field_sites.json"), "weekly.json": dump(columnar(weekly), "weekly.json"),
           "fme.json": dump(columnar(fme[["id", "name", "role", "nop", "nop_old", "cluster", "subcluster", "regional", "lat", "lon", "active"]]), "fme.json")}
     missing = [dict(source="MBP ticket tracking (AREA 4)", unlocks="MBP performance & utilisation, relocation backtest, dispatch audit, MBP history in the site list"),
                dict(source="BBT event export (AREA 4)", unlocks="Kaplan-Meier BBT, battery events per site, dark-site profile, MBP need (outages > BBT)"),
@@ -212,8 +215,92 @@ def main():
                dict(source="PLN outage intervals (AREA 4)", unlocks="PLN outage frequency & duration per site, correlation, MBP need")]
     meta = {"built_at": time.strftime("%Y-%m-%d %H:%M"), "area": "AREA4", "inventory": inv, "missing": missing, "qa": qa, "sizes": sz,
             "periods": {"ran_monthly": MONTHS, "weeks": sorted(weekly["week"].unique().tolist())}}
-    dump(meta, "meta.json")
+    sz.update(export_area1_shape(t, m, fme, cfg, meta))
     log(f"done · sites {len(t)} · sizes " + ", ".join(f"{k} {v / 1e6:.1f} MB" for k, v in sz.items()))
+
+
+A1_COLS = ['site_id', 'site_name', 'site_class', 'nop', 'nop_flag', 'cluster_to', 'city', 'site_active', 'vip', 'lat', 'lon', 'coord_decimals', 'is_urban',
+           'access_class', 'access_basis', 'hub_site', 'battery_type', 'battery_age_y', 'load_a', 'battery_banks', 'battery_qty', 'bbt_value_min',
+           'bbt_value_evidence', 'bbt_value_basis', 'bbt_measured_min', 'bbt_lower_bound_min', 'bbt_est_confidence', 'bbt_est_low_min', 'bbt_est_high_min',
+           'bbt_trend_min', 'evt_total', 'evt_exhaustion', 'evt_censored', 'evt_flapping', 'tk_no_battery', 'pln_freq', 'pln_total_h', 'pln_source',
+           'pln_anomaly_months', 'outage_2025_h', 'avail_wc_pct', 'ran_target_pct', 'ran_hours', 'ran_outage_h', 'ran_power_down_h', 'ran_transport_down_h',
+           'ran_ran_down_h', 'ran_other_down_h', 'm_hours', 'm_out', 'm_pw', 'q1_hours', 'q1_outage_h', 'q1_power_h', 'q2_hours', 'q2_outage_h', 'q2_power_h',
+           'in_ticket_file', 'mbp_primary_hist', 'mbp_deployments', 'mbp_backup_h', 'fixed_genset', 'fixed_genset_basis', 'genset_kva', 'kecamatan', 'desa',
+           'battery_brand', 'tk_plnoff_n', 'tk_plnoff_visit_n', 'tk_plnoff_rh_h', 'dep_children_actual', 'dep_role', 'pln_dur_hist', 'rc_battery',
+           'rc_generator', 'rc_internal', 'rc_non_power', 'rc_operational', 'rc_utility', 'rc_vendor']
+H1 = MONTHS[:6]
+
+
+def export_area1_shape(t, m, fme, cfg, meta4):
+    """v4.0 — AREA 4 in the AREA 1 shape over the SAME period (H1 = Jan–Jun 2026). Columns AREA 4 has no source for are null."""
+    log("AREA-1-shaped export (H1)")
+    h = m[m["period"].isin(H1)].copy()
+    g = h.groupby("site_id")
+    a = pd.DataFrame({"ran_hours": g["hours"].sum(), "ran_outage_h": g["out_h"].sum(), "ran_power_down_h": g["pw_h"].sum(),
+                      "ran_transport_down_h": g["tr_h"].sum(), "ran_ran_down_h": g["ran_h"].sum(), "ran_other_down_h": g["oth_h"].sum(),
+                      "ran_target_pct": g["target"].max()})
+    piv = {k: h.pivot_table(index="site_id", columns="period", values=k, aggfunc="sum").reindex(columns=H1) for k in ("hours", "out_h", "pw_h")}
+    q = lambda k, sl: piv[k].iloc[:, sl].sum(axis=1, min_count=1)
+    a["q1_hours"], a["q1_outage_h"], a["q1_power_h"] = q("hours", slice(0, 3)), q("out_h", slice(0, 3)), q("pw_h", slice(0, 3))
+    a["q2_hours"], a["q2_outage_h"], a["q2_power_h"] = q("hours", slice(3, 6)), q("out_h", slice(3, 6)), q("pw_h", slice(3, 6))
+    lst = lambda k: [[None if np.isnan(v) else round(float(v), 3) for v in r] for r in piv[k].reindex(a.index).to_numpy(dtype=float)]
+    a["m_hours"], a["m_out"], a["m_pw"] = lst("hours"), lst("out_h"), lst("pw_h")
+    a = a.reset_index()
+    base = t.drop(columns=[c for c in a.columns if c != "site_id" and c in t.columns])
+    x = base.merge(a, on="site_id", how="left")
+    x["avail_wc_pct"] = 100 * (1 - x["ran_outage_h"] / x["ran_hours"].replace(0, np.nan))
+    # site name: Dapot keeps the spaces ("MUARA ENIM" not "MUARAENIM"); title-case only when the source is all upper-case
+    x["site_name"] = x["site_name"].astype("string").str.replace(r"\s+", " ", regex=True).str.strip()
+    x["nop_flag"] = None; x["vip"] = 0; x["coord_decimals"] = None; x["hub_site"] = None
+    x["access_class"] = np.where(x["is_island"] == 1, "island", np.where(x["lat"].notna(), "mainland", "unknown"))
+    x["access_basis"] = "Dapot: Kepulauan flag"
+    # battery: BBT Site Details. "BBT" = NE went down on mains fail → measured median BBT (ACTUAL); "Only Mains Fail" = the battery held
+    # for the whole outage → a LOWER BOUND only (status Meets design when ≥ design, otherwise unknown)
+    D = cfg["bbt"]["design_minutes"]
+    meas = (x["bbt_category"] == "BBT") & x["bbt_median_min"].notna()
+    held = x["bbt_category"].notna() & ~meas & x["backup_min"].notna()
+    x["bbt_measured_min"] = x["bbt_median_min"].where(meas)
+    x["bbt_lower_bound_min"] = x["backup_min"].where(held)
+    x["bbt_value_min"] = x["bbt_median_min"].where(meas, x["backup_min"].where(held & (x["backup_min"] >= D)))
+    x["bbt_value_evidence"] = np.where(meas, "DERIVED", np.where(held & (x["backup_min"] >= D), "ESTIMATED", "UNAVAILABLE"))
+    x["bbt_value_basis"] = np.where(meas, "BBT Site Details — median BBT (mains fail → NE down; snapshot summary, not own events → DERIVED)",
+                            np.where(held, "BBT Site Details — battery held through the outage (lower bound)", "not in BBT Site Details"))
+    x["pln_freq"] = x["pln_events"] / 6.0                              # Repetitive count in the snapshot, per month (period ASSUMED H1)
+    x["pln_total_h"] = x["pln_down_total_h"]
+    x["pln_source"] = np.where(x["bbt_category"].notna(), "BBT Site Details (snapshot)", None)
+    x["fixed_genset_basis"] = np.where(x["fixed_genset"] == "ACTIVE", "Dapot: genset active (backup / main power)", None)
+    x["in_ticket_file"] = 0
+    for c in A1_COLS:
+        if c not in x.columns:
+            x[c] = None
+    x = x[x["ran_hours"].notna() | x["bbt_category"].notna()]
+    # base camps = BPS (MBP operators) with a position in the FME master; id = BPS-<NOP>-<n> (person name only as pic_name)
+    b = fme[(fme["role"] == "BPS") & fme["lat"].notna()].copy()
+    b["n"] = b.groupby("nop").cumcount() + 1
+    short = b["nop"].str.replace("NOP ", "", regex=False).str.replace(" ", "", regex=False).str[:3]
+    mb = [dict(mbp_id=f"BPS{int(r.n):03d}-{sh}", mbp_name=f"BPS{int(r.n):03d}-{sh}", lat=float(r.lat), lon=float(r.lon), coord_decimals=None,
+               coord_status="ACTUAL", coord_evidence="ACTUAL", nop=r.nop, source="HW Master FME (BPS position)", merged_from=None, pic_name=r.name,
+               mbp_tickets_h1=None, mbp_sites_served=None, mbp_run_hours_h1=None) for r, sh in zip(b.itertuples(), short)]
+    empty = {"cols": [], "rows": []}
+    sz = {"sites.json": dump(columnar(x[A1_COLS]), "sites.json"), "mbps.json": dump(mb, "mbps.json"),
+          "tickets.json": dump({"cols": ["site", "mbp", "occ", "to", "arr", "job", "out", "rc"], "rows": []}, "tickets.json"),
+          "pln_ev.json": dump({"cols": ["site", "dur", "arr", "mbp"], "rows": []}, "pln_ev.json"),
+          "familiarity.json": dump({"cols": ["site_id", "mbp_id", "served_n"], "rows": []}, "familiarity.json")}
+    # monthly NOP sums (Health / Trend) — same shape as AREA 1
+    hm = h.merge(x[["site_id", "nop", "site_active"]], on="site_id", how="inner")
+    hm["target_h"] = hm["hours"] * hm["target"]
+    mn = hm.groupby(["nop", "site_active", "period"]).agg(sites=("site_id", "nunique"), hours=("hours", "sum"), target_h=("target_h", "sum"),
+                                                          outage=("out_h", "sum"), power=("pw_h", "sum"), transport=("tr_h", "sum"),
+                                                          ran=("ran_h", "sum"), other=("oth_h", "sum")).reset_index().rename(columns={"period": "ym"})
+    srcs = [dict(source=r["source"], files=1, status=r["status"], latest_file_time=r.get("period")) for r in meta4["inventory"]]
+    meta = {**meta4, "config": cfg, "area": "AREA4", "scope": {"area": "AREA4", "period_start": "2026-01-01", "period_end": "2026-06-30"},
+            "snapshot": {"period_start": "2026-01-01", "period_end": "2026-06-30", "refreshed_at": meta4["built_at"], "sources": srcs},
+            "monthly_nop": mn.to_dict("records"), "bbs": {}, "mbp": {"pic_matches": [], "duplicates": [], "concurrency": []},
+            "dq": {"unmatched": [], "ticket_gaps": [], "sources": srcs, "mbp_coords": []},
+            "na": ["tickets", "pln_events", "battery_inventory", "bbt_events", "daily", "dependency"]}
+    dump(meta, "meta.json")
+    log(f"AREA-1 shape: sites {len(x)} · base camps (BPS) {len(mb)}")
+    return sz
 
 
 if __name__ == "__main__":

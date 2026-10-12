@@ -20,7 +20,7 @@ export default function SiteDrawer({ site, cfg, onClose }) {
   const [showComputed, setShowComputed] = useState(false);
   useEffect(() => {
     let alive = true; setDet(null);
-    if (site) loadDetail(site.nop).then((d) => alive && setDet(d[site.site_id] || { m: [], tk: [], ev: [] }));
+    if (site) loadDetail(site.nop, (typeof window !== "undefined" && window.__pbaArea) || "1").then((d) => alive && setDet(d[site.site_id] || { m: [], tk: [], ev: [] }));
     return () => { alive = false; };
   }, [site]);
   useEffect(() => { const k = (e) => e.key === "Escape" && onClose(); window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);

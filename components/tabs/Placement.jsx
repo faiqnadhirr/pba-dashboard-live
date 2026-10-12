@@ -2,11 +2,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from "recharts";
-import { Card, Kpi, Note, DataTable, Select, Slider, EvTag, fInt, fH, fPct, fPP, fNum, fCoord, precisionNote } from "@/components/ui";
+import { Card, Kpi, Note, DataTable, Select, Slider, EvTag, fInt, fH, fPct, fPP, fNum, fCoord } from "@/components/ui";
 import { placementPlan, basecampGravity } from "@/lib/logic";
 import { t } from "@/lib/i18n";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
+const fRp = (v) => (v >= 1e6 ? `Rp ${fNum(v / 1e6, 1)} jt` : `Rp ${fInt(v)}`);
 function Seg({ label, value, onChange, options }) {
   return (
     <div><div className="text-[11.5px] text-slate mb-1">{label}</div>
@@ -17,14 +18,15 @@ function Seg({ label, value, onChange, options }) {
   );
 }
 
-export default function Placement({ model, data, cfg, nop: gNop, setPick, setRadius }) {
+export default function Placement({ model, data, cfg, nop: gNop, setPick, setRadius, full }) {
   const nops = useMemo(() => [...new Set(model.map((s) => s.nop).filter(Boolean))].sort(), [model]);
   const [nop, setNop] = useState(gNop !== "All NOPs" ? gNop : "NOP PALEMBANG");
   useEffect(() => { if (gNop !== "All NOPs") setNop(gNop); }, [gNop]);
   const [target, setTarget] = useState(Math.round((cfg.placement?.target_share ?? 0.9) * 100));
   // v3.6 — response target: "bbt" (arrive before battery runs out) or minutes (ops standard, ETA incl. mobilisation); scope P1/P2 or all active
   const RT = cfg.mbp.response_target_min ?? 30;
-  const [resp, setResp] = useState(RT), [scopeMode, setScopeMode] = useState("p12");
+  // v4.0 — default = before the battery runs out (BBT): a fixed 30-min target needs > 60 extra units in many NOPs and is not realistic
+  const [resp, setResp] = useState("bbt"), [scopeMode, setScopeMode] = useState("p12");
   const deadline = resp === "bbt" ? null : resp;
   const maxCap = deadline == null ? 30 : 100;
   // separate "max additional" per mode: before-BBT keeps the Config default, minute targets start at 60 (30-min reach needs many more spots)
@@ -36,7 +38,7 @@ export default function Placement({ model, data, cfg, nop: gNop, setPick, setRad
   const plan = useMemo(() => placementPlan(inNop, data.mbps, cfg, opt), [inNop, data.mbps, cfg, opt]);
   const all = useMemo(() => nops.map((n) => { const p = placementPlan(model.filter((s) => s.nop === n), data.mbps, cfg, opt), c = conc.get(n);
     const p95 = c ? Math.ceil(c.p95) : null, reach = p.needed == null ? null : p.current + p.needed;
-    return { nop: n, targets: p.targets, current: p.current, now: p.targets ? p.reachedNow / p.targets : null, needed: p.needed, max: p.reachable_max, island: p.island, battery: p.battery, relocation: p.relocation.length,
+    return { nop: n, knee: p.knee, knee_cost: p.steps[p.knee]?.cost_per_dark_h ?? null, targets: p.targets, current: p.current, now: p.targets ? p.reachedNow / p.targets : null, needed: p.needed, max: p.reachable_max, island: p.island, battery: p.battery, relocation: p.relocation.length,
       conc_p95: p95, conc_max: c?.max ?? null, ideal: reach == null ? null : Math.max(reach, p95 || 0), ideal_driver: reach == null ? null : (p95 || 0) > reach ? "concurrency" : "reach" }; }),
   [nops, model, data.mbps, cfg, opt, conc]);
   const C = conc.get(nop), idealNop = plan.needed == null ? null : Math.max(plan.current + plan.needed, C ? Math.ceil(C.p95) : 0);
@@ -66,7 +68,8 @@ export default function Placement({ model, data, cfg, nop: gNop, setPick, setRad
         <Kpi label={t(scopeMode === "all" ? "place.kpi.targets_all" : "place.kpi.targets")} value={fInt(plan.targets)} sub={t("place.kpi.targets_sub", { i: fInt(plan.island), b: fInt(plan.battery) })} />
         <Kpi label={t("place.kpi.now2", { x: tgtLabel })} value={plan.targets ? fPct((100 * plan.reachedNow) / T, 0) : "—"} sub={t("filter.scope_sites", { n: fInt(plan.reachedNow) })} tone={plan.reachedNow / T >= target / 100 ? "good" : "warn"} />
         <Kpi label={t("place.kpi.current")} value={fInt(plan.current)} sub={t("place.kpi.current_sub")} />
-        <Kpi label={t("place.kpi.needed")} value={plan.needed == null ? `> ${maxNew}` : fInt(plan.needed)} sub={t("place.kpi.needed_sub", { p: fPct(target, 0) })} tone={plan.needed ? "crit" : "good"} />
+        <Kpi label={t("place.kpi.knee")} value={`+${fInt(plan.knee)}`} sub={t("place.kpi.knee_sub", { s: Math.round(100 * plan.knee_share), c: plan.knee && plan.steps[plan.knee]?.cost_per_dark_h ? fRp(plan.steps[plan.knee].cost_per_dark_h) : "—" })} tone="good" help={t("place.kpi.knee_help")} />
+        <Kpi label={t("place.kpi.needed")} value={plan.needed == null ? `> ${maxNew}` : fInt(plan.needed)} sub={t("place.kpi.needed_sub", { p: fPct(target, 0) })} tone={plan.needed ? "warn" : "good"} />
         <Kpi label={t("place.kpi.fleet")} value={plan.needed == null ? `> ${plan.current + maxNew}` : fInt(plan.current + plan.needed)} sub={t("place.kpi.fleet_sub", { p: fPct(100 * (plan.reachable_max || 0), 0) })} />
         <Kpi label={t("place.kpi.ideal")} value={idealNop == null ? `> ${fInt(Math.max(plan.current + maxNew, C ? Math.ceil(C.p95) : 0))}` : fInt(idealNop)} help={t("place.kpi.ideal_help")}
           sub={C ? t("place.kpi.ideal_sub", { p: fInt(Math.ceil(C.p95)), m: fInt(C.max) }) : t("place.kpi.ideal_noconc")} tone={idealNop != null && idealNop > plan.current ? "warn" : "good"} />
@@ -89,10 +92,11 @@ export default function Placement({ model, data, cfg, nop: gNop, setPick, setRad
             </LineChart>
           </ResponsiveContainer>
           <table className="w-full text-[12px] tabular mt-2">
-            <thead><tr className="text-slate text-left">{["added", "reached", "share", "dark"].map((h) => <th key={h} className="py-1 border-b border-line">{t(`place.gain.${h}`)}</th>)}</tr></thead>
-            <tbody>{steps.map((r) => <tr key={r.k} className={`border-b border-line/60 ${plan.needed === r.k ? "bg-good/10 font-semibold" : ""}`}><td className="py-1">{r.label}</td><td>{fInt(r.reached)}</td><td>{fPct(r.pct, 0)}</td><td>{fH(r.dark_h_avoided)}</td></tr>)}</tbody>
+            <thead><tr className="text-slate text-left">{["added", "share", "mdark", "cost"].map((h) => <th key={h} className="py-1 border-b border-line">{t(`place.gain.${h}`)}</th>)}</tr></thead>
+            <tbody>{steps.map((r) => <tr key={r.k} className={`border-b border-line/60 ${plan.knee === r.k && r.k ? "bg-good/10 font-semibold" : r.k > plan.knee ? "text-mut" : ""}`}><td className="py-1">{r.label}{plan.knee === r.k && r.k ? " ◀" : ""}</td><td>{fPct(r.pct, 0)}</td><td>{r.k ? fH(r.marginal_dark_h) : "—"}</td><td>{r.cost_per_dark_h ? fRp(r.cost_per_dark_h) : "—"}</td></tr>)}</tbody>
           </table>
           <div className="mt-1 text-[11px] text-mut inline-flex items-center gap-1">{t("place.all_estimated")} <EvTag v="ESTIMATED" /></div>
+          <div className="text-[11px] text-mut">{t("place.cost_note", { c: fRp(plan.unit_cost || 0) })}</div>
         </Card>
       </div>
       <Card title={t("place.new.title")} sub={t("place.new.sub")}>
@@ -100,11 +104,10 @@ export default function Placement({ model, data, cfg, nop: gNop, setPick, setRad
           { key: "n", label: "#", num: true }, { key: "kecamatan", label: "col.kecamatan", render: (r) => r.kecamatan || "—" }, { key: "city", label: "col.city", render: (r) => r.city || "—" },
           { key: "anchor_site", label: "col.anchor_site" }, { key: "anchor_name", label: "col.name" }, { key: "cluster", label: "col.cluster" },
           { key: "lat", label: "col.latlon", render: (r) => `${fCoord(r.lat, r.decimals)}, ${fCoord(r.lon, r.decimals)}`, csv: (r) => `${fCoord(r.lat, r.decimals)} ${fCoord(r.lon, r.decimals)}` },
-          { key: "decimals", label: "col.precision", render: (r) => precisionNote(r.decimals), csv: (r) => r.decimals },
           { key: "new_sites_reached", label: "col.new_reached", num: true }, { key: "dark_h_avoided", label: "col.dark_avoided", num: true, render: (r) => fH(r.dark_h_avoided), csv: (r) => r.dark_h_avoided.toFixed(1) },
         ]} />
       </Card>
-      <Card title={t("place.cog.title")} sub={t("place.cog.sub", { m: gDl, w1: cfg.gravity?.w_pln ?? 0.35, w2: cfg.gravity?.w_bbt ?? 0.25, w3: cfg.gravity?.w_class ?? 0.15, w4: cfg.gravity?.w_repeat ?? 0.25 })}>
+      {full && <Card title={t("place.cog.title")} sub={t("place.cog.sub", { m: gDl, w1: cfg.gravity?.w_pln ?? 0.35, w2: cfg.gravity?.w_bbt ?? 0.25, w3: cfg.gravity?.w_class ?? 0.15, w4: cfg.gravity?.w_repeat ?? 0.25 })}>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <Kpi label={t("place.cog.k_move", { nop })} value={`${fInt(gN.filter((g) => g.verdict === "move").length)} / ${fInt(gN.length)}`} sub={t("place.cog.k_move_sub", { f: fInt(gN.filter((g) => g.verdict === "fine_tune").length), s: fInt(gN.filter((g) => g.verdict === "stay").length) })} />
           <Kpi label={t("place.cog.k_reach", { m: gDl })} value={`${fInt(gSum(gN, "reach_now"))} → ${fInt(gSum(gN.map((g) => (g.verdict === "stay" ? { ...g, reach_rec: g.reach_now } : g)), "reach_rec"))}`} sub={t("place.cog.k_reach_sub", { n: fInt(gSum(gN, "sites")) })} tone={gN.some((g) => g.verdict !== "stay" && g.reach_rec > g.reach_now) ? "good" : "slate"} />
@@ -121,7 +124,7 @@ export default function Placement({ model, data, cfg, nop: gNop, setPick, setRad
             columns={[
               { key: "mbp_id", label: "col.basecamp" }, { key: "kec_now", label: "col.kec_now", render: (r) => r.kec_now || "—" },
               { key: "verdict", label: "col.verdict", render: (r) => t(`place.cog.v.${r.verdict}`), csv: (r) => r.verdict },
-              { key: "rec_kecamatan", label: "col.kec_rec", render: (r) => (r.verdict === "stay" ? <span className="text-mut">—</span> : <span>★ {r.rec_kecamatan}<span className="text-mut"> · {r.rec_city || ""}</span>{r.city_change && <span className="ml-1 text-[10.5px] text-[#8a5a00] bg-warn/15 rounded px-1" title={t("place.cog.city_change_tip")}>{t("place.cog.city_change")}</span>}</span>), csv: (r) => (r.verdict === "stay" ? "" : r.rec_kecamatan) },
+              { key: "rec_kecamatan", label: "col.kec_rec", render: (r) => (r.verdict === "stay" ? <span className="text-mut">—</span> : <span>★ {r.rec_kecamatan}<span className="text-mut"> · {r.rec_city || ""}</span>{" "}{r.city_change && <span className="ml-1 text-[10.5px] text-[#8a5a00] bg-warn/15 rounded px-1" title={t("place.cog.city_change_tip")}>{t("place.cog.city_change")}</span>}</span>), csv: (r) => (r.verdict === "stay" ? "" : r.rec_kecamatan) },
               { key: "rec_site", label: "col.anchor_site", render: (r) => (r.verdict === "stay" ? "—" : r.rec_site), csv: (r) => (r.verdict === "stay" ? "" : r.rec_site) },
               { key: "rec_latlon", label: "col.latlon", render: (r) => `${fCoord(r.rec_lat, r.rec_decimals)}, ${fCoord(r.rec_lon, r.rec_decimals)}`, csv: (r) => `${fCoord(r.rec_lat, r.rec_decimals)} ${fCoord(r.rec_lon, r.rec_decimals)}` },
               { key: "shift_km", label: "col.shift_km", num: true, sortVal: (r) => (r.verdict === "stay" ? 0 : r.shift_km), render: (r) => (r.verdict === "stay" ? "—" : fNum(r.shift_km, 1)), csv: (r) => (r.verdict === "stay" ? "" : r.shift_km.toFixed(2)) },
@@ -133,7 +136,7 @@ export default function Placement({ model, data, cfg, nop: gNop, setPick, setRad
             ]} />
         </div>
         <div className="mt-1 text-[11px] text-mut inline-flex items-center gap-1">{t("place.cog.foot")} <EvTag v="ESTIMATED" /></div>
-      </Card>
+      </Card>}
       <div className="grid gap-4">
         <Card title={t("place.reloc.title")} sub={t("place.reloc.sub", { n: maxR, pp: fNum(lim, 1) })}>
           <div className="mb-2"><Note tone="crit">{t("place.reloc.warn")}</Note></div>
@@ -145,9 +148,10 @@ export default function Placement({ model, data, cfg, nop: gNop, setPick, setRad
             ]} />)}
         </Card>
         <Card title={t("place.all.title")} sub={`${t("place.all.sub", { p: fPct(target, 0), n: maxNew })} ${t("place.all.sub2", { x: tgtLabel })}`}>
-          <DataTable rows={all} pageSize={20} filename="pba_fleet_size_all_nops.csv" initialSort={{ key: "needed", dir: -1 }} columns={[
+          <DataTable rows={all} pageSize={20} filename="pba_fleet_size_all_nops.csv" initialSort={{ key: "knee", dir: -1 }} columns={[
             { key: "nop", label: "col.nop" }, { key: "targets", label: "col.p1p2_road", num: true }, { key: "current", label: "col.basecamps", num: true },
             { key: "now", label: "col.reached_now", num: true, render: (r) => (r.now == null ? "—" : fPct(100 * r.now, 0)), csv: (r) => (r.now == null ? "" : (100 * r.now).toFixed(1)) },
+            { key: "knee", label: "col.knee", num: true, render: (r) => `+${fInt(r.knee)}${r.knee_cost ? ` · ${fRp(r.knee_cost)}/h` : ""}`, csv: (r) => r.knee },
             { key: "needed", label: "col.additional_needed", num: true, sortVal: (r) => (r.needed == null ? 999 : r.needed), render: (r) => (r.needed == null ? `> ${maxNew}` : fInt(r.needed)), csv: (r) => (r.needed == null ? `>${maxNew}` : r.needed) },
             { key: "max", label: "col.max_reachable", num: true, render: (r) => fPct(100 * (r.max || 0), 0), csv: (r) => (100 * (r.max || 0)).toFixed(1) },
             { key: "conc_p95", label: "col.conc_p95", num: true, render: (r) => (r.conc_p95 == null ? "—" : t("place.conc_cell", { p: fInt(r.conc_p95), m: fInt(r.conc_max) })), csv: (r) => r.conc_p95 ?? "" },

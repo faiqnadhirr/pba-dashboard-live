@@ -51,7 +51,8 @@ load_high_ampere: 45           # NE load considered "high" (upgrade capacity ins
 mbp:
   same_nop_only: true          # coverage + candidates restricted to MBP's own NOP
   assignment_mode: history_then_nearest   # history_then_nearest | nearest
-  max_radius_km: 120           # beyond this a site is "uncovered" (adjustable in the app: map slider / presets)
+  max_radius_km: 120           # v4.0: PREFERRED radius (assignment preference, map ring) — NOT a hard cut; adjustable in the app
+  reach_cap_km: 250            # v4.0: hard search cap; a site is covered when some MBP within this cap arrives before its BBT
   radius_presets: [20, 30, 40, 60, 120]   # v3.7 quick buttons on MBP overview (Dudi: mainland ≈ 40 km)
   rh_max_hours_per_ticket: 48  # RH meter diff above this = outlier
   response_target_min: 30      # v3.6 ops response-time target (Pak Nizar); ETA includes travel.mobilization_minutes
@@ -60,6 +61,7 @@ mbp:
 travel:                        # ESTIMATED travel-time model (Sumatera roads)
   road_factor: 1.35            # straight-line km -> road km
   mobilization_minutes: 15     # prepare + load MBP before departure
+  use_calibration: true        # v4.0: multiply the ETA by the factor fitted on real trips (take-over → check-in), per NOP
   speed_kmh:
     urban: 25                  # KOTA ... (city traffic)
     rural_short: 35            # rural, road km < 15 (village roads)
@@ -150,10 +152,15 @@ placement:                     # D1: fleet size & placement (ESTIMATED: straight
   max_new_deadline: 60          # v3.6: start value when the target is a response time in minutes
   relocation_max_loss_pp: 0.5  # cumulative loss allowed for the whole relocation set (pp of MBP-P1/P2 reach)
   relocation_max_candidates: 3 # 3f: at most this many relocation candidates, tested cumulatively
+  knee_share: 0.25             # v4.0: stop adding units once the next unit avoids < 25 % of the dark hours the FIRST added unit avoids
+  unit_cost_idr_month: 25000000  # v4.0 ASSUMED all-in cost of one MBP unit (vehicle + genset + crew + fuel) per month — replace with the real figure
 
 mbp_perf:                      # v3.7 MBP performance & utilisation (PROPOSAL — formula to be agreed with Telkomsel)
   period_hours: 4344           # H1 2026 hours available per MBP
-  min_jobs: 10                 # fewer PLN-off jobs in H1 = "not enough data"
+  min_jobs: 10                 # fewer judged jobs (or need events) than this = no percentage shown ("not enough data")
+  min_decisions: 10            # v4.0: dispatch audit — a "% followed" is shown only from this many decisions
+  calib_tolerance_pp: 5        # v4.0: the travel model must reproduce the actual on-time within ± this many pp, else no relocation advice
+  reloc_min_gain_jobs: 10      # v4.0: a relocation is only proposed when it adds ≥ this many on-time H1 jobs (and ≥ 1 pp)
   under_busy_max: 0.03         # job hours / period hours below this = under-utilised (grey)
   under_jobs_month_max: 2      # ... or fewer jobs per month than this
   high_busy_min: 0.25          # job hours / period hours at or above this = high load (consider adding a unit)

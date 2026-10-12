@@ -2,6 +2,22 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## v4.0 — practical: one KPI layer, event-pair need, calibration first, drag-and-drop simulation, AREA 4 in the AREA 1 shape
+- **ONE KPI layer** `lib/kpi.js` (every tab reads it) + `scripts/kpi_check.mjs`, run by `engine/build.py`: writes `kpi.json` and **fails the build** when Σ NOP ≠ AREA, a share is outside 0–100 % or served > need.
+- **Need coverage** (was "serapan", 133 % / 733 %) = event pairs: PLN outages longer than the site BBT that have a matched MBP job (new `pln_ev.json`), ≤ 100 % by construction; other jobs shown separately.
+- **Radius = preference**, not a cut-off: reach = calibrated ETA ≤ BBT within a 250-km cap (`mbp.reach_cap_km`). ETA is **calibrated** per NOP on real take-over → check-in times (`travel.calib`). BKJ358 / PSP542 / BGE163 are now reachable.
+- **Calibration gate**: per NOP the model must reproduce the actual on-time within ±5 pp (12/16 NOPs); otherwise no relocation advice (Bengkulu, Dumai, Lampung, Padang Sidempuan).
+- **Replay anchored on the actual** (`replayDelta`): no change = actual; only jobs of moved / removed / added camps change.
+- **Simulation map (drag & drop)**: drag a base camp, add a unit by clicking the map, remove one — reach before BBT and H1 jobs on time update at once; idle-camp suggestions (gain ≥ 10 jobs and ≥ 1 pp) only when calibrated.
+- **Fleet size**: default target = BBT; marginal dark hours per added unit, knee (stop below 25 % of the first unit's benefit), cost per dark hour (unit cost ASSUMED in Config).
+- **One base-camp status** (Idle / Busy / Late / Watch / Good / too few jobs / no jobs); percentages only from ≥ 10 judged jobs / decisions; base-camp **codes** instead of names in management views ("show names" toggle).
+- Dispatch: PROXY dependency gets weight 0 (re-normalised); audit de-duplicated per camp · site · day. MBP priority: travel distance weight 0 (distance was counted twice).
+- BBS: BBS-P1 capped at P2 for sites that meet the availability target; BBT gap vs the 120-min standard (computed design rests on an assumed 100 Ah).
+- **Landing story**: P1/P2 outages backed up, idle fleet, battery lever, model vs actual. Navigation: Summary · Base camps · Simulation map · Outage scenario · Fleet size · Site list (coverage / backtest / dispatch / telemetry with `?full=1`). "Suggested locations per NOP" removed.
+- **AREA 4** written in the AREA 1 shape (same 80 site columns, BPS as base camps, empty tickets / events) → every screen runs; missing sources show **N/A**. Field-staff screen kept under Data.
+- UX: data-age badge, red WHAT-IF banner + reset for edited thresholds, period bar only on tabs that follow it, searchable long dropdowns, precision column removed, unknown-PIC warning (Rantau Prapat: SCD-PALUTA / SCD-PALAS), mobile header (390 px, no horizontal scroll). Tests 49 → 54.
+- *ID:* Satu layer KPI + rekonsiliasi saat build, cakupan kebutuhan berbasis pasangan event (≤ 100 %), radius jadi preferensi + ETA terkalibrasi + gate ±5 pp, simulasi drag & drop, armada default BBT + knee + biaya per jam mati, satu status base camp, AREA 4 berformat sama dengan AREA 1 (N/A bila belum ada data).
+
 ## v3.8 — AREA 4 (light) and "Data available"
 - AREA 1 | AREA 4 switch; AREA 4 overview, availability & causes (weekly W1–W31, monthly Jan–Jul, cluster / kecamatan), battery (BBT Site Details snapshot, with a data warning), field staff & BPS reach (HW Master FME, no personal contact data).
 - New pipeline `engine/build_area4.py` → `public/data/a4/`.

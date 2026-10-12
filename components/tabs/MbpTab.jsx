@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { Card, Kpi, Note, DataTable, Select, Tag, Toggle, Bar100, Gloss, siteColumns, fInt, fH, fMin, fKm, fPct, fCoord, precisionNote, isNum } from "@/components/ui";
-import { suggestBasecamps, coverageBreakdown } from "@/lib/logic";
+import { coverageBreakdown } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { coverageGap } from "@/lib/view";
@@ -33,7 +33,6 @@ export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, set
   const listCols = useMemo(() => { const c = siteColumns(cfg, mode, { showComputed });
     return DF.weight ? [...c, { key: "_w", label: "col.drill_hours", num: true, sortVal: DF.weight, render: (r) => fH(DF.weight(r)), csv: (r) => DF.weight(r).toFixed(1) }] : c; }, [cfg, mode, showComputed, DF]);
   const camp = sel === "ALL" ? null : data.mbps.find((m) => m.mbp_id === sel);
-  const sug = useMemo(() => suggestBasecamps(scope), [scope]);
   // v3.4 — map legend toggles drive the KPIs / breakdown of this tab (and "View N sites")
   const [mapMode, setMapMode] = useState("priority"), [mapHidden, setMapHidden] = useState([]);
   const vis = useMemo(() => (mapHidden.length ? scope.filter((s) => !mapHidden.includes(MAP_KEYS[mapMode](s))) : scope), [scope, mapMode, mapHidden]);
@@ -131,19 +130,7 @@ export default function MbpTab({ scope, data, cfg, nop, mbpsScope, mbpStats, set
           ]} />
       </Card>}
 
-      {MAP && <Card title={t("mbp.sug.title")} sub={t("mbp.sug.sub")}>
-        <Note tone="warn">{t("mbp.sug.note")}</Note>
-        <div className="mt-3">
-          <DataTable rows={sug} filename="pba_basecamp_suggestions.csv" pageSize={20} columns={[
-            { key: "nop", label: "col.nop" }, { key: "at_risk_priority_sites", label: "col.at_risk_p1p2", num: true }, { key: "uncovered", label: "col.beyond_radius", num: true },
-            { key: "anchor_site", label: "col.anchor_site" }, { key: "anchor_site_name", label: "col.anchor_name" },
-            { key: "anchor_lat", label: "col.anchor_latlon", render: (r) => `${fCoord(r.anchor_lat, r.anchor_decimals)}, ${fCoord(r.anchor_lon, r.anchor_decimals)}`, csv: (r) => `${fCoord(r.anchor_lat, r.anchor_decimals)} ${fCoord(r.anchor_lon, r.anchor_decimals)}` },
-            { key: "anchor_decimals", label: "col.source_precision", render: (r) => precisionNote(r.anchor_decimals), csv: (r) => r.anchor_decimals },
-            { key: "anchor_km_from_centre", label: "col.anchor_centre", num: true, render: (r) => fKm(r.anchor_km_from_centre), csv: (r) => r.anchor_km_from_centre?.toFixed(1) },
-            { key: "avg_eta_now_min", label: "col.avg_eta_now", num: true, render: (r) => fMin(r.avg_eta_now_min), csv: (r) => r.avg_eta_now_min?.toFixed(0) },
-          ]} />
-        </div>
-      </Card>}
+      {/* v4.0 — "suggested locations" (one centroid per NOP) removed: not actionable; use the drag-and-drop simulation map instead */}
     </div>
   );
 }

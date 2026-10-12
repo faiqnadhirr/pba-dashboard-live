@@ -36,6 +36,10 @@ function Fit({ pts, sig }) {
   }, [sig]); // eslint-disable-line
   return null;
 }
+function ClickWatch({ onClick }) {
+  useMapEvents({ click: (e) => onClick?.(e.latlng.lat, e.latlng.lng) });
+  return null;
+}
 function ZoomWatch({ onZoom }) {
   const map = useMapEvents({ zoomend: () => onZoom(map.getZoom()) });
   useEffect(() => { onZoom(map.getZoom()); }, []); // eslint-disable-line
@@ -88,7 +92,7 @@ function SiteLayer({ sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, onPick, zo
 
 export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSite, mbpStats, fitKey = "", height = 520, colorOverride, legendOverride, keyOverride,
   defaultMode = "priority", extraMbps = [], compact = false, mode: modeProp, onMode, hidden: hiddenProp, onHidden, modes = ["priority", "design", "survival"],
-  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true, mbpKeyOf, mbpLegend, mbpPerf, onOpenMbp, mbpLabel, hollowOverride, ttOverride, cardRows, hollowLabel, mbpLegendTitle }) {
+  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true, mbpKeyOf, mbpLegend, mbpPerf, onOpenMbp, mbpLabel, hollowOverride, ttOverride, cardRows, hollowLabel, mbpLegendTitle, draggableMbps = false, onMbpDrag, onMapClick, mbpCardExtra, fitOnce = false }) {
   const [mbpHidden, setMbpHidden] = useState([]);
   const [tileFail, setTileFail] = useState(0), [tileOk, setTileOk] = useState(0);
   const [showSites, setShowSites] = useState(true), [showMbps, setShowMbps] = useState(true), [coverage, setCoverage] = useState(false);
@@ -159,7 +163,8 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
           <MapContainer center={[0, 102]} zoom={6} zoomSnap={0.5} preferCanvas style={{ height: "100%", width: "100%" }} scrollWheelZoom>
             {!offline && <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap"
               eventHandlers={{ tileerror: () => setTileFail((n) => n + 1), tileload: () => setTileOk((n) => n + 1) }} />}
-            <Fit pts={fitPts} sig={fitKey + ":" + fitPts.length} />
+            <Fit pts={fitPts} sig={fitOnce ? fitKey : fitKey + ":" + fitPts.length} />
+            {onMapClick && <ClickWatch onClick={onMapClick} />}
             <ZoomWatch onZoom={setZoom} />
             {showMbpLayers && coverage && showMbps && mbpsLoc.map((m) => (
               <Circle key={"r" + m.mbp_id} center={[m.lat, m.lon]} radius={R * 1000} interactive={false}
@@ -178,8 +183,9 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
                 <Tooltip direction="top" offset={[0, -10]}><b>{u.id}</b> · {fInt(u.n)} {t("map.sites").toLowerCase()}<br />{t("map.unit_tip", { p: fPct(100 * u.badShare, 0), b: fInt(u.bad) })}<br /><span className="text-mut">{t("map.unit_click")}</span></Tooltip>
               </Marker>))}
             {showMbpLayers && showMbps && mbpsLoc.map((m) => (
-              <Marker key={"m" + m.mbp_id} position={[m.lat, m.lon]} icon={(zoom >= 8 ? TRUCK : CAMP_DOT)(selMbp?.mbp_id === m.mbp_id, m.is_new, mbpCol(m))} keyboard
-                eventHandlers={{ click: () => { setSelMbp(m); setSelSite(null); } }}>
+              <Marker key={"m" + m.mbp_id} position={[m.lat, m.lon]} icon={(zoom >= 8 || draggableMbps ? TRUCK : CAMP_DOT)(selMbp?.mbp_id === m.mbp_id, m.is_new, mbpCol(m))} keyboard draggable={draggableMbps}
+                eventHandlers={{ click: () => { setSelMbp(m); setSelSite(null); },
+                  dragend: (e) => { const p = e.target.getLatLng(); onMbpDrag?.(m, p.lat, p.lng); setSelMbp({ ...m, lat: p.lat, lon: p.lng }); } }}>
                 <Tooltip direction="top"><b>{m.is_new ? (m.new_label || t("map.new_scenario")) + " " : ""}MBP</b> {m.mbp_id}{mbpLabel && !m.is_new ? <><br />{mbpLabel(m)}</> : null}<br />{t("map.tt_camp_click", { r: R })}</Tooltip>
               </Marker>
             ))}
@@ -213,6 +219,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
                     </tbody></table>
                     {p.nobat_flag && <div className="mt-1 text-[11px] text-[#8a5a00] bg-warn/15 rounded px-1.5 py-0.5">⚑ {t("perf.nobat_flag", { n: fInt(p.nobat), p: fPct(100 * p.nobat_share, 0) })}</div>}
                   </div>); })()}
+                {mbpCardExtra && mbpCardExtra(selMbp, () => setSelMbp(null))}
                 {onOpenMbp && !selMbp.is_new && <button onClick={() => onOpenMbp(selMbp)} className="mt-2 w-full bg-navy text-white rounded py-1 text-[12px]">{t("perf.card.open")}</button>}
               </div>
             )}

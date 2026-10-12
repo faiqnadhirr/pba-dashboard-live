@@ -200,3 +200,11 @@ v3.6: kecamatan di header; tag dan catatan **Genset tetap** (dasar, kVA); tag **
 - **Tab AREA 4:** *Ringkasan AREA 4* (KPI, peta utama dengan warna gap availability / penyebab utama / baterai, tabel per NOP) · *Availability & penyebab* (tren mingguan W1–W31 dan bulanan Jan–Jul, per cluster dan per kecamatan) · *Baterai (BBT)* (status dari snapshot BBT Site Details, daftar masalah; peringatan menjelaskan ≈ 77 % site terukur ≤ 5 mnt dan periode file perlu dikonfirmasi) · *Tenaga lapangan & BPS* (BPS / TS / PM dari HW Master FME di peta, site dalam radius BPS, beban per orang) · *Data tersedia*.
 - **Data & Config › Data tersedia** (kedua area): matriks fitur (✔ / ◐ / ✖ per AREA dengan sumber yang kurang), sumber yang sudah dimuat, dan file berikutnya yang perlu dikirim sesuai prioritas.
 - AREA 4 belum punya tiket MBP, event BBT, inventaris baterai atau interval PLN, jadi performa MBP / backtest / dispatch dan aturan aksi BBS masih khusus AREA 1.
+
+
+## v4.0 — alur praktis (ringkasan → base camp → simulasi peta → armada)
+1. **Ringkasan** dibuka dengan empat kartu: padam P1/P2 yang dibackup (pasangan event), armada menganggur (okupansi median, puncak job bersamaan), tuas baterai (BBS-P1, cek setting, ganti / upgrade) dan **model vs aktual** (kalibrasi). Semua angka berasal dari satu layer KPI (`lib/kpi.js`), jadi tabel NOP dan tab lain menampilkan angka yang sama.
+2. **Base camp**: satu status per camp; tepat waktu dan cakupan kebutuhan hanya dari ≥ 10 job / event yang dinilai. Kode base camp, bukan nama, kecuali "tampilkan nama" dicentang. "Semua kolom" untuk tampilan analis.
+3. **Simulasi peta (drag & drop)**: pilih NOP, geser truk, tambah unit (tombol lalu klik peta) atau hapus dari kartunya. KPI: site P1/P2 dan semua site yang terjangkau sebelum BBT (ESTIMASI) serta job H1 tepat waktu yang diputar ulang di atas job aktual. Bila NOP belum terkalibrasi (±5 pp) tidak ada saran relokasi.
+4. **Jumlah armada**: target default "sebelum BBT"; tabel menunjukkan jam mati yang dihindari tiap unit tambahan dan biaya per jam mati; saran berhenti di titik knee.
+5. **AREA 4** memakai layar yang sama; N/A berarti sumbernya belum diterima untuk AREA 4.

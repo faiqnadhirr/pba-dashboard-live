@@ -30,7 +30,7 @@ export default function Area4({ cfg, setRadius, setPick, meta1 }) {
   const [raw, setRaw] = useState(null), [err, setErr] = useState(null);
   useEffect(() => {
     const get = (f) => fetch(`/data/a4/${f}`).then((r) => { if (!r.ok) throw new Error(`${f}: HTTP ${r.status}`); return r.json(); });
-    Promise.all([get("meta.json"), get("sites.json"), get("weekly.json"), get("fme.json")])
+    Promise.all([get("meta.json"), get("field_sites.json"), get("weekly.json"), get("fme.json")])
       .then(([meta, sites, weekly, fme]) => setRaw({ meta, sites: fromColumnar(sites), weekly: fromColumnar(weekly), fme: fromColumnar(fme) })).catch((e) => setErr(String(e)));
   }, []);
   const [tab, setTab] = useState(() => { try { const v = window.__pbaA4 || new URLSearchParams(window.location.search).get("a4"); return TABS.includes(v) ? v : "overview"; } catch { return "overview"; } });

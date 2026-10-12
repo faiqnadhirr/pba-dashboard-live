@@ -9,6 +9,7 @@ const pct = (v, d = 0) => (isNum(v) ? fPct(100 * v, d) : "—");
 
 export default function Dispatch({ model, data, cfg, nop: gNop, allNops, tickets, sel, setPick, perf }) {
   const preset = sel ? data.mbps.find((m) => m.mbp_id === sel) : null;
+  const MIN_N = cfg.mbp_perf?.min_decisions ?? 10;
   const [nop, setNop] = useState(preset?.nop || (gNop !== "All NOPs" ? gNop : "NOP BENGKULU"));
   useEffect(() => { if (gNop !== "All NOPs" && !preset) setNop(gNop); }, [gNop]); // eslint-disable-line
   const mbpsN = useMemo(() => data.mbps.filter((m) => m.nop === nop && isNum(m.lat)), [data.mbps, nop]);
@@ -32,7 +33,7 @@ export default function Dispatch({ model, data, cfg, nop: gNop, allNops, tickets
   const ticketsN = useMemo(() => { const ids = new Set(model.filter((s) => s.nop === nop).map((s) => s.site_id)); return tickets.filter((k) => ids.has(k.site)); }, [tickets, model, nop]);
   const audit = useMemo(() => dispatchAudit(ticketsN, byId, cfg), [ticketsN, byId, cfg]);
   const perCamp = useMemo(() => { const m = new Map(); for (const d of audit) { const r = m.get(d.mbp) || m.set(d.mbp, { mbp_id: d.mbp, n: 0, ok: 0 }).get(d.mbp); r.n++; if (d.followed) r.ok++; }
-    return [...m.values()].map((r) => ({ ...r, rate: r.ok / r.n })); }, [audit]);
+    return [...m.values()].map((r) => ({ ...r, rate: r.n >= MIN_N ? r.ok / r.n : null })); }, [audit]); // eslint-disable-line
   const mine = audit.filter((d) => d.mbp === camp && !d.followed).sort((a, b) => b.T - a.T).slice(0, 50).map((d) => ({ ...d, cs: byId.get(d.chosen), bs: byId.get(d.best_site) }));
   const ok = audit.filter((d) => d.followed).length, mineAll = audit.filter((d) => d.mbp === camp), mineOk = mineAll.filter((d) => d.followed).length;
   const depActual = model.filter((s) => s.nop === nop && isNum(s.dep_children_actual)).length;
@@ -46,7 +47,7 @@ export default function Dispatch({ model, data, cfg, nop: gNop, allNops, tickets
 
   return (
     <div className="space-y-4">
-      <Note>{t("disp.note", { c: D.w_class ?? 0.4, d: D.w_dependency ?? 0.3, p: D.w_priority ?? 0.3 })}</Note>
+      <Note>{t("disp.note2", { c: D.w_class ?? 0.4, d: D.w_dependency ?? 0.3, p: D.w_priority ?? 0.3, n: MIN_N })}</Note>
       <div className="flex flex-wrap items-end gap-4">
         <div className="w-60"><Select label={t("filter.nop")} value={nop} onChange={setNop} options={allNops} /></div>
         <div className="w-[380px] max-w-full"><Select label={t("disp.camp")} value={camp || ""} onChange={setCamp} options={[...mbpsN].sort((a, b) => a.mbp_id.localeCompare(b.mbp_id)).map((m) => ({ value: m.mbp_id, label: `${m.mbp_id} (${fInt(model.filter((s) => s.mbp_assigned === m.mbp_id).length)} site)` }))} /></div>
@@ -60,7 +61,7 @@ export default function Dispatch({ model, data, cfg, nop: gNop, allNops, tickets
         <Kpi fixed label={t("disp.kpi.area")} value={fInt(area.length)} sub={t("disp.kpi.area_sub", { p: fInt(area.filter((s) => s.mbp_priority_level === "P1" || s.mbp_priority_level === "P2").length) })} />
         <Kpi fixed label={t("disp.kpi.savable")} value={fInt(punch.filter((r) => r.savable === true).length)} sub={t("disp.kpi.savable_sub")} />
         <Kpi fixed label={t("disp.kpi.audit_nop")} value={audit.length ? pct(ok / audit.length) : "—"} sub={t("disp.kpi.audit_sub", { n: fInt(audit.length) })} tone={ok / Math.max(1, audit.length) >= 0.8 ? "good" : "warn"} help={t("disp.kpi.audit_help")} />
-        <Kpi fixed label={t("disp.kpi.audit_camp")} value={mineAll.length ? pct(mineOk / mineAll.length) : "—"} sub={t("disp.kpi.audit_sub", { n: fInt(mineAll.length) })} />
+        <Kpi fixed label={t("disp.kpi.audit_camp")} value={mineAll.length >= MIN_N ? pct(mineOk / mineAll.length) : mineAll.length ? t("disp.small_n", { n: mineAll.length, m: MIN_N }) : "—"} sub={t("disp.kpi.audit_sub", { n: fInt(mineAll.length) })} />
       </div>
       <div className="grid xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-4">
         <Card title={t("disp.punch.title")} sub={t("disp.punch.sub")}>
@@ -103,7 +104,7 @@ export default function Dispatch({ model, data, cfg, nop: gNop, allNops, tickets
           <DataTable rows={perCamp} pageSize={15} filename={`pba_dispatch_audit_${nop}.csv`.replace(/\s+/g, "_")} initialSort={{ key: "rate", dir: 1 }} onRowClick={(r) => setCamp(r.mbp_id)}
             rowClass={(r) => (r.mbp_id === camp ? "bg-warn/10 font-semibold" : "")} columns={[
               { key: "mbp_id", label: "col.basecamp" }, { key: "n", label: "disp.col.decisions", num: true }, { key: "ok", label: "disp.col.followed", num: true },
-              { key: "rate", label: "disp.col.rate", num: true, render: (r) => <span className={r.rate < 0.6 ? "text-crit font-semibold" : ""}>{pct(r.rate)}</span>, csv: (r) => (100 * r.rate).toFixed(1) },
+              { key: "rate", label: "disp.col.rate", num: true, sortVal: (r) => r.rate ?? 2, render: (r) => (r.rate == null ? <span className="text-mut">n {r.n} &lt; {MIN_N}</span> : <span className={r.rate < 0.6 ? "text-crit font-semibold" : ""}>{pct(r.rate)}</span>), csv: (r) => (r.rate == null ? "" : (100 * r.rate).toFixed(1)) },
             ]} />
         </Card>
         <Card title={t("disp.viol.title", { c: camp || "—" })} sub={t("disp.viol.sub")}>

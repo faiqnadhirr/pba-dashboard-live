@@ -20,7 +20,7 @@ function Weights({ title, obj, onChange, note }) {
   );
 }
 
-export default function ConfigTab({ cfg, saveCfg, data }) {
+export default function ConfigTab({ cfg, saveCfg, data, resetCfg }) {
   const [d, setD] = useState(clone(cfg));
   const [edit, setEdit] = useState(false);
   const set = (path, v) => { const n = clone(d); let o = n; path.slice(0, -1).forEach((p) => (o = o[p])); o[path.at(-1)] = v; setD(n); };
@@ -35,12 +35,13 @@ export default function ConfigTab({ cfg, saveCfg, data }) {
   };
   return (
     <div className="space-y-4">
-      <div className={`rounded-lg border px-4 py-3 ${edit ? "bg-warn/15 border-warn" : "bg-white border-line"}`}>
+      <div className={`rounded-lg border-2 px-4 py-3 ${!isDefault ? "bg-crit/5 border-crit" : edit ? "bg-warn/15 border-warn" : "bg-white border-line"}`}>
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-[13px]">
             <b>{t(edit ? "cfg.banner.edit" : "cfg.banner.ro")}</b> {t("cfg.banner.body")}
           </div>
-          <div className="ml-auto text-[12px] text-slate tabular" title={t("cfg.hash_tip")}>{t("cfg.version")}: <b className="text-ink">{configHash(cfg)}</b> · {t(isDefault ? "cfg.is_default" : "cfg.is_edited")}</div>
+          <div className="ml-auto text-[12px] text-slate tabular" title={t("cfg.hash_tip")}>{t("cfg.version")}: <b className="text-ink">{configHash(cfg)}</b> · <span className={isDefault ? "" : "text-crit font-semibold"}>{t(isDefault ? "cfg.is_default" : "cfg.is_edited")}</span></div>
+          {!isDefault && resetCfg && <button onClick={() => { resetCfg(); setD(clone(data.meta.config)); setEdit(false); }} className="px-3 py-1 rounded-md bg-crit text-white text-[12.5px] font-semibold">{t("whatif.reset")}</button>}
         </div>
       </div>
       <Note>{t("cfg.governance")}</Note>

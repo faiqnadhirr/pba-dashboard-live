@@ -47,10 +47,10 @@ test("A · NTB020 — assigned MBP arrives before BBT expires (historical MBP no
 });
 
 /* ---------- B. Radius is a hard constraint (PMR107) ---------- */
-test("B · PMR107 — assigned MBP within radius; no assignment beyond radius anywhere", () => {
-  const s = byId.get("PMR107");
-  assert.ok(s.km_assigned <= cfg.mbp.max_radius_km);
-  assert.equal(M.filter((x) => x.mbp_assigned && x.km_assigned > cfg.mbp.max_radius_km + 1e-9).length, 0);
+test("B · PMR107 — v4.0: radius = preference, reach cap = hard limit; never an assignment beyond the cap", () => {
+  const s = byId.get("PMR107"), cap = Math.max(cfg.mbp.max_radius_km, cfg.mbp.reach_cap_km ?? 250);
+  assert.ok(s.km_assigned <= cap);
+  assert.equal(M.filter((x) => x.mbp_assigned && x.km_assigned > cap + 1e-9).length, 0);
   assert.equal(M.filter((x) => !x.covered && x.mbp_assigned).length, 0);
 });
 
@@ -97,14 +97,14 @@ test("F · MapView has distinct site/MBP markers and independent layer toggles",
 });
 
 /* ---------- G. Radius change propagates ---------- */
-test("G · smaller radius → fewer covered sites, never assignment beyond the new radius", () => {
+test("G · v4.0 smaller preferred radius → same reach, more assignments inside the preferred radius", () => {
   const c2 = { ...cfg, mbp: { ...cfg.mbp, max_radius_km: 40 } };
   const M2 = buildModel(sites, mbps, c2);
   const cov = (L) => L.filter((s) => s.covered).length;
-  assert.ok(cov(M2) < cov(M));
-  assert.equal(M2.filter((x) => x.mbp_assigned && x.km_assigned > 40 + 1e-9).length, 0);
-  const b1 = basecampSummary(M, mbps, cfg).reduce((a, r) => a + r.sites_covered, 0), b2 = basecampSummary(M2, mbps, c2).reduce((a, r) => a + r.sites_covered, 0);
-  assert.ok(b2 < b1);
+  assert.equal(cov(M2), cov(M));
+  const inside = (L) => L.filter((x) => x.mbp_assigned && x.km_assigned <= 40).length;
+  assert.ok(inside(M2) >= inside(M));
+  assert.ok(M2.filter((x) => x.within_radius).length < M.filter((x) => x.within_radius).length);
 });
 
 /* ---------- H. Availability math ---------- */
@@ -344,9 +344,11 @@ test("1 · navigation: 4 groups in order Overview · MBP · BBS · Data & Config
 /* ================= fourth pass ================= */
 import { coverageGap, showCoverageGap } from "../lib/view.js";
 test("1a · 'No action' with an MBP coverage gap is labelled as a coverage gap (TBH048)", () => {
-  const s = byId.get("TBH048");
-  assert.equal(s.recommended_action, "No action");          // engine unchanged
+  // v4.0 — TBH048 is now reachable before BBT (radius is a preference) → no gap; the rule is tested on the sites that still have one
+  const s = active.find((x) => x.recommended_action === "No action" && x.mbp_priority_level === "P1" && !x.can_arrive_before_bbt && x.bbt_status !== "Unknown" && !x.genset_protected);
+  assert.ok(s, "a P1 'No action' site without reach exists");
   assert.ok(coverageGap(s) && showCoverageGap(s));
+  assert.ok(!coverageGap(byId.get("TBH048")));
   const n = active.filter((x) => x.mbp_priority_level === "P1" && showCoverageGap(x)).length;
   console.log("MBP-P1 sites relabelled as coverage gap:", n);
   assert.equal(active.filter((x) => showCoverageGap(x) && x.bbs_priority_level && x.recommended_action !== "No action").length, 0);
@@ -497,12 +499,12 @@ test("v3.6 fixed genset: protected sites never need an MBP and are out of placem
   assert.equal(p.targets + p.battery, tgt.length);
 });
 
-test("v3.6 BBT gap = actual ÷ design only for measured batteries with a computed design", () => {
+test("v4.0 BBT gap = measured BBT ÷ the 120-min standard (the computed design rests on an assumed 100 Ah per bank)", () => {
   const W = M.filter((s) => s.bbt_gap_ratio != null);
   assert.ok(W.length > 1000);
   for (const s of W.slice(0, 2000)) {
-    assert.ok(s.battery.measured && s.bbt_design_evidence !== "PROXY");
-    assert.ok(Math.abs(s.bbt_gap_ratio - s.battery.display.value / s.bbt_design_min) < 1e-9);
+    assert.ok(s.battery.measured);
+    assert.ok(Math.abs(s.bbt_gap_ratio - s.battery.display.value / cfg.bbt.design_minutes) < 1e-9);
   }
 });
 
@@ -545,7 +547,8 @@ test("v3.6 concurrency & productivity exports are consistent", () => {
 });
 
 // ---------------------------------------------------------------- v3.7 MBP performance, backtest, dispatch, BBS action types
-import { mbpPerformance, replay, backtestMove, dispatchOrder, dispatchAudit, PERF_KEYS, nopMbpSummary } from "../lib/mbpperf.js";
+import { mbpPerformance, replayDelta, backtestMove, dispatchOrder, dispatchAudit, dispatchScore, PERF_KEYS, nopMbpSummary, sitePairs, groupEvents, modelCheck, campCode } from "../lib/mbpperf.js";
+import { computeKpis, reconcile } from "../lib/kpi.js";
 import { actionType, ACTION_TYPES } from "../lib/logic.js";
 const TK = fs.existsSync("public/data/tickets.json") ? fromColumnar(JSON.parse(fs.readFileSync("public/data/tickets.json", "utf8"))) : [];
 
@@ -564,19 +567,19 @@ test("v3.7 MBP performance: every job counted once, classes valid, on-time judge
   for (const r of rows) assert.ok(r.within + r.beyond === r.sites && r.arrive <= r.within, r.nop);
 });
 
-test("v3.7 backtest: replay accounts for every job; moving a camp onto its own spot changes nothing", () => {
-  const nop = "NOP BENGKULU", S = M.filter((s) => s.nop === nop && s.site_active === 1 && !s.offair), mb = mbps.filter((m) => m.nop === nop && Number.isFinite(m.lat));
-  const ids = new Set(S.map((s) => s.site_id)), T = TK.filter((k) => ids.has(k.site));
-  const r = replay(new Map(S.map((s) => [s.site_id, s])), mb, T, cfg);
-  const t = r.total;
-  assert.equal(t.served + t.beyond + t.busy + t.island + t.noLoc, t.tickets);
-  const same = replay(new Map(S.map((s) => [s.site_id, s])), mb.map((m) => ({ ...m })), T, cfg);
-  assert.equal(same.total.ontime, t.ontime);
-  const bt = backtestMove(S, mb, T, cfg, mb[0].mbp_id, { candidates: 4 });
+test("v4.0 replay is anchored on the actual: no change = actual on-time; moving a camp onto its own spot changes nothing", () => {
+  const nop = "NOP BENGKULU", S = M.filter((s) => s.nop === nop), mb = mbps.filter((m) => m.nop === nop && Number.isFinite(m.lat));
+  const by = new Map(S.map((s) => [s.site_id, s])), T = TK.filter((k) => by.has(k.site));
+  const r = replayDelta(by, mb, T, cfg).total;
+  let on = 0, n = 0;
+  for (const k of T) { const s = by.get(k.site); if ((k.rc && k.rc !== "P") || !Number.isFinite(k.arr) || s.bbt_status === "Unknown") continue; n++; if (k.arr <= s.bbt_effective_min) on++; }
+  assert.equal(r.ontime, on, "baseline = actual");
+  assert.equal(r.gained + r.lost, 0);
+  const same = replayDelta(by, mb, T, cfg, { moves: new Map([[mb[0].mbp_id, { lat: mb[0].lat, lon: mb[0].lon }]]) }).total;
+  assert.equal(same.ontime, r.ontime);
+  const bt = backtestMove(S.filter((s) => s.site_active === 1 && !s.offair), mb, T, cfg, mb[0].mbp_id, { candidates: 4 });
   for (let i = 1; i < bt.results.length; i++) assert.ok(bt.results[i - 1].ontime_gain >= bt.results[i].ontime_gain);
-  assert.ok(bt.results.every((x) => x.kecamatan && S.some((s) => s.site_id === x.site_id)));
-  const sc = backtestMove(S, mb, T, cfg, mb[0].mbp_id, { candidates: 4, sameCluster: true });
-  assert.ok(sc.results.every((x) => S.find((s) => s.site_id === x.site_id).cluster_to === sc.homeCluster));
+  assert.ok(bt.results.every((x) => x.kecamatan));
 });
 
 test("v3.7 dispatch: savable sites first, then score; audit decisions only when other jobs were waiting", () => {
@@ -596,16 +599,48 @@ test("v3.7 BBS: action types cover every action; Critical on a young / lithium b
   assert.ok(young.every((s) => s.action_type === "SETTING" && s.rule.startsWith("R6c")), "young Critical → R6c");
 });
 
-test("v3.7 ideal utilisation: need = outages longer than BBT (histogram split linearly); serapan = PLN-off jobs at area sites ÷ need", async () => {
-  const { needEvents } = await import("../lib/mbpperf.js");
-  const h = [0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 4];               // 10 outages of 60–90 min, 4 of 12 h+
-  assert.equal(needEvents({ pln_dur_hist: h, bbt_effective_min: 75, bbt_status: "Degraded" }), 5 + 4);
-  assert.equal(needEvents({ pln_dur_hist: h, bbt_effective_min: 30, bbt_status: "Degraded" }), 14);
-  assert.equal(needEvents({ pln_dur_hist: h, bbt_effective_min: 30, bbt_status: "Unknown" }), null);
-  const P = mbpPerformance(M, mbps, TK, cfg);
-  const tot = [...P.values()].reduce((a, p) => [a[0] + p.need, a[1] + p.area_pln_jobs], [0, 0]);
-  assert.ok(tot[0] > 20000 && tot[1] / tot[0] > 0.5 && tot[1] / tot[0] < 2, `AREA serapan ${tot[1] / tot[0]}`);
-  for (const p of P.values()) if (p.resp != null) assert.ok(Math.abs(p.resp - p.area_pln_jobs / p.need) < 1e-9);
+const EV = fs.existsSync("public/data/pln_ev.json") ? fromColumnar(JSON.parse(fs.readFileSync("public/data/pln_ev.json", "utf8"))) : [];
+test("v4.0 need = event pairs: outages longer than BBT with a matched MBP job, never above 100 %", () => {
+  const p = sitePairs([{ dur: 200, arr: 60, mbp: "A" }, { dur: 200, arr: 150, mbp: "A" }, { dur: 200, arr: null, mbp: null }, { dur: 50, arr: 20, mbp: "A" }], { bbt_effective_min: 90, bbt_status: "Degraded" });
+  assert.deepEqual(p, { need: 3, served: 2, ontime: 1, jobs_on_events: 3 });
+  assert.equal(sitePairs([{ dur: 200, mbp: "A" }], { bbt_effective_min: 90, bbt_status: "Unknown" }), null);
+  assert.ok(EV.length > 100000, "pln_ev exported");
+  const P = mbpPerformance(M, mbps, TK, cfg, groupEvents(EV));
+  for (const x of P.values()) { assert.ok(x.need_served <= x.need && x.need_ontime <= x.need_served, x.mbp_id); if (x.resp != null) assert.ok(x.resp >= 0 && x.resp <= 1); }
+});
+
+test("v4.0 ONE KPI layer reconciles: Σ NOP = AREA, every share within 0–100 %", () => {
+  const K = computeKpis(M.filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected), mbps, TK, EV, cfg);
+  assert.deepEqual(reconcile(K), []);
+  assert.ok(K.area.served <= K.area.need && K.area.p12_reach <= K.area.p12);
+  assert.ok(K.area.bbs_p1 > 0 && K.area.setting > 0);
+});
+
+test("v4.0 calibration: model vs actual per NOP, ok only within ±5 pp", () => {
+  const C = modelCheck(M, mbps, TK, cfg);
+  const rows = Object.entries(C).filter(([k]) => k !== "__all").map(([, v]) => v);
+  assert.ok(rows.length >= 10);
+  for (const r of rows) assert.equal(r.ok, r.n >= 50 && Math.abs(r.diff_pp) <= 5);
+  assert.ok(Math.abs(C.__all.diff_pp) <= 5, "AREA-wide model within ±5 pp after calibration");
+});
+
+test("v4.0 dispatch: PROXY dependency gets no weight; audit has one decision per camp · site · day; codes carry no names", () => {
+  const s = { site_class: "Gold", mbp_priority_score: 0.5 }, d = cfg.dispatch;
+  const sc = dispatchScore(s, cfg), cls = cfg.class_score.Gold;
+  assert.ok(Math.abs(sc.score - (d.w_class * cls + d.w_priority * 0.5) / (d.w_class + d.w_priority)) < 1e-12);
+  const A = dispatchAudit(TK.slice(0, 8000), byId, cfg), keys = A.map((x) => `${x.mbp}|${x.chosen}|${Math.floor(x.T / 1440)}`);
+  assert.equal(new Set(keys).size, keys.length);
+  assert.equal(campCode("BPS001-BJI-HENDRIKA"), "BPS001-BJI");
+  assert.ok(!campCode("MBP-LHT-LISUS").includes("LISUS"));
+});
+
+test("v4.0 radius is a preference: reach before BBT does not change with the preferred radius", () => {
+  const c20 = JSON.parse(JSON.stringify(cfg)); c20.mbp.max_radius_km = 20;
+  const f = (L) => L.filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected);
+  const A20 = f(buildModel(sites, mbps, c20));
+  const n = (L) => L.filter((s) => s.covered && s.can_arrive_before_bbt).length;
+  assert.equal(n(A20), n(f(M)));
+  for (const id of ["BKJ358", "PSP542", "BGE163"]) { const s = A20.find((x) => x.site_id === id); if (s) assert.equal(s.can_arrive_before_bbt, 1, id); }
 });
 
 // ---------------------------------------------------------------- v3.8 AREA 4 (light)
@@ -616,8 +651,8 @@ test("v3.8 AREA 4: battery status from BBT Site Details, roll-up sums, field rea
   assert.equal(a4Battery({ bbt_category: "Only Mains Fail", backup_min: 40 }, cfg).status, "held");
   assert.equal(a4Battery({ bbt_category: "Only Mains Fail", backup_min: 130 }, cfg).status, "Meets design");
   assert.equal(a4Battery({}, cfg).status, "Unknown");
-  if (!fs.existsSync("public/data/a4/sites.json")) return;
-  const S = a4Model(fromColumnar(JSON.parse(fs.readFileSync("public/data/a4/sites.json", "utf8"))), cfg);
+  if (!fs.existsSync("public/data/a4/field_sites.json")) return;
+  const S = a4Model(fromColumnar(JSON.parse(fs.readFileSync("public/data/a4/field_sites.json", "utf8"))), cfg);
   const F = fromColumnar(JSON.parse(fs.readFileSync("public/data/a4/fme.json", "utf8")));
   assert.ok(S.length > 15000 && F.length > 500);
   assert.ok(!Object.keys(F[0]).some((k) => /mail|phone/i.test(k)), "no personal contact data exported");
@@ -626,4 +661,17 @@ test("v3.8 AREA 4: battery status from BBT Site Details, roll-up sums, field rea
   assert.ok(Math.abs(nops.reduce((a, r) => a + r.out, 0) - cl.reduce((a, r) => a + r.out, 0)) < 1e-6);
   const fr = a4Field(S.slice(0, 3000), F, cfg.mbp.max_radius_km);
   assert.ok(fr.rows.every((r) => r.within <= r.sites));
+});
+
+test("v4.0 AREA 4 in the AREA 1 shape: same site columns, model runs, KPIs reconcile, N/A where there is no source", () => {
+  if (!fs.existsSync("public/data/a4/meta.json")) return;
+  const rd = (f) => JSON.parse(fs.readFileSync(`public/data/a4/${f}`, "utf8"));
+  const s4 = rd("sites.json"), s1 = JSON.parse(fs.readFileSync("public/data/sites.json", "utf8"));
+  assert.deepEqual(s4.cols, s1.cols);
+  const m4 = rd("meta.json"), b4 = rd("mbps.json");
+  assert.ok(m4.config && m4.monthly_nop.length && b4.length > 100 && b4.every((m) => !String(m.mbp_id).includes(m.pic_name || "§")));
+  const S = buildModel(fromColumnar(s4), b4, m4.config).filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected);
+  const K = computeKpis(S, b4, [], [], m4.config);
+  assert.deepEqual(reconcile(K), []);
+  assert.equal(K.area.served_pct, null); assert.equal(K.area.jobs_ontime_pct, null);
 });

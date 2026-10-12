@@ -13,8 +13,8 @@ class_score:
 mbp_priority:                  # MBP site priority (weights re-normalised to 100%)
   class: 0.25                  # management factor
   dependency: 0.15             # management factor (PROXY -> lower weight)
-  outage_frequency: 0.20       # management factor
-  travel_distance: 0.10        # management factor
+  outage_frequency: 0.30       # management factor (v4.0: +0.10 from travel_distance)
+  travel_distance: 0.0         # v4.0: 0 — distance is already inside eta_gap (no double counting)
   eta_gap: 0.20                # MBP arrives after battery runs out (ETA - BBT)
   site_condition: 0.10         # availability gap vs target (RAN, wall-clock)
   vip: 0.0

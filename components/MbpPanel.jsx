@@ -5,7 +5,7 @@ import React, { useEffect, useMemo } from "react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts";
 import { DataTable, LevelTag, Bar100, fInt, fH, fPct, fMin, fKm, fNum, isNum, monthName } from "@/components/ui";
 import { PerfTag, UtilTag, OntimeTag, PerfFormula } from "@/components/perfUi";
-import { minToDate } from "@/lib/mbpperf";
+import { minToDate, campCode } from "@/lib/mbpperf";
 import { haversineKm, travelMinutes } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
 
@@ -45,8 +45,8 @@ export default function MbpPanel({ mbp, ctx, onClose }) {
       <aside className="relative w-full max-w-[860px] h-full overflow-y-auto bg-surface shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <header className="sticky top-0 bg-navy text-white px-5 py-3 flex items-start justify-between z-10">
           <div>
-            <div className="text-[18px] font-bold">🚚 {mbp.mbp_id}</div>
-            <div className="text-[12px] opacity-80">{mbp.nop || "—"} · PIC {mbp.pic_name || "—"} · {isNum(mbp.lat) ? `${mbp.lat.toFixed(4)}, ${mbp.lon.toFixed(4)}` : t("mbp.loc_unavailable")}</div>
+            <div className="text-[18px] font-bold">🚚 {ctx.names ? mbp.mbp_id : campCode(mbp.mbp_id)}</div>
+            <div className="text-[12px] opacity-80">{mbp.nop || "—"}{ctx.names ? ` · PIC ${mbp.pic_name || "—"}` : ""} · {isNum(mbp.lat) ? `${mbp.lat.toFixed(4)}, ${mbp.lon.toFixed(4)}` : t("mbp.loc_unavailable")}</div>
           </div>
           <button autoFocus onClick={onClose} className="text-white/80 hover:text-white text-[22px] leading-none px-2" aria-label={t("common.close")}>×</button>
         </header>
@@ -75,8 +75,8 @@ export default function MbpPanel({ mbp, ctx, onClose }) {
               <Stat k={t("perf.col.capture")} v={pct(p?.capture)} sub={t("mbpd.capture_sub", { n: fInt(p?.area_jobs) })} />
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-              <Stat k={t("perf.col.need_month")} v={fNum(p?.need_month, 1)} sub={t("mbpd.need_sub", { n: fInt(p?.need), s: fInt(p?.need_sites), t: fInt(p?.pln_sites) })} />
-              <Stat k={t("perf.col.resp")} v={pct(p?.resp)} sub={t("mbpd.resp_sub", { a: fInt(p?.area_pln_jobs) })} />
+              <Stat k={t("perf.col.need_month")} v={fNum(p?.need_month, 1)} sub={t("mbpd.need_sub2", { n: fInt(p?.need), t: fInt(p?.pln_sites) })} />
+              <Stat k={t("col.need_cov")} v={pct(p?.resp)} sub={t("mbpd.resp_sub2", { a: fInt(p?.need_served), n: fInt(p?.need) })} />
               <Stat k={t("perf.col.nobat")} v={fInt(p?.nobat)} sub={pct(p?.nobat_share)} />
               <Stat k={t("perf.col.plnoff")} v={fInt(p?.plnoff)} sub={t("mbpd.nonpln", { n: fInt(p?.non_pln) })} />
             </div>
