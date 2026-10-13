@@ -67,9 +67,10 @@ export const ActionLabel = ({ r, strong = false, onNavigate }) => {
   return a && a !== "No action" ? <span className={strong ? "font-semibold" : ""}>{tv("action", a)}</span> : <span className="text-mut">{tv("action", a) || "—"}</span>;
 };
 /** A3 — the only way a BBT value is rendered: status basis and number can never contradict */
-export const BbtCell = ({ r, showStatus = false }) => {
+export const BbtCell = ({ r, showStatus = false, statusFirst = false, noEv = false }) => {
   const d = bbtDisplay(r);
-  return <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5">{d.text ? <span className="text-slate">{t("bbt.no_battery_ticket")}</span> : fMin(d.value)}{showStatus && <StatusTag v={r.bbt_status} />}<EvTag v={d.evidence} /></span>;
+  const v = d.text ? <span className="text-slate">{t("bbt.no_battery_ticket")}</span> : <span className="tabular">{fMin(d.value)}</span>;
+  return <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5">{statusFirst && <StatusTag v={r.bbt_status} />}{v}{showStatus && !statusFirst && <StatusTag v={r.bbt_status} />}{!noEv && <EvTag v={d.evidence} />}</span>;
 };
 export const bbtCsv = (r) => { const d = bbtDisplay(r); return d.text ? d.text : `${isNum(d.value) ? Math.round(d.value) : ""} ${d.evidence || ""}`.trim(); };
 export const StatusTag = ({ v }) => { const s = STATUS[v] || STATUS.Unknown; return v ? <Pill {...s} title={t("status.tip")}><span aria-hidden>{s.i}</span>{tv("status", v)}</Pill> : <span className="text-mut">—</span>; };
@@ -90,7 +91,7 @@ export function Card({ title, sub, right, children, className = "" }) {
   return (
     <section className={`bg-card border border-line rounded-lg min-w-0 ${className}`}>
       {(title || right) && (
-        <header className="flex items-start justify-between gap-3 px-4 pt-3">
+        <header className="flex flex-wrap items-start justify-between gap-3 px-4 pt-3">
           <div><h3 className="text-[14px] font-semibold text-navy">{title}</h3>{sub && <p className="text-[12px] text-mut mt-0.5">{sub}</p>}</div>
           {right}
         </header>
@@ -362,3 +363,88 @@ export function siteColumns(cfg, mode = "compact", { showComputed = false } = {}
 
 /** v4.2 (FIX-15) — field with > 50 % of sites empty: shown wherever the field is used */
 export const LowCov = ({ field }) => <span title={t("lowcov.tip", { f: field || "" })} className="ml-1 text-[10px] px-1 py-[1px] rounded bg-warn/25 text-[#8a5a00] align-middle whitespace-nowrap">{t("lowcov.badge")}</span>;
+
+/* ===================================================================== vNext — shared building blocks */
+/** semantic colours (one meaning each): good / warning / critical / unknown / proposed. Scenario-change colours are separate (SCN). */
+export const SEM = { good: "#0ca30c", warn: "#eda100", crit: "#d03b3b", unk: "#A3ABB9", prop: "#4a3aa7", ink: "#141821" };
+/** scenario vs baseline: green = better, red = worse, purple = new unit / location, grey = unchanged (with text) or unknown (hollow) */
+export const SCN = { gain: "#0ca30c", lost: "#d03b3b", new: "#4a3aa7", same_ok: "#8A94A6", same_no: "#55627A", unk: "#D5DAE2" };
+
+/** ⓘ with a native tooltip — definitions stay out of the main text */
+export const InfoTip = ({ text, label }) => (
+  <span className="inline-flex items-center gap-0.5 cursor-help" title={text} aria-label={text}>{label}<span className="text-s1" aria-hidden>ⓘ</span></span>
+);
+
+/** one detail-panel surface for map selections (base camp / site): light surface, white body, navy title strip */
+export function Panel({ title, sub, onClose, children, className = "", empty }) {
+  return (
+    <aside className={`rounded-md border border-line bg-surface text-[12.5px] overflow-hidden ${className}`}>
+      {title ? <div className="flex items-start gap-2 px-3 py-2 border-b border-line bg-navy/[0.04]">
+        <div className="flex-1 min-w-0"><div className="font-semibold text-navy text-[14px] truncate">{title}</div>{sub && <div className="text-slate truncate">{sub}</div>}</div>
+        {onClose && <button onClick={onClose} className="text-slate text-[18px] leading-none" aria-label={t("ws.clear_sel")}>×</button>}</div> : null}
+      <div className="p-3 bg-white/70">{title ? children : <div className="text-mut">{empty}</div>}</div>
+    </aside>
+  );
+}
+
+/** progress toward a target: segments [{k,label,v,c,hollow?}] over a denominator; optional click per segment */
+export function Meter({ parts, total, onSeg, active = [], height = 12, showLegend = true }) {
+  const T = total || parts.reduce((a, p) => a + p.v, 0) || 1;
+  return (
+    <div>
+      <div className="flex w-full rounded overflow-hidden bg-line/60" style={{ height }} role="img" aria-label={parts.map((p) => `${p.label} ${fInt(p.v)}`).join(", ")}>
+        {parts.map((p) => p.v > 0 && <div key={p.k} title={`${p.label}: ${fInt(p.v)} (${fPct((100 * p.v) / T, 0)})`} onClick={onSeg ? () => onSeg(p.k) : undefined}
+          className={`border-r-2 border-white last:border-r-0 ${onSeg ? "cursor-pointer hover:opacity-80" : ""} ${active.length && !active.includes(p.k) ? "opacity-30" : ""}`}
+          style={{ width: `${(100 * p.v) / T}%`, background: p.hollow ? `repeating-linear-gradient(45deg, ${p.c}, ${p.c} 3px, #fff 3px, #fff 6px)` : p.c }} />)}
+      </div>
+      {showLegend && <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[11.5px] text-slate">
+        {parts.map((p) => { const on = !active.length || active.includes(p.k); const inner = <><span className="w-2.5 h-2.5 rounded-sm inline-block border border-navy/20" style={{ background: p.c }} />{p.label} <b className="tabular text-ink">{fInt(p.v)}</b></>;
+          return onSeg ? <button key={p.k} onClick={() => onSeg(p.k)} disabled={!p.v && !active.includes(p.k)} aria-pressed={!!active.length && active.includes(p.k)} className={`inline-flex items-center gap-1 rounded px-1 ${active.includes(p.k) ? "bg-navy/10 ring-1 ring-navy/40" : "hover:bg-surface"} ${on ? "" : "opacity-50"} disabled:cursor-default disabled:opacity-50`}>{inner}</button>
+            : <span key={p.k} className="inline-flex items-center gap-1">{inner}</span>; })}
+      </div>}
+    </div>
+  );
+}
+
+/** segmented control for mutually exclusive choices */
+export function Seg({ value, onChange, options, label, size = "sm" }) {
+  return (
+    <div className="flex rounded-md overflow-hidden border border-line shrink-0" role="group" aria-label={label}>
+      {options.map(([v, l, tip]) => <button key={String(v)} aria-pressed={value === v} onClick={() => onChange(v)} title={tip}
+        className={`${size === "sm" ? "px-2 py-0.5 text-[12px]" : "px-2.5 py-1.5 text-[12.5px]"} whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1 ${value === v ? "bg-navy text-white" : "bg-white text-slate hover:text-navy"}`}>{l}</button>)}
+    </div>
+  );
+}
+
+/** vNext — radius: 20 / 40 / 80 km presets + Custom (number input, applied on Enter / blur). The value is cfg.mbp.max_radius_km
+ *  (the preferred radius); it never changes the reach-before-BBT KPI (search limit = reach_cap_km). */
+export const RADIUS_PRESETS = [20, 40, 80];
+export function RadiusControl({ value, onChange, def }) {
+  const custom = !RADIUS_PRESETS.includes(value);
+  const [open, setOpen] = React.useState(false), [draft, setDraft] = React.useState(String(value));
+  React.useEffect(() => setDraft(String(value)), [value]);
+  const commit = () => { const v = Math.round(Number(draft)); if (Number.isFinite(v) && v >= 5 && v <= 250 && v !== value) onChange?.(v); else setDraft(String(value)); };
+  return (
+    <div className="flex items-center gap-1.5" role="group" aria-label={t("map.radius")}>
+      <span className="text-mut">{t("map.radius")}</span>
+      <div className="flex rounded-md overflow-hidden border border-line">
+        {RADIUS_PRESETS.map((r) => <button key={r} aria-pressed={value === r} onClick={() => { setOpen(false); onChange?.(r); }}
+          className={`px-2 py-0.5 text-[12px] tabular ${value === r ? "bg-navy text-white" : "bg-white text-slate hover:text-navy"}`}>{r} km</button>)}
+        <button aria-pressed={custom || open} onClick={() => setOpen(true)} className={`px-2 py-0.5 text-[12px] ${custom ? "bg-navy text-white" : "bg-white text-slate hover:text-navy"}`}>
+          {custom ? `${value} km` : t("map.radius_custom")}</button>
+      </div>
+      {open && <input type="number" min={5} max={250} step={5} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }} aria-label={t("map.radius_custom")} className="w-16 border border-line rounded px-1.5 py-0.5 text-[12px] tabular" />}
+      {def != null && value !== def && <button onClick={() => onChange?.(def)} className="text-s1 underline text-[11.5px]" title={t("map.radius_def_tip")}>{t("map.radius_def", { r: def })}</button>}
+    </div>
+  );
+}
+/** vNext — method / assumption text folded away from the main view (still one click away, never removed) */
+export function Method({ children, title, tone = "info", open = false }) {
+  return (
+    <details open={open} className="text-[12.5px]">
+      <summary className="cursor-pointer text-slate hover:text-navy select-none">{title || t("common.method")} <span className="text-s1">ⓘ</span></summary>
+      <div className="mt-1"><Note tone={tone}>{children}</Note></div>
+    </details>
+  );
+}

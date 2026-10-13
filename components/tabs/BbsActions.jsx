@@ -1,6 +1,6 @@
 "use client";
 import React, { useMemo, useState } from "react";
-import { Card, Kpi, Note, DataTable, Chips, ActionLabel, LevelTag, BbtCell, bbtCsv, StatusTag, Tag, EvidenceTable, AvailTriple, Bar100, Gloss, fInt, fMin, fH, fPct, isNum } from "@/components/ui";
+import { Card, Kpi, Note, Method, DataTable, Chips, ActionLabel, LevelTag, BbtCell, bbtCsv, StatusTag, EvTag, Tag, EvidenceTable, AvailTriple, Bar100, Gloss, fInt, fMin, fH, fPct, isNum } from "@/components/ui";
 import { STATUS_ORDER, ACTION_TYPES } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
@@ -11,6 +11,10 @@ import { SiteBriefBbs } from "@/components/SiteBrief";
 const LV = ["P1", "P2", "P3", "P4"];
 const PROB = ["Dead", "Critical", "Degraded"];
 
+// vNext — "Tindak Lanjut Lapangan / Field Actions": four concepts kept apart — BBS priority (P1–P4), battery condition (status),
+// evidence (BBT source) and the recommended next field action (rule engine, unchanged). "Batch n" was 1:1 with BBS-Pn, so the main
+// view shows the priority plus its suggested response window; the batch label stays in the CSV. No execution system is integrated,
+// so the worklist says "Recommended next action", not "work status".
 export default function BbsActions(props) {
   // v5.0 — the action list and the map are one workspace: chips / type tiles filter the records, the map shows exactly those
   const { scope: scopeAll, cfg, setPick, openDrill, period } = props;
@@ -30,23 +34,29 @@ export default function BbsActions(props) {
   const EXPAND = (r) => (
               <div className="space-y-2">
                 {r.battery.conflict && <Note tone="warn"><b>{t("bbs.conflict")}:</b> {te(r.battery.conflict, "conflict")}</Note>}
-                <div className="text-[12px] text-slate">{t("bbs.basis")}: <b className="text-ink">{te(r.battery.precedence, "prec")}</b> · {t("ev.rule")} {te(r.rule, "rule")} · {t(`batch.${r.bbs_priority_level}`)}{r.priority_floor ? ` · ${t("bbs.floor", { a: `BBS-${r.priority_floor}`, b: `BBS-${r.bbs_priority_level}` })}` : ""}</div>
+                <div className="text-[12px] text-slate">{t("bbs.basis")}: <b className="text-ink">{te(r.battery.precedence, "prec")}</b> · {t("ev.rule")} {te(r.rule, "rule")} · {t("fa.window")}: {t(`batch.${r.bbs_priority_level}.when`)}{r.priority_floor ? ` · ${t("bbs.floor", { a: `BBS-${r.priority_floor}`, b: `BBS-${r.bbs_priority_level}` })}` : ""}</div>
+                <div className="flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-slate">
+                  <span>{t("col.bbt_gap")}: <b className="text-ink">{r.bbt_gap_ratio == null ? "—" : fPct(100 * r.bbt_gap_ratio, 0)}</b></span>
+                  <span>{t("col.power_downtime")}: <b className="text-ink">{fH(r.ran_power_down_h)}</b></span>
+                  <span>{t("col.avail_triple")}: <AvailTriple a={r.avail_wc_pct} t={r.ran_target_pct} g={r.avail_delta_pp} compact /></span></div>
                 <EvidenceTable rows={r.evidence} action={r.recommended_action} />
                 <button className="text-[12px] text-s1 underline" onClick={() => props.setPick(r)}>{t("common.open_detail")}</button>
               </div>
             );
+  // worklist: 1 priority · 2 site · 3 condition · 4 evidence · 5 PLN exposure · 6 recommended next action · 7 reason
   const COLS = [
-              { key: "site_id", label: "col.site", render: (r) => <span className="inline-block max-w-[230px] truncate align-bottom" title={r.site_name}><span className="font-semibold text-navy">{r.site_id}</span> <span className="text-slate">{r.site_name}</span></span>, csv: (r) => r.site_id },
-              { key: "nop", label: "col.nop" },
-              { key: "bbs_priority_score", label: "col.bbs_priority", num: true, render: (r) => <span title={t("bbs.cutoffs", { p1: cfg.bbs_priority_levels.P1, p2: cfg.bbs_priority_levels.P2, p3: cfg.bbs_priority_levels.P3, s: r.bbs_priority_score?.toFixed(3) })}><LevelTag kind="BBS" v={r.bbs_priority_level} /></span>, csv: (r) => `BBS-${r.bbs_priority_level} ${r.bbs_priority_score?.toFixed(3)}` },
-              { key: "recommended_action", label: "col.action", wrap: true, render: (r) => <span className="font-medium"><ActionLabel r={r} />{r.mbp_standby_flag ? <> <Tag tone="warn">{t("bbs.standby")}</Tag></> : null}</span>, csv: (r) => r.recommended_action },
-              { key: "bbt_value_min", label: "col.bbt", num: true, sortVal: (r) => r.battery.display.value, render: (r) => <BbtCell r={r} showStatus />, csv: (r) => `${bbtCsv(r)} ${r.bbt_status}` },
-              { key: "bbt_gap_ratio", label: "col.bbt_gap", num: true, render: (r) => (r.bbt_gap_ratio == null ? <span className="text-mut">—</span> : <span title={t("bbs.gap_cell", { a: fMin(r.battery.display.value), d: fMin(r.bbt_design_min) })} className={r.bbt_gap_ratio < 0.5 ? "text-[#b42318] font-semibold" : ""}>{fPct(100 * r.bbt_gap_ratio, 0)}</span>), csv: (r) => (r.bbt_gap_ratio == null ? "" : (100 * r.bbt_gap_ratio).toFixed(0)) },
-              { key: "ran_power_down_h", label: "col.power_downtime", num: true, render: (r) => fH(r.ran_power_down_h), csv: (r) => r.ran_power_down_h?.toFixed(1) },
-              { key: "avail_delta_pp", label: "col.avail_triple", num: true, render: (r) => <AvailTriple a={r.avail_wc_pct} t={r.ran_target_pct} g={r.avail_delta_pp} compact />, csv: (r) => (isNum(r.avail_wc_pct) ? `${r.avail_wc_pct.toFixed(2)} / ${r.ran_target_pct.toFixed(2)} / ${r.avail_delta_pp.toFixed(2)}` : "") },
+              { key: "bbs_priority_score", label: "col.bbs_priority", num: true, render: (r) => <span title={t("bbs.cutoffs", { p1: cfg.bbs_priority_levels.P1, p2: cfg.bbs_priority_levels.P2, p3: cfg.bbs_priority_levels.P3, s: r.bbs_priority_score?.toFixed(3) })}><LevelTag kind="BBS" v={r.bbs_priority_level} /></span>, csv: (r) => (r.bbs_priority_level ? `BBS-${r.bbs_priority_level} ${r.bbs_priority_score?.toFixed(3)}` : "") },
+              { key: "site_id", label: "col.site", render: (r) => <span className="inline-block max-w-[210px] truncate align-bottom" title={`${r.site_name} · ${r.nop}`}><span className="font-semibold text-navy">{r.site_id}</span> <span className="text-slate">{r.site_name}</span></span>, csv: (r) => r.site_id },
+              { key: "bbt_status", label: "fa.col.condition", sortVal: (r) => STATUS_ORDER.indexOf(r.bbt_status), render: (r) => <BbtCell r={r} statusFirst noEv />, csv: (r) => `${r.bbt_status} ${bbtCsv(r)}` },
+              { key: "evidence", label: "fa.col.evidence", sortVal: (r) => r.battery?.display?.evidence || "UNAVAILABLE", render: (r) => <EvTag v={r.battery?.display?.evidence || "UNAVAILABLE"} />, csv: (r) => r.battery?.display?.evidence || "UNAVAILABLE" },
+              { key: "pln_total_h", label: "fa.col.pln", num: true, plain: true, sortVal: (r) => (r.pln_known ? r.pln_total_h : null), render: (r) => (r.pln_known ? <span className="tabular">{fInt(r.pln_freq)}× · {fH(r.pln_total_h)}</span> : <span className="text-mut">{t("common.na")}</span>), csv: (r) => (r.pln_known ? `${r.pln_freq} / ${r.pln_total_h?.toFixed(1)} h` : "") },
+              { key: "recommended_action", label: "fa.col.action", wrap: true, render: (r) => <span className="font-medium"><ActionLabel r={r} />{r.mbp_standby_flag ? <> <Tag tone="warn">{t("bbs.standby")}</Tag></> : null}</span>, csv: (r) => r.recommended_action },
+              { key: "reason", label: "fa.col.reason", tdClass: "whitespace-normal", render: (r) => <span className="block line-clamp-2 min-w-[180px] max-w-[320px] text-[12px] text-slate">{te(r.rule, "rule") || "—"}</span>, csv: (r) => r.reason },
             ];
   const XCSV = [
-              { key: "site_name", label: "Site name" }, { key: "site_class", label: "Class" }, { key: "rule", label: "Rule" }, { key: "action_batch", label: "Batch" },
+              { key: "site_name", label: "Site name" }, { key: "nop", label: "NOP" }, { key: "site_class", label: "Class" }, { key: "rule", label: "Rule" }, { key: "action_batch", label: "Batch" },
+              { key: "bbt_gap_ratio", label: "BBT vs design (%)", csv: (r) => (r.bbt_gap_ratio == null ? "" : (100 * r.bbt_gap_ratio).toFixed(0)) }, { key: "ran_power_down_h", label: "Power downtime (h)", csv: (r) => r.ran_power_down_h?.toFixed(1) ?? "" },
+              { key: "avail_wc_pct", label: "Availability / target / gap", csv: (r) => (isNum(r.avail_wc_pct) ? `${r.avail_wc_pct.toFixed(2)} / ${r.ran_target_pct.toFixed(2)} / ${r.avail_delta_pp.toFixed(2)}` : "") },
               { key: "precedence", label: "Status basis", csv: (r) => r.battery.precedence }, { key: "conflict", label: "Evidence conflict", csv: (r) => r.battery.conflict || "" },
               { key: "reason", label: "Why" }, { key: "pln_freq", label: "PLN outages", csv: (r) => (r.pln_known ? r.pln_freq : "") }, { key: "dependency_children", label: "Dependency (PROXY)" },
               { key: "eta_min", label: "MBP ETA (min)", csv: (r) => (isNum(r.eta_min) ? Math.round(r.eta_min) : "") }, { key: "can_arrive_before_bbt", label: "MBP arrives before BBT" }, { key: "coverage_gap", label: "coverage_gap", csv: (r) => String(coverageGap(r)) },
@@ -71,40 +81,51 @@ export default function BbsActions(props) {
 
   return (
     <div className="space-y-4">
-      <Note>
+      <Method title={t("fa.method")}>
         <b>{t("bbs.note.criteria")}<Gloss k="bbt_design" /></b> {t("bbs.note.criteria_body", { d: b.design_minutes, ok: P(b.ok_pct), dg: P(b.degraded_pct), dead: b.dead_max_minutes })}
         {" "}<b>{t("bbs.note.precedence")}</b> {t("bbs.note.precedence_body")}
         {" "}<b>{t("bbs.note.priority")}</b> {t("bbs.note.priority_body", { f: cfg.severity_floor.measured_dead_critical })}
-      </Note>
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3">
-        <Kpi scope="filtered" fixed={fx} label={t("bbs.kpi.need")} value={fInt(rows.length)} sub={t("common.of_in_scope", { n: fInt(scope.length) })} />
-        {LV.map((l, i) => <Kpi key={l} scope="filtered" fixed={fx} onClick={() => openDrill(`bbs_${l}`)} label={t("bbs.kpi.batch", { p: `BBS-${l}`, n: i + 1 })} value={fInt(c((s) => s.bbs_priority_level === l))} sub={t(`batch.${l}.when`)} tone={["crit", "warn", "navy", "slate"][i]} />)}
-        <Kpi scope="filtered" fixed={fx} label={t("bbs.kpi.gap")} value={gap.med == null ? "—" : fPct(100 * gap.med, 0)} sub={t("bbs.kpi.gap_sub", { n: fInt(gap.n), m: fInt(gap.lt50) })} tone="warn" help={t("bbs.kpi.gap_help")} />
-        <Kpi scope="filtered" fixed={fx} label={t("bbs.kpi.inspect")} value={fInt(c((s) => s.rule?.startsWith("R2")))} sub={t("bbs.kpi.inspect_sub", { n: fInt(c((s) => s.rule?.startsWith("R2b"))) })} tone="warn" help={t("gloss.derived_unverified")} />
-      </div>
-
-      <Card title={t("atype.title")} sub={t("atype.sub")}>
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-          {ACTION_TYPES.filter((k) => k !== "NONE").map((k) => (
-            <button key={k} onClick={() => pickType(k)} aria-pressed={at.length === 1 && at[0] === k}
-              className={`text-left border rounded-md px-3 py-2 bg-white hover:border-slate ${at.length === 1 && at[0] === k ? "border-navy ring-1 ring-navy/30" : "border-line"}`}>
-              <div className="flex items-center gap-1.5 text-[11.5px] uppercase tracking-wide text-slate"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: { REPLACE: "#b42318", UPGRADE: "#eb6834", SETTING: "#6b4bd8", TEST: "#2a78d6", DATA: "#1F2A44", MONITOR: "#9DB7DE" }[k] }} />{t(`atype.${k}`)}</div>
-              <div className="text-[20px] font-bold text-ink tabular">{fInt(typeCount[k])}</div>
-              <div className="text-[11px] text-mut leading-snug">{t(`atype.${k}_sub`)}</div>
-            </button>))}
+        {" "}<b>{t("fa.safety")}</b> {t("fa.safety_body")}
+      </Method>
+      {/* vNext — one compact hero: BBS priority (P1–P4 + suggested window) and the six field actions; both filter map + worklist */}
+      <section className="bg-white border border-line rounded-lg px-4 py-3" aria-label={t("atype.title")}>
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-2">
+          <h2 className="text-[15px] font-semibold text-navy">{t("atype.title")}</h2>
+          <span className="text-[12.5px] text-slate">{t("fa.need", { n: fInt(rows.length), N: fInt(scope.length) })}</span>
+          {(lv.length || st.length || ev.length || ac.length || at.length) ? <button onClick={() => { setLv([]); setSt([]); setEv([]); setAc([]); setAt([]); }} className="text-s1 underline text-[12px]">{t("cond.reset")}</button> : null}
+          {fx && <span className="text-[10.5px] uppercase tracking-wide text-[#8a5a00] bg-warn/15 border border-warn/50 rounded px-1" title={t("per.fixed_tip")}>{t("per.full_badge")}</span>}
         </div>
-        {at.length > 0 && <button onClick={() => setAt([])} className="mt-2 text-s1 underline text-[12px]">{t("atype.clear")}</button>}
-      </Card>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)]">
+          <div>
+            <div className="text-[11px] uppercase tracking-wide font-semibold text-slate mb-1">{t("col.bbs_priority")}</div>
+            <div className="grid grid-cols-4 gap-1.5 mb-2">{LV.map((l) => { const on = lv.includes(l); return (
+              <button key={l} onClick={() => setLv(on ? lv.filter((x) => x !== l) : [...lv, l])} aria-pressed={on} title={t("fa.window_sub", { w: t(`batch.${l}.when`) })}
+                className={`text-left rounded-md border px-2 py-1.5 ${on ? "border-navy ring-1 ring-navy/40" : lv.length ? "border-line opacity-60" : "border-line hover:border-slate"}`}>
+                <LevelTag kind="BBS" v={l} /><div className="text-[18px] font-bold tabular text-ink leading-tight mt-0.5">{fInt(all.filter((s) => s.bbs_priority_level === l).length)}</div>
+                <div className="text-[10.5px] text-slate leading-tight">{t(`batch.${l}.when`)}</div></button>); })}</div>
+          </div>
+          <div className="xl:border-l xl:border-line xl:pl-5">
+            <div className="text-[11px] uppercase tracking-wide font-semibold text-slate mb-1">{t("fa.col.action")}</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
+              {ACTION_TYPES.filter((k) => k !== "NONE").map((k) => { const on = at.length === 1 && at[0] === k; return (
+                <button key={k} onClick={() => pickType(k)} aria-pressed={on} title={t(`atype.${k}_sub`)}
+                  className={`flex items-center gap-2 text-left border rounded-md px-2 py-1.5 bg-white ${on ? "border-navy ring-1 ring-navy/40" : at.length ? "border-line opacity-60" : "border-line hover:border-slate"}`}>
+                  <span className="w-2.5 h-2.5 rounded-sm inline-block shrink-0" style={{ background: { REPLACE: "#b42318", UPGRADE: "#eb6834", SETTING: "#6b4bd8", TEST: "#2a78d6", DATA: "#1F2A44", MONITOR: "#9DB7DE" }[k] }} />
+                  <span className="flex-1 min-w-0 text-[12px] text-ink leading-tight">{t(`atype.${k}`)}</span><b className="tabular text-[14px]">{fInt(typeCount[k])}</b></button>); })}
+            </div>
+            <div className="text-[11px] text-mut mt-1">{t("fa.types_note")}</div>
+          </div>
+        </div>
+      </section>
       <div className="flex flex-wrap gap-4 bg-white border border-line rounded-md px-3 py-2">
-        <Chips label={t("col.bbs_priority")} options={LV} value={lv} onChange={setLv} fmt={(o) => `BBS-${o}`} />
-        <Chips label={t("bbs.f.status")} options={[...new Set([...PROB, ...st])]} value={st} onChange={setSt} fmt={(o) => tv("status", o)} />
-        <Chips label={t("bbs.f.basis")} options={[...new Set([...sources, ...ev])]} value={ev} onChange={setEv} />
-        <Chips label={t("atype.chip")} options={ACTION_TYPES.filter((k) => k !== "NONE")} value={at} onChange={setAt} fmt={(o) => t(`atype.${o}`)} />
-        <Chips label={t("col.action")} options={actions} value={ac} onChange={setAc} fmt={(o) => tv("action", o)} />
+        <Chips label={t("fa.col.condition")} options={[...new Set([...PROB, ...st])]} value={st} onChange={setSt} fmt={(o) => tv("status", o)} />
+        <Chips label={t("fa.col.evidence")} options={[...new Set([...sources, ...ev])]} value={ev} onChange={setEv} />
       </div>
+      <details className="-mt-2"><summary className="cursor-pointer text-[12px] text-slate">{t("fa.more_filters")}{ac.length ? ` (${ac.length})` : ""}</summary>
+        <div className="mt-1 bg-white border border-line rounded-md px-3 py-2"><Chips label={t("col.action")} options={actions} value={ac} onChange={setAc} fmt={(o) => tv("action", o)} /></div></details>
       <div id="bbs-action-list" className="scroll-mt-28">{!rows.length ? <Note>{t("bbs.list.none")}</Note> : (
         <Workspace ctx={props} rows={rows} modes={["batch", "actiontype", "bbsstatus", "bbtgap"]} defaultMode="batch" showMbpLayers={false}
-          title={t("hero.bbs.title")} sub={t("hero.bbs.sub2")} tableTitle={t("bbs.list.title")} tableSub={t("bbs.list.sub2")} filename="pba_bbs_action_list.csv" initialSort={{ key: "bbs_priority_score", dir: -1 }}
+          title={t("hero.bbs.title")} sub={t("hero.bbs.sub2")} tableTitle={t("fa.list.title", { n: fInt(rows.length) })} tableSub={t("fa.list.sub")} filename="pba_bbs_action_list.csv" initialSort={{ key: "bbs_priority_score", dir: -1 }}
           detail={(s) => <SiteBriefBbs s={s} ctx={props} />} expand={EXPAND} columns={COLS} extraCsv={XCSV} />)}</div>
       <details><summary className="cursor-pointer text-[13px] font-semibold text-navy py-1">{t("bbs.dist.title")}</summary>
       <Card title={t("bbs.dist.title")} sub={t("bbs.dist.sub")}>

@@ -60,7 +60,7 @@ export default function SiteDrawer({ site, cfg, onClose }) {
           {s.offair && <Note tone="warn">{te(s.offair, "offair")}. {t("drawer.offair_note")}</Note>}
           <Box title={t("drawer.action")}>
             <div className="text-[14px]"><ActionLabel r={s} strong onNavigate={onClose} />{s.mbp_standby_flag ? <> <Tag tone="warn">{t("bbs.standby")}</Tag></> : null}</div>
-            {s.bbs_priority_level && <div className="text-[12px] text-slate mt-0.5">{t(`batch.${s.bbs_priority_level}`)} · {t("ev.rule")} {te(s.rule, "rule")}{s.priority_floor ? ` · ${t("bbs.floor", { a: `BBS-${s.priority_floor}`, b: `BBS-${s.bbs_priority_level}` })}` : ""}</div>}
+            {s.bbs_priority_level && <div className="text-[12px] text-slate mt-0.5">{t("fa.window_sub", { w: t(`batch.${s.bbs_priority_level}.when`) })} · {t("ev.rule")} {te(s.rule, "rule")}{s.priority_floor ? ` · ${t("bbs.floor", { a: `BBS-${s.priority_floor}`, b: `BBS-${s.bbs_priority_level}` })}` : ""}</div>}
             {showCoverageGap(s) && <div className="mt-2"><Note tone="warn">{t("gap.drawer", { eta: fMin(s.dist_eta_min), bbt: fMin(s.bbt_effective_min), mbp: s.dist_mbp || "—", r: cfg?.mbp?.max_radius_km })}</Note></div>}
             {A.conflict && <div className="mt-2"><Note tone="warn"><b>{t("bbs.conflict")}:</b> {te(A.conflict, "conflict")}</Note></div>}
             <div className="mt-2"><EvidenceTable rows={s.evidence} action={s.evidence?.length ? s.recommended_action : null} /></div>

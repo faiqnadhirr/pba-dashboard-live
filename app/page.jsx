@@ -38,6 +38,7 @@ const ConfigTab = lazy(() => import("@/components/tabs/ConfigTab"));
 // Two-level navigation. Level 1 = group, level 2 = sub-tab. The active view lives in the URL (?view=group.sub) so it can be
 // shared / bookmarked and the browser Back button works.
 // v5.0 — MBP: Fleet Performance · Coverage & Site Explorer · Resource Planning; BBS: Battery Risk · Recommended Actions.
+// vNext — BBS pages renamed: Kondisi Baterai / Battery Condition · Tindak Lanjut Lapangan / Field Actions (same view keys, links unchanged).
 // Tabs in SECONDARY are advanced views shown after a divider in the sub-navigation (kept, not competing with the main flow).
 const GROUPS = [
   ["overview", [["health", "overview.health"], ["acc", "overview.accountability"], ["impact", "overview.impact"], ["trend", "overview.trend"]]],
@@ -204,6 +205,7 @@ export default function Page() {
   ctx.cfgEdited = cfgEdited;
   const scopeA4 = scope.some((s) => coverage[s.area] === "PARTIAL");
   const partialAreas = Object.entries(coverage).filter(([, v]) => v === "PARTIAL").map(([a]) => a);
+  const fullAreas = Object.entries(coverage).filter(([, v]) => v === "FULL").map(([a]) => a);
   // v4.2 (FIX-14) — freshness badge on every page: period of the data + last refresh; orange when older than Config › freshness
   const maxAge = cfg.freshness?.max_age_days ?? 45;
   const ageDays = Math.round((Date.now() - Date.parse((snap.period_end || "2026-06-30") + "T23:59:00+07:00")) / 86400000);
@@ -212,9 +214,10 @@ export default function Page() {
   const activeGroup = groupOf(tab);
   const groups = GROUPS.filter(([g]) => g !== HIDDEN_GROUP || full || activeGroup === HIDDEN_GROUP);
   const filtered = area !== "all" || clu || nop !== "All NOPs" || classes.length > 0 || inactive || offair || gen || per !== "h1";
-  const scopeChip = [t("filter.scope_sites", { n: fInt(scope.length) }), area === "all" ? t("filter.all_areas") : area, nop === "All NOPs" ? t("filter.all_nops") : nop, clu || null, classes.length ? classes.join(", ") : null].filter(Boolean).join(" · ");
+  const fullOnly = area === "all" && !partial && partialAreas.length > 0;
+  const scopeChip = [t("filter.scope_sites", { n: fInt(scope.length) }), area === "all" ? (fullOnly ? t("scope.full_chip", { f: fullAreas.join(", ") }) : t("filter.all_areas")) : area, nop === "All NOPs" ? t("filter.all_nops") : nop, clu || null, classes.length ? classes.join(", ") : null].filter(Boolean).join(" · ");
   return (
-    <NavCtx.Provider value={{ navigate, hrefFor, state: cur }}>
+    <NavCtx.Provider value={{ navigate, hrefFor, state: cur, radiusDefault: data.meta.config.mbp.max_radius_km }}>
     <div className="min-h-screen">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 bg-white p-2 z-[2000]">{t("app.skip")}</a>
       <header className="sticky top-0 z-[500] shadow">
@@ -229,8 +232,8 @@ export default function Page() {
                   className={`px-3 text-[13px] font-semibold border-b-[3px] whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn ${activeGroup === g ? "border-warn text-white" : "border-transparent text-white/70 hover:text-white"}`}>{t(`nav.${g}`)}</button>
               ))}
             </nav>
-            <div className="ml-auto flex items-center gap-3 text-[11.5px] text-white/80 shrink-0">
-              <span className={`px-2 py-[2px] rounded text-[11.5px] whitespace-nowrap ${ageDays > maxAge ? "bg-[#eb6834] text-white" : "bg-white/15 text-white"}`} title={t("header.fresh_tip", { n: fInt(ageDays), m: maxAge })}>
+            <div className="ml-auto flex items-center gap-3 text-[11.5px] text-white/80 min-w-0">
+              <span className={`px-2 py-[2px] rounded text-[11.5px] whitespace-nowrap truncate max-w-[210px] sm:max-w-none ${ageDays > maxAge ? "bg-[#eb6834] text-white" : "bg-white/15 text-white"}`} title={t("header.fresh_tip", { n: fInt(ageDays), m: maxAge })}>
                 {t("header.fresh", { a: fmtD(snap.period_start), b: fmtD(snap.period_end), r: String(snap.refreshed_at || data.meta.built_at).replace(/ \d\d:\d\d.*$/, "") })}{ageDays > maxAge ? " ⚠" : ""}</span>
               <div className="flex rounded-md overflow-hidden border border-white/40" role="group" aria-label={t("header.language")}>
                 {["en", "id"].map((l) => (
@@ -248,7 +251,7 @@ export default function Page() {
           <nav className="max-w-[1560px] mx-auto px-3 flex overflow-x-auto" aria-label={t(`nav.${activeGroup}`)}>
             {visibleTabs(activeGroup).map(([k, v], i, L) => (
               <React.Fragment key={k}>
-                {SECONDARY.has(k) && !SECONDARY.has(L[i - 1]?.[0]) && <span className="self-center mx-2 h-4 border-l border-white/30" aria-hidden />}
+                {SECONDARY.has(k) && !SECONDARY.has(L[i - 1]?.[0]) && <span className="self-center ml-3 mr-1 pl-3 border-l border-white/30 text-[10.5px] uppercase tracking-wide text-white/45 whitespace-nowrap">{t("nav.supporting")}</span>}
                 <button onClick={() => setTab(k)} aria-current={tab === k ? "page" : undefined} title={SECONDARY.has(k) ? t("nav.secondary_tip") : undefined}
                   className={`px-3 py-1.5 whitespace-nowrap border-b-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn ${SECONDARY.has(k) ? "text-[11.5px]" : "text-[13px] font-semibold"} ${tab === k ? "border-warn text-white" : SECONDARY.has(k) ? "border-transparent text-white/55 hover:text-white" : "border-transparent text-white/80 hover:text-white"}`}>{t(`nav.${v}`)}</button>
               </React.Fragment>
@@ -287,7 +290,8 @@ export default function Page() {
               </div>
             </details>
             <div className="ml-auto flex items-center gap-2 min-w-0">
-              <span className="px-2 py-[3px] rounded-full bg-surface border border-line text-[12px] text-ink tabular truncate max-w-[330px]" title={`${scopeChip} — ${t("filter.scope_tip", { r: cfg.mbp.max_radius_km })}`}>{t("filter.scope")}: <b>{scopeChip}</b></span>
+              <span className="px-2 py-[3px] rounded-full bg-surface border border-line text-[12px] text-ink tabular truncate max-w-[440px]" title={`${scopeChip} — ${t("filter.scope_tip", { r: cfg.mbp.max_radius_km })}${fullOnly ? `\n${t("scope.full_only", { f: fullAreas.join(", "), p: partialAreas.join(", ") })}` : ""}`}>{t("filter.scope")}: <b>{scopeChip}</b></span>
+              
               <button onClick={resetFilters} disabled={!filtered} className="px-2 py-[3px] rounded-md border border-line text-[12px] text-slate bg-white hover:border-slate disabled:opacity-40 whitespace-nowrap shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1">{t("filter.reset")}</button>
             </div>
           </div>
@@ -299,7 +303,6 @@ export default function Page() {
       <main id="main" className="max-w-[1560px] mx-auto p-5">
         <>
         {scopeA4 && NEEDS_JOBS.has(tab) && <div role="status" className="mb-3 text-[12.5px] border border-warn/60 bg-warn/10 rounded-md px-3 py-1.5">{t("a4.note")}</div>}
-        {area === "all" && !partial && partialAreas.length > 0 && <div role="status" className="mb-3 text-[12.5px] text-slate">{t("scope.full_only", { f: Object.entries(coverage).filter(([, v]) => v === "FULL").map(([a]) => a).join(", "), p: partialAreas.join(", ") })}</div>}
         {notice && <div role="status" className="mb-3 text-[12.5px] border border-warn/60 bg-warn/10 rounded-md px-3 py-1.5 flex items-center gap-2">{t("nav.unknown_view", { v: notice, to: t(`nav.${VIEW_OF[tab]}`) })}<button onClick={() => setNotice(null)} className="ml-auto text-slate" aria-label={t("common.close")}>×</button></div>}
         {!isFull(P) && FIXED_TABS.has(tab) && <div role="status" className="mb-3 text-[12.5px] border border-s1/30 bg-s1/5 rounded-md px-3 py-1.5">{t("per.tab_fixed", { p: periodLabel(P) })}</div>}
         {empty ? <Empty>{t("empty.no_sites")}</Empty> : <div key={lang}>

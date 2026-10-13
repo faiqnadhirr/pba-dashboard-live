@@ -3,7 +3,7 @@
 // v4.0 — the replay is anchored on the ACTUAL jobs (baseline = actual) and the tab is gated by the calibration check (±5 pp).
 import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { Card, Kpi, Note, DataTable, Select, EvTag, fInt, fPct, fNum, isNum } from "@/components/ui";
+import { Card, Kpi, Note, Method, DataTable, Select, EvTag, fInt, fPct, fNum, isNum } from "@/components/ui";
 import { backtestMove, PERF_KEYS } from "@/lib/mbpperf";
 import { kecamatanAnchors } from "@/lib/logic";
 import { perfLegend, PerfTag, PERF_COLOR } from "@/components/perfUi";
@@ -12,10 +12,11 @@ import { t } from "@/lib/i18n";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 const pct = (v, d = 0) => (isNum(v) ? fPct(100 * v, d) : "—");
 
-export default function Backtest({ model, data, cfg, nop: gNop, allNops, perf, tickets, sel, setPick, setRadius, openMbp, K }) {
+// vNext — relocation analysis inside Resource Planning: the NOP is the planning NOP (baseline strip); a candidate move can be opened
+// in the scenario sandbox (same engine as the manual scenario) — it is a model suggestion, never executed or approved here.
+export default function Backtest({ model, data, cfg, nop, setNop, allNops, perf, tickets, sel, setPick, setRadius, openMbp, K, openInSandbox, names }) {
   const preset = sel ? data.mbps.find((m) => m.mbp_id === sel) : null;
-  const [nop, setNop] = useState(preset?.nop || (gNop !== "All NOPs" ? gNop : "NOP BENGKULU"));
-  useEffect(() => { if (gNop !== "All NOPs" && !preset) setNop(gNop); }, [gNop]); // eslint-disable-line
+  useEffect(() => { if (preset && preset.nop && preset.nop !== nop) setNop(preset.nop); }, [preset?.mbp_id]); // eslint-disable-line
   const sitesN = useMemo(() => model.filter((s) => s.nop === nop && s.site_active === 1 && !s.offair), [model, nop]);
   const mbpsN = useMemo(() => data.mbps.filter((m) => m.nop === nop && isNum(m.lat)), [data.mbps, nop]);
   const ticketsN = useMemo(() => { const ids = new Set(sitesN.map((s) => s.site_id)); return tickets.filter((k) => ids.has(k.site)); }, [tickets, sitesN]);
@@ -36,7 +37,7 @@ export default function Backtest({ model, data, cfg, nop: gNop, allNops, perf, t
   const B = bt?.base.total;
   // map: scenario keys per base camp; the moved camp drawn at its new place (★), old place as a ghost
   const keyMap = S ? S.per : bt?.base.per;
-  const mbpKeyOf = useMemo(() => (m) => (m.is_new ? "high" : keyMap?.get(m.mbp_id)?.key || "none"), [keyMap]);
+  const mbpKeyOf = useMemo(() => (m) => (m.is_new ? "new" : keyMap?.get(m.mbp_id)?.key || "none"), [keyMap]);
   const shownMbps = useMemo(() => mbpsN.filter((m) => !S || m.mbp_id !== camp), [mbpsN, S, camp]);
   const extra = S ? [{ mbp_id: camp, lat: S.lat, lon: S.lon, nop, is_new: true, new_label: t("bt.map.new") }] : [];
   const [batch, setBatch] = useState(null);
@@ -51,18 +52,19 @@ export default function Backtest({ model, data, cfg, nop: gNop, allNops, perf, t
   const calib = K?.byNop.get(nop)?.calib || null;
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2"><CalibBadge calib={calib} hasJobs={ticketsN.length > 0} /></div>
       {calib && !calib.ok && <Note tone="crit">{t("bt.gated", { d: calib.diff_pp.toFixed(1) })}</Note>}
-      <Note tone="warn"><b>{t("bt.note.title")}</b> {t("bt.note.body", { r: cfg.mbp.max_radius_km, cap: cfg.mbp_perf?.dispatch_lag_cap_min ?? 240 })}</Note>
+      <Method tone="warn" title={t("bt.note.title")}>{t("bt.note.body", { r: cfg.mbp.max_radius_km, cap: cfg.mbp_perf?.dispatch_lag_cap_min ?? 240 })}</Method>
       <div className="flex flex-wrap items-end gap-4">
-        <div className="w-60"><Select label={t("filter.nop")} value={nop} onChange={setNop} options={allNops} /></div>
         <div className="w-[420px] max-w-full"><Select label={t("bt.camp")} value={camp || ""} onChange={setCamp} options={campOpts} /></div>
         <div className="w-72"><Select label={t("bt.dest")} value={dest} onChange={setDest} options={[{ value: "auto", label: t("bt.dest_auto") }, ...anchors.map((a) => ({ value: a.site.site_id, label: `${a.kecamatan} · ${a.city || ""} (${a.site.site_id})` }))]} /></div>
         <div><div className="text-[11.5px] text-slate mb-1">{t("bt.scope")}</div>
           <div className="flex rounded-md overflow-hidden border border-line" role="group">{[[true, t("bt.scope.cluster", { c: bt?.homeCluster || "—" })], [false, t("bt.scope.nop")]].map(([v, l]) =>
             <button key={String(v)} aria-pressed={same === v} onClick={() => setSame(v)} className={`px-2.5 py-1.5 text-[12.5px] whitespace-nowrap ${same === v ? "bg-navy text-white" : "bg-white text-slate hover:text-navy"}`}>{l}</button>)}</div></div>
         {camp && <button onClick={() => openMbp(data.mbps.find((m) => m.mbp_id === camp))} className="px-3 py-1.5 rounded border border-navy text-navy text-[12.5px]">{t("bt.open_camp")}</button>}
+        {S && openInSandbox && <button onClick={() => openInSandbox({ nop, mbp_id: camp, lat: S.lat, lon: S.lon, label: S.kecamatan })} title={t("bt.to_sandbox_tip")}
+          className="px-3 py-1.5 rounded bg-s7 text-white text-[12.5px]">{t("bt.to_sandbox", { k: S.kecamatan })}</button>}
       </div>
+      {!gated && res.length > 0 && Math.max(...res.map((r) => r.ontime_gain)) <= 0 && <Note tone="info">{t("bt.no_gain")}</Note>}
       {bt && B && <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Kpi fixed label={t("bt.kpi.jobs")} value={fInt(B.tickets)} sub={t("bt.kpi.jobs_sub", { i: "0", n: fInt(mbpsN.length) })} />
         <Kpi fixed label={t("bt.kpi.base")} value={pct(B.ontime_rate)} sub={t("bt.kpi.base_sub", { a: fInt(B.ontime), u: fInt(B.unserved) })} />

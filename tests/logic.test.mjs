@@ -889,3 +889,56 @@ test("WS-8 planning baseline = KPI layer: with no change the scenario reach equa
     assert.equal(r.p12ok, act.filter((s) => reachOk(s) && ["P1", "P2"].includes(s.mbp_priority_level)).length, nop);
   }
 });
+
+// ---------------------------------------------------------------- vNext
+test("VN-1 KPI layer: reach before BBT is independent of the preferred radius (20 / 40 / 80 / 120 km)", async () => {
+  const { computeKpis, kpiFor, reachSplit } = await import("../lib/kpi.js");
+  const ev = (await import("../lib/mbpperf.js")).groupEvents(fromColumnar(JSON.parse(fs.readFileSync("public/data/pln_ev.json", "utf8"))));
+  const tk = fromColumnar(JSON.parse(fs.readFileSync("public/data/tickets.json", "utf8")));
+  const run = (r) => { const c = JSON.parse(JSON.stringify(cfg)); c.mbp.max_radius_km = r;
+    const A = buildModelByArea(sites, mbps, c).filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected);
+    return kpiFor(computeKpis(A, mbps, tk, [], c, { evBySite: ev }), "All NOPs"); };
+  const base = run(cfg.mbp.max_radius_km);
+  for (const r of [20, 40, 80]) { const k = run(r); assert.equal(k.p12_reach, base.p12_reach, `radius ${r}`); assert.equal(k.p12_eval, base.p12_eval); }
+  const sp = reachSplit(base);
+  assert.equal(sp.ok + sp.no + sp.unv, base.p12_eval, "hero bar segments add up to the denominator");
+  assert.equal(reachSplit(null).total, 0);
+});
+
+test("VN-2 evidence safety: an ESTIMATED / unverified BBT never leads to a battery replacement by itself", () => {
+  const A = M.filter((s) => s.site_active === 1);
+  const bad = A.filter((s) => ["ESTIMATED", "DERIVED-UNVERIFIED", "UNAVAILABLE"].includes(s.battery?.source) && s.action_type === "REPLACE");
+  assert.equal(bad.length, 0, bad.slice(0, 5).map((s) => s.site_id).join(","));
+  // missing battery data is never turned into a number
+  assert.ok(A.filter((s) => s.battery?.source === "UNAVAILABLE").every((s) => s.battery.display.value == null));
+  // action batch is 1:1 with BBS priority (so the main view shows the priority, not "Batch n")
+  for (const s of A) if (s.bbs_priority_level) assert.ok(String(s.action_batch).startsWith(`Batch ${s.bbs_priority_level.slice(1)}`), s.site_id);
+});
+
+test("VN-3 additional-unit sizing states why it stopped (target met / limit / no more benefit)", async () => {
+  const { sizingStop } = await import("../lib/logic.js");
+  const inN = M.filter((s) => s.nop === "NOP JAMBI");
+  const p15 = placementPlan(inN, mbps, cfg, { target: 0.9, maxNew: 15 });
+  assert.equal(sizingStop(p15, 15), p15.needed == null ? (p15.steps.length - 1 >= 15 ? "limit" : "flat") : "target");
+  const p0 = placementPlan(inN, mbps, cfg, { target: 0.05, maxNew: 15 });
+  assert.equal(sizingStop(p0, 15), "now");
+  assert.equal(sizingStop({ targets: 0 }, 15), "none");
+  assert.equal(sizingStop({ targets: 10, needed: null, steps: [0, 1, 2] }, 15), "flat");
+  assert.equal(sizingStop({ targets: 10, needed: null, steps: new Array(16) }, 15), "limit");
+});
+
+test("VN-4 navigation + labels: BBS pages renamed in both languages, legacy links still resolve, scenario palette has one purple", async () => {
+  const en = JSON.parse(fs.readFileSync("i18n/en.json", "utf8")), id = JSON.parse(fs.readFileSync("i18n/id.json", "utf8"));
+  assert.equal(en["nav.bbs.risk"], "Battery Condition"); assert.equal(id["nav.bbs.risk"], "Kondisi Baterai");
+  assert.equal(en["nav.bbs.actions"], "Field Actions"); assert.equal(id["nav.bbs.actions"], "Tindak Lanjut Lapangan");
+  const page = fs.readFileSync("app/page.jsx", "utf8");
+  for (const v of ["mbp.overview", "mbp.sitelist", "mbp.placement", "mbp.backtest", "mbp.simulation"]) assert.ok(page.includes(`"${v}"`), v);
+  assert.ok(page.includes('["risk", "bbs.risk"]') && page.includes('["bbs", "bbs.actions"]'), "view keys unchanged (deep links)");
+  const ui = fs.readFileSync("components/ui.jsx", "utf8"), scn = ui.match(/export const SCN = \{([^}]*)\}/)[1];
+  const cols = [...scn.matchAll(/#[0-9a-fA-F]{6}/g)].map((m) => m[0].toLowerCase());
+  assert.equal(new Set(cols).size, cols.length, "scenario colours are distinct");
+  const perf = fs.readFileSync("components/perfUi.jsx", "utf8");
+  assert.ok(!perf.includes("#6b4bd8"), "fleet 'busy' no longer purple (purple = proposed unit in planning)");
+  // every new vNext key exists in both languages
+  for (const k of Object.keys(en).filter((k) => /^(snap|cond|fa|plan\.q|plan\.base|place\.seq|place\.stop|sim\.sum)\./.test(k))) assert.ok(id[k], k);
+});

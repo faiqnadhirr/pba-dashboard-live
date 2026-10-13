@@ -86,7 +86,7 @@ export default function Performance({ mbpsScope, perf, cfg, openMbp, data, K, no
               <YAxis type="number" dataKey="y" name={t("perf.col.busy")} unit="%" tick={{ fontSize: 11, fill: "#6B7588" }} width={44} />
               <ZAxis type="number" dataKey="z" range={[20, 260]} />
               <ReferenceLine y={100 * (C.under_busy_max ?? 0.03)} stroke="#A3ABB9" strokeDasharray="4 3" />
-              <ReferenceLine y={100 * (C.high_busy_min ?? 0.25)} stroke="#6b4bd8" strokeDasharray="4 3" />
+              <ReferenceLine y={100 * (C.high_busy_min ?? 0.25)} stroke="#0e7490" strokeDasharray="4 3" />
               <ReferenceLine x={100 * (C.ontime_low ?? 0.35)} stroke="#d03b3b" strokeDasharray="4 3" />
               <ReferenceLine x={100 * (C.ontime_good ?? 0.6)} stroke="#0ca30c" strokeDasharray="4 3" />
               <Tooltip cursor={{ strokeDasharray: "3 3" }} content={({ payload }) => { const p = payload?.[0]?.payload; return p ? <div className="bg-white border border-line rounded px-2 py-1 text-[11.5px] shadow">

@@ -66,7 +66,7 @@ export default function MbpOverview({ scope, data, cfg, nop, setNop, mbpsScope, 
       {show("lists") && <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
         <MiniList title={t("mgmt.list.under")} list={under} value={(p) => `${fInt(p.jobs)} job · ${fPct(100 * p.busy, 1)}`} tone="text-mut" />
         <MiniList title={t("mgmt.list.low")} list={low} value={(p) => `${fPct(100 * p.ontime_rate, 0)} ${t("perf.ontime_short")} · n ${fInt(p.judged)}`} tone="text-crit" />
-        <MiniList title={t("mgmt.list.high")} list={high} value={(p) => `${fPct(100 * p.busy, 0)} ${t("perf.busy_short")}`} tone="text-[#6b4bd8]" />
+        <MiniList title={t("mgmt.list.high")} list={high} value={(p) => `${fPct(100 * p.busy, 0)} ${t("perf.busy_short")}`} tone="text-[#0e7490]" />
         <Card title={`${t("mgmt.list.clean")} (${fInt(clean.length)})`} sub={t("mgmt.list.clean_sub")}>
           {!clean.length ? <div className="text-mut text-[12.5px]">{t("mgmt.none")}</div> : <ul className="text-[12.5px] divide-y divide-line/70 max-h-[220px] overflow-y-auto">
             {clean.map((p) => <li key={p.mbp_id}><button onClick={() => open(p.mbp_id)} className="w-full flex items-center gap-2 py-1 text-left hover:bg-surface">

@@ -3,7 +3,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, TileLayer, CircleMarker, Circle, Marker, Polyline, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { LEVEL_KIND, STATUS, fInt, fKm, fMin, fPct, fPP, fH, isNum } from "./ui";
+import { LEVEL_KIND, STATUS, fInt, fKm, fMin, fPct, fPP, fH, isNum, RadiusControl, Seg } from "./ui";
+import { useNav } from "@/lib/nav";
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { MAP_MODES } from "@/lib/mapmodes";
@@ -120,6 +121,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
   const setSelSite = (x) => (ctlSite ? onSelectSite?.(x) : setSelSiteL(x));
   const setSelMbp = (x) => (ctlMbp ? onSelectMbp?.(x) : setSelMbpL(x));
   const [zoom, setZoom] = useState(6);
+  const nav = useNav();
   const R = cfg.mbp.max_radius_km;
   const MM = colorOverride ? null : MAP_MODES[mode];
   const colorOf = useMemo(() => colorOverride || modeColor(mode), [colorOverride, mode]);
@@ -156,24 +158,20 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
   return (
     <div>
       {!compact && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 text-[12px]" role="toolbar" aria-label={t("map.layers")}>
-          {canRoll && <div className="flex rounded-md overflow-hidden border border-line" role="group" aria-label={t("map.level")}>
-            {["site", "cluster", "nop"].map((lv) => <button key={lv} aria-pressed={level === lv} onClick={() => { setLevel(lv); setUnit(null); }} title={t(`map.level_tip.${lv}`)}
-              className={`px-2.5 py-1 text-[12px] ${level === lv ? "bg-navy text-white" : "bg-white text-slate hover:text-navy"}`}>{t(`map.level.${lv}`)}</button>)}
-          </div>}
-          {showMbpLayers && <>
-          <label className="inline-flex items-center gap-1.5 font-medium"><input type="checkbox" checked={coverage} onChange={(e) => setCoverage(e.target.checked)} className="accent-navy" />
-            {t("map.cov_toggle")}</label>
-          <span className="text-mut -ml-2">{t("map.cov_note", { r: R })}</span>
-          <label className="flex items-center gap-2 text-mut">{t("map.radius")}
-            <input type="range" min={20} max={200} step={5} value={R} onChange={(e) => onRadius?.(Number(e.target.value))} className="accent-navy w-32" aria-label={t("map.radius")} />
-            <span className="text-ink font-semibold tabular w-14">{R} km</span></label>
-          <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={showMbps} onChange={(e) => setShowMbps(e.target.checked)} className="accent-navy" />
-            <span className="inline-flex w-4 h-4 rounded bg-navy items-center justify-center text-white text-[9px]" aria-hidden>🚚</span> {t("map.basecamps")}</label>
-          </>}
-          <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={showSites} onChange={(e) => setShowSites(e.target.checked)} className="accent-navy" /> {t("map.sites")}</label>
-          {!colorOverride && <label className="flex items-center gap-2 text-mut ml-auto">{t("map.colour_by")}
-            <select value={mode} onChange={(e) => setMode(e.target.value)} className="border border-line rounded px-1.5 py-1 text-ink bg-white">{modes.map((k) => <option key={k} value={k}>{t(`map.mode.${k}`)}</option>)}</select></label>}
+        // vNext — grouped controls: Map mode (exclusive) · Layers (independent) · Radius (MBP pages) · Level (site / cluster / NOP)
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-2 text-[12px]" role="toolbar" aria-label={t("map.layers")}>
+          {!colorOverride && modes.length > 1 && <div className="flex items-center gap-1.5"><span className="text-mut">{t("map.g.mode")}</span>
+            {modes.length <= 4 ? <Seg value={mode} onChange={setMode} label={t("map.g.mode")} options={modes.map((k) => [k, t(`map.mode_short.${k}`), t(`map.mode.${k}`)])} />
+              : <select value={mode} onChange={(e) => setMode(e.target.value)} className="border border-line rounded px-1.5 py-1 text-ink bg-white">{modes.map((k) => <option key={k} value={k}>{t(`map.mode.${k}`)}</option>)}</select>}</div>}
+          <div className="flex items-center gap-2 border-l border-line pl-3" role="group" aria-label={t("map.g.layers")}><span className="text-mut">{t("map.g.layers")}</span>
+            <label className="inline-flex items-center gap-1"><input type="checkbox" checked={showSites} onChange={(e) => setShowSites(e.target.checked)} className="accent-navy" />{t("map.sites")}</label>
+            {showMbpLayers && <>
+            <label className="inline-flex items-center gap-1"><input type="checkbox" checked={showMbps} onChange={(e) => setShowMbps(e.target.checked)} className="accent-navy" />{t("map.basecamps")}</label>
+            <label className="inline-flex items-center gap-1" title={t("map.cov_note", { r: R })}><input type="checkbox" checked={coverage} onChange={(e) => setCoverage(e.target.checked)} className="accent-navy" />{t("map.cov_toggle")}</label></>}
+          </div>
+          {showMbpLayers && onRadius && <div className="border-l border-line pl-3" title={t("map.cov_note", { r: R })}><RadiusControl value={R} onChange={onRadius} def={nav.radiusDefault} /></div>}
+          {canRoll && <div className="flex items-center gap-1.5 border-l border-line pl-3 ml-auto"><span className="text-mut">{t("map.level")}</span>
+            <Seg value={level} onChange={(lv) => { setLevel(lv); setUnit(null); }} label={t("map.level")} options={["site", "cluster", "nop"].map((lv) => [lv, t(`map.level.${lv}`), t(`map.level_tip.${lv}`)])} /></div>}
         </div>
       )}
       <div className="relative">
@@ -189,8 +187,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
               <Circle key={"r" + m.mbp_id} center={[m.lat, m.lon]} radius={R * 1000} interactive={false}
                 pathOptions={{ color: "#2a78d6", weight: 0.8, opacity: 0.5, fillColor: "#2a78d6", fillOpacity: 0.025 }} />
             ))}
-            {selMbp && <Circle center={[selMbp.lat, selMbp.lon]} radius={R * 1000} interactive={false} pathOptions={{ color: "#eda100", weight: 2.5, dashArray: "6 6", fillOpacity: 0.06 }}>
-              <Tooltip permanent direction="top" offset={[0, -6]} className="!text-[11px]">{t("map.radius_lbl", { r: R })}</Tooltip></Circle>}
+            {selMbp && <Circle center={[selMbp.lat, selMbp.lon]} radius={R * 1000} interactive={false} pathOptions={{ color: "#eda100", weight: 2.5, dashArray: "6 6", fillOpacity: 0.06 }} />}
             {selMbp && mbpSites.slice(0, 400).map((s) => (
               <Polyline key={"l" + s.site_id} positions={[[selMbp.lat, selMbp.lon], [s.lat, s.lon]]} pathOptions={{ color: "#eda100", weight: 1, opacity: 0.6 }} interactive={false} />
             ))}
@@ -287,6 +284,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
         })}
         {keyOf && hidden.length > 0 && <button onClick={() => (onHidden || setHiddenL)([])} className="text-s1 underline">{t("map.leg_all")}</button>}
         <span className="text-mut">· {level !== "site" && canRoll ? t("map.leg.pie") : <>{MM?.size || !MM ? t("map.leg.size_m", { m: MM ? t(`map.size.${mode}`) : t("map.tt_power") }) : ""}{(MM ? MM.hollow : true) ? ` · ${hollowLabel || (MM ? t(`map.hollow.${mode}`) : t("map.leg.hollow", { r: R }))}` : ""}</>} · {t("map.leg.click")}</span>
+        {selMbp && showMbpLayers && <span className="inline-flex items-center gap-1 text-ink"><span className="w-3 h-3 rounded-full inline-block border-2 border-dashed border-[#eda100]" />{t("map.radius_sel", { r: R })}</span>}
         {offline && <span className="text-[#8a5a00]">{t("map.offline")}</span>}
       </div>
       {canRoll && <RollupPanel unit={unit} sites={visAll} mode={mode} onOpen={setUnit} onClose={() => setUnit(null)} periodText={periodText}

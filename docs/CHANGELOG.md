@@ -2,6 +2,19 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## vNext — operational hierarchy (snapshot heroes, planning workflow, Battery Condition, Field Actions)
+- Navigation: BBS pages renamed **Kondisi Baterai / Battery Condition** and **Tindak Lanjut Lapangan / Field Actions** (view keys unchanged, old links work); the advanced views sit after a labelled "Supporting" divider.
+- **Fleet Performance**: Fleet Snapshot hero (`components/Snapshot.jsx`) — base camps / sites / priority sites, model reach 1,693 / 2,666 with a reached · not reached · BBT-not-verified bar, historical on time 49 % (n judged jobs), fleet status (13 idle · 36 busy · 72 often late) that filters map + table. Diagnostic tiles moved to a collapsible **Baseline & data confidence** section ("Model validation by NOP"). Map modes Utilization · On-time · Coverage · Priority. Fleet "busy" colour changed from purple to teal (purple = proposed unit).
+- **Radius**: 20 / 40 / 80 km / Custom buttons (`RadiusControl`) in every MBP map, with "reset to 120 km"; reach before BBT does not change with it (test VN-1).
+- Map toolbar grouped: Map mode · Layers (sites, base camps, coverage radius) · Radius · Level. Selected-camp radius label moved from a permanent white map tooltip into the legend; map selections use one detail-panel surface (`Panel`).
+- **Coverage & Site Explorer**: coverage hero from the KPI layer with progress bar; ETA method in an "Indicative ETA ⓘ" tooltip; "responsible party" colouring removed from this page.
+- **Resource Planning**: 1 choose the planning question (4 cards) → 2 baseline strip (NOP, snapshot, units, P1/P2 reach, jobs on time, validation, availability assumption) → 3 tool. Relocation analysis can open a candidate in the sandbox (same scenario engine, tagged "model suggestion"). Additional-unit sizing shows baseline → target → result → stop condition (`sizingStop`: target met / simulation limit / no more benefit). Outage scenario: summary (selection method, availability, rules), Δ vs baseline, worklist ↔ map selection with assignment panel, BBT-unknown (assumed 0 min) flagged and counted. Scenario palette green / red / grey / purple (`SCN`). Method texts folded into "Method & assumptions".
+- **Battery Condition**: status scorecards + bar and a separate evidence bar (ACTUAL · DERIVED · ESTIMATED · DERIVED-UNVERIFIED · UNAVAILABLE, TICKET when present); clicks set the filter for counts, map and table; reset.
+- **Field Actions**: hero with BBS-P1…P4 (+ suggested window) and the six field actions; worklist columns priority · site · condition · evidence · PLN exposure · recommended next action · reason. "Batch n" (1:1 with BBS-Pn) removed from the main view, kept in the CSV.
+- Header: the "AREA 1 only" page banner became part of the scope chip ("AREA 1 (full data)", details in its tooltip).
+- Tests 72 → 76 (VN-1 … VN-4). Audit: `docs/AUDIT_vNext.md`.
+- *ID:* Hero ringkasan per halaman, radius tombol 20/40/80/lainnya, alur perencanaan 1-2-3 dengan baseline, halaman Kondisi Baterai dan Tindak Lanjut Lapangan.
+
 ## v5.0 — map-first revamp (MBP 3 pages, BBS 2 pages, map ↔ table connected)
 - Navigation: **MBP** = Fleet Performance · Coverage & Site Explorer · Resource Planning; **BBS** = Battery Risk · Recommended Actions. Advanced views kept after a divider (coverage detail, dispatch audit, telemetry design, BBT estimate, BBT factors). Old links (`mbp.overview`, `mbp.sitelist`, `mbp.placement`, …) resolve to the new pages.
 - `components/Workspace.jsx` + `lib/workspace.js`: one record set for map and table (page filters → legend → base-camp focus); shared selection `focus` (URL `site=` / `camp=`); row click highlights + flies to the marker, marker click selects the row (page opened, scrolled); "selected record outside filters" state; selection never filters.

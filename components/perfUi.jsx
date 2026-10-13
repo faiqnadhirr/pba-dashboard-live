@@ -4,9 +4,9 @@ import React from "react";
 import { PERF_KEYS, UTIL_KEYS, ONTIME_KEYS } from "@/lib/mbpperf";
 import { t } from "@/lib/i18n";
 
-export const PERF_COLOR = { low: "#d03b3b", watch: "#fab219", good: "#0ca30c", high: "#6b4bd8", under: "#A3ABB9", few: "#ffffff", none: "#E3E7ED", nodata: "#cfd6e2", noloc: "#7c8798" };
+export const PERF_COLOR = { low: "#d03b3b", watch: "#fab219", good: "#0ca30c", high: "#0e7490", under: "#A3ABB9", few: "#ffffff", none: "#E3E7ED", nodata: "#cfd6e2", noloc: "#7c8798" };
 export const RESP_COLOR = { low: "#d03b3b", watch: "#fab219", good: "#0ca30c", nodata: "#ffffff" };
-export const UTIL_COLOR = { high: "#6b4bd8", normal: "#2a78d6", under: "#A3ABB9", none: "#E3E7ED" };
+export const UTIL_COLOR = { high: "#0e7490", normal: "#2a78d6", under: "#A3ABB9", none: "#E3E7ED" };
 export const ONTIME_COLOR = { low: "#d03b3b", watch: "#fab219", good: "#0ca30c", nodata: "#ffffff" };
 
 export const perfLegend = () => PERF_KEYS.map((k) => ({ k, c: PERF_COLOR[k], label: t(`perf.key.${k}`), tip: t(`perf.key_tip.${k}`) }));

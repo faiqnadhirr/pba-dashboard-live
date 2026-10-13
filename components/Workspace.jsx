@@ -5,7 +5,7 @@
 // the records to the sites assigned to it, shown as a removable chip. Changing the map mode only changes the colours.
 import React, { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { Card, DataTable, fInt } from "@/components/ui";
+import { Card, DataTable, Panel, fInt } from "@/components/ui";
 import { workspaceRows, selectionState } from "@/lib/workspace";
 import { MAP_MODES } from "@/lib/mapmodes";
 import { t } from "@/lib/i18n";
@@ -49,15 +49,12 @@ export default function Workspace({ ctx, rows, modes, defaultMode, columns, file
             selectedSiteId={focus.site} onSelectSite={selectSite} selectedMbpId={focus.mbp} onSelectMbp={selectMbp} showCard={!detail} campSiteIds={campIds}
             mbpKeyOf={mbpKeyOf} mbpLegend={mbpLegend} mbpLegendTitle={mbpLegendTitle} mbpPerf={perf} onOpenMbp={openMbp} mbpLabel={mbpLabel} mbpCountsOverride={mbpCountsOverride}
             onPickSite={ctx.setPick} />
-          {detail && <aside className="border border-line rounded-md bg-white p-3 text-[12.5px] max-h-[720px] overflow-y-auto" aria-label={t("ws.detail")}>
-            {selSite ? <>
-              <div className="flex items-start gap-2"><div className="flex-1 min-w-0"><div className="font-semibold text-navy text-[14px]">{selSite.site_id}</div>
-                <div className="text-slate truncate">{selSite.site_name} · {selSite.site_class} · {selSite.nop}</div></div>
-                <button onClick={() => selectSite(null)} className="text-slate text-[18px] leading-none" aria-label={t("ws.clear_sel")}>×</button></div>
-              <div className="mt-2">{detail(selSite)}</div>
-              <button onClick={() => ctx.setPick(selSite)} className="mt-3 w-full bg-navy text-white rounded py-1.5 text-[12.5px]">{t("ws.full_detail")}</button>
-            </> : <div className="text-mut">{t("ws.pick_hint")}<div className="mt-2 text-[11.5px]">{t(`map.mode.${mode}`)}: {MAP_MODES[mode]?.keys?.length ? t("ws.legend_hint") : ""}</div></div>}
-          </aside>}
+          {detail && <Panel className="max-h-[720px] overflow-y-auto" title={selSite ? selSite.site_id : null} sub={selSite ? `${selSite.site_name} · ${selSite.site_class} · ${selSite.nop}` : null} onClose={() => selectSite(null)}
+            empty={<>{t("ws.pick_hint")}<div className="mt-2 text-[11.5px]">{t(`map.mode.${mode}`)}: {MAP_MODES[mode]?.keys?.length ? t("ws.legend_hint") : ""}</div></>}>
+            {selSite && <>
+              <div>{detail(selSite)}</div>
+              <button onClick={() => ctx.setPick(selSite)} className="mt-3 w-full bg-navy text-white rounded py-1.5 text-[12.5px]">{t("ws.full_detail")}</button></>}
+          </Panel>}
         </div>
       </Card></div>
       <Card title={tableTitle || t("ws.table", { n: fInt(shown.length) })} sub={tableSub}>

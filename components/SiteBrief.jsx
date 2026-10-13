@@ -88,8 +88,8 @@ export function SiteBriefBbs({ s, ctx }) {
     <H>{t("brief.action")}</H>
     <div className="font-semibold text-navy"><ActionLabel r={s} /></div>
     <div className="flex items-center gap-2 mt-0.5"><LevelTag kind="BBS" v={s.bbs_priority_level} /><span className="text-[11.5px] text-slate">{te(s.bbs_priority_drivers, "drivers") || ""}</span></div>
-    {s.reason && <div className="text-[11.5px] text-slate mt-0.5">{t("brief.reason")}: {te(s.reason, "rule")}</div>}
-    <div className="text-[11px] text-mut mt-0.5">{t("ev.rule")} {te(s.rule, "rule")} · {te(s.battery?.precedence, "prec")}</div>
+    {s.rule && s.rule !== "R0" && <div className="text-[11.5px] text-slate mt-0.5">{t("brief.reason")}: {te(s.rule, "rule")}</div>}
+    <div className="text-[11px] text-mut mt-0.5">{t("bbs.basis")}: {te(s.battery?.precedence, "prec")}</div>
     <ExposureBlock s={s} /><PriorityBlock s={s} />
   </div>;
 }

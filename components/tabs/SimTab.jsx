@@ -1,21 +1,25 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { Card, Note, DataTable, Select, Slider, Toggle, LevelTag, EvTag, Tag, fInt, fMin, fKm, fH, f3, fPct, fNum, isNum } from "@/components/ui";
+import { Card, Note, Method, DataTable, Select, Slider, Toggle, LevelTag, EvTag, Tag, Panel, fInt, fMin, fKm, fH, f3, fPct, fNum, isNum } from "@/components/ui";
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { simulate, kmeans } from "@/lib/logic";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
-const OUT = { saved: "#0ca30c", late: "#ec835a", unserved_busy: "#d03b3b", unserved_no_coverage: "#7a1414", unserved_island: "#4a3aa7", no_need: "#A3ABB9" };
+// vNext — island no longer purple (purple = proposed / new unit across planning)
+const OUT = { saved: "#0ca30c", late: "#ec835a", unserved_busy: "#d03b3b", unserved_no_coverage: "#7a1414", unserved_island: "#334155", no_need: "#A3ABB9" };
+const unknownBbt = (r) => String(r.bbt_evidence).startsWith("UNAVAILABLE");
+const dlt = (v, d = 0) => (!isNum(v) ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : "±"}${Math.abs(v).toFixed(d)}`);
 const OUT_EN = {   // CSV value (English, stable)
   saved: "saved — MBP arrives before battery runs out", late: "late — site dark until MBP arrives", unserved_busy: "unserved — all MBPs in radius busy",
   unserved_no_coverage: "unserved — no MBP within coverage radius", unserved_island: "unserved — island (needs sea logistics, not modelled)", no_need: "no MBP needed — battery covers the outage",
 };
 
-export default function SimTab({ model: scored, data, cfg, nop: gNop, setPick, setRadius }) {
-  const nops = useMemo(() => [...new Set(scored.map((s) => s.nop).filter(Boolean))].sort(), [scored]);
-  const [nop, setNop] = useState(gNop !== "All NOPs" ? gNop : "NOP PALEMBANG");
+// vNext — outage dispatch SCENARIO for the planning NOP (not live dispatch): every simulated site gets an outcome; the worklist and the
+// map share one selection; BBT unknown (assumed 0 min by the engine) is flagged on the row and counted, never hidden.
+export default function SimTab({ model: scored, data, cfg, nop, setPick, setRadius, names }) {
+  const [selId, setSelId] = useState(null);
   const inNop = useMemo(() => scored.filter((s) => s.nop === nop && s.site_active === 1), [scored, nop]);
   const clusters = useMemo(() => [...new Set(inNop.map((s) => s.cluster_to).filter(Boolean))].sort(), [inNop]);
   const [mode, setMode] = useState("top");
@@ -66,18 +70,22 @@ export default function SimTab({ model: scored, data, cfg, nop: gNop, setPick, s
   };
 
   // C5 — pre-run the default scenario (top-20 PLN-frequency sites, 4 h outage) whenever the NOP changes, so the page is never empty
+  useEffect(() => { setRes(null); setBusy([]); setMoveMbp(""); setMoveTo(""); setSelId(null); }, [nop]);
   useEffect(() => { if (inNop.length && mode === "top") run(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [nop, inNop.length]);
   const cur = res && res[show];
-  const kRows = res ? Object.entries(res).map(([k, v]) => ({ scenario: k, ...v.kpi })) : [];
+  const kRows = res ? Object.entries(res).map(([k, v]) => ({ scenario: k, ...v.kpi, unk: v.rows.filter(unknownBbt).length })) : [];
+  const k0 = kRows[0];
+  const selRow = cur && selId ? cur.rows.find((r) => r.site_id === selId) || null : null;
+  const located = mbpsNop.filter((m) => m.lat != null), avail = located.filter((m) => !busy.includes(m.mbp_id)).length;
+  const how = t(`sim.how.${mode}`, { n: fInt(affected.length), c: cl || "—", p: fPct(share, 0) });
   const siteMap = useMemo(() => new Map(scored.map((s) => [s.site_id, s])), [scored]);
 
   return (
     <div className="space-y-4">
-      <Note>{t("sim.note")}</Note>
+      <Method title={t("sim.method")}>{t("sim.note")}</Method>
       <div className="grid xl:grid-cols-[360px_minmax(0,1fr)] gap-4">
         <Card title={t("sim.inputs")}>
           <div className="space-y-3">
-            <Select label={t("filter.nop")} value={nop} onChange={(v) => { setNop(v); setRes(null); setBusy([]); setMoveMbp(""); setMoveTo(""); }} options={nops} />
             <Select label={t("sim.affected")} value={mode} onChange={setMode} options={[{ value: "top", label: t("sim.mode.top") }, { value: "cluster", label: t("sim.mode.cluster") }, { value: "pick", label: t("sim.mode.pick") }]} />
             {mode === "top" && <Slider label={t("sim.n_sites")} value={n} onChange={setN} min={1} max={100} />}
             {mode === "cluster" && <><Select label={t("sim.cluster")} value={cl || ""} onChange={setCluster} options={clusters} /><Slider label={t("sim.share")} value={share} onChange={setShare} min={5} max={100} step={5} fmt={(v) => fPct(v, 0)} /></>}
@@ -106,13 +114,23 @@ export default function SimTab({ model: scored, data, cfg, nop: gNop, setPick, s
         </Card>
         <div className="space-y-4 min-w-0">
           {!res ? <Card title={t("sim.results")}><div className="text-mut text-[13px]">{t("sim.running_default")}</div></Card> : <>
+            <div className="bg-white border border-line rounded-lg px-4 py-2 text-[12.5px] text-ink" role="status">
+              <b>{t("sim.sum.title")}</b> {t("sim.sum.line", { how, h: fH(hours), d: `${String(hour).padStart(2, "0")}:00`, nop })}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[12px] text-slate">
+                <span><b className="text-good tabular">{fInt(avail)}</b> {t("sim.sum.avail")}</span><span><b className="text-crit tabular">{fInt(busy.length)}</b> {t("sim.sum.busy")}</span>
+                <span><b className="tabular">{fInt(mbpsNop.length - located.length)}</b> {t("sim.sum.noloc")}</span>
+                <span title={t("sim.sum.others_tip")}>{t("sim.sum.others")}</span>
+                {k0?.unk > 0 && <span className="text-[#8a5a00]" title={t("sim.sum.unk_tip")}>⚠ {t("sim.sum.unk", { n: fInt(k0.unk) })}</span>}
+              </div>
+              <div className="text-[11.5px] text-mut mt-1">{t("sim.sum.rules")}</div>
+            </div>
             <Card title={t("sim.cmp.title")} sub={t("sim.cmp.sub")}>
               <div className="overflow-x-auto">
                 <table className="w-full text-[12.5px] tabular">
                   <thead><tr className="text-slate">{["scenario", "affected", "need", "saved", "late", "no_feasible", "busy", "no_cov", "island", "avg_eta", "max_eta", "exp_down", "pw_cov"].map((k) => t(`sim.cmp.${k}`)).map((h) => <th key={h} className="px-2 py-1.5 border-b border-line text-right first:text-left whitespace-nowrap">{h}</th>)}</tr></thead>
                   <tbody>{kRows.map((r) => (
                     <tr key={r.scenario} onClick={() => setShow(r.scenario)} className={`border-b border-line/60 cursor-pointer ${show === r.scenario ? "bg-s1/10" : "hover:bg-s1/5"}`}>
-                      <td className="px-2 py-1.5 font-semibold">{r.scenario}</td><td className="text-right px-2">{r.sites_affected}</td><td className="text-right px-2">{r.sites_need_mbp}</td>
+                      <td className="px-2 py-1.5 font-semibold min-w-[190px]">{r.scenario}{r !== k0 && <div className="text-[11px] font-normal text-slate">{t("sim.cmp.delta", { s: dlt(r.saved - k0.saved), d: dlt(r.expected_downtime_h - k0.expected_downtime_h, 1) })}</div>}</td><td className="text-right px-2">{r.sites_affected}</td><td className="text-right px-2">{r.sites_need_mbp}</td>
                       <td className="text-right px-2 text-good font-semibold">{r.saved}</td><td className="text-right px-2">{r.late}</td><td className="text-right px-2 text-warn">{r.no_feasible}</td><td className="text-right px-2 text-crit">{r.unserved_busy}</td><td className="text-right px-2 text-crit">{r.unserved_no_coverage}</td>
                       <td className="text-right px-2 text-s7">{r.unserved_island}</td><td className="text-right px-2">{fMin(r.avg_eta_min)}</td><td className="text-right px-2">{fMin(r.max_eta_min)}</td>
                       <td className="text-right px-2">{fH(r.expected_downtime_h)}</td><td className="text-right px-2 font-semibold">{fPct(r.priority_weighted_coverage_pct, 0)}</td>
@@ -122,16 +140,26 @@ export default function SimTab({ model: scored, data, cfg, nop: gNop, setPick, s
               {kRows[0]?.unserved_island > 0 && <div className="mt-2"><Note tone="warn">{t("sim.island_note", { n: kRows[0].unserved_island })}</Note></div>}
             </Card>
             <Card title={t("sim.alloc", { s: show })} right={<Select value={show} onChange={setShow} options={Object.keys(res)} />}>
-              <MapView fitKey={show} onPickSite={setPick} cfg={cfg} onRadius={setRadius} compact
+              <div className="grid xl:grid-cols-[minmax(0,1fr)_300px] gap-3">
+              <MapView fitKey={show} onPickSite={setPick} cfg={cfg} onRadius={setRadius} compact selectedSiteId={selId} onSelectSite={(x) => setSelId(x ? x.site_id : null)} showCard={false}
                 sites={cur.rows.map((r) => ({ ...siteMap.get(r.site_id), _o: r.outcome }))}
                 colorOverride={(s) => OUT[s._o]} keyOverride={(s) => s._o}
                 mbps={data.mbps.filter((m) => cur.rows.some((r) => r.mbp === m.mbp_id))} extraMbps={cur.extra || []}
                 legendOverride={Object.entries(OUT).map(([k, c]) => ({ k, label: t(`sim.out.${k}`), c }))} height={380} />
+              <Panel title={selRow ? `${selRow.site_id}` : null} sub={selRow ? `${selRow.site_name} · MBP-${selRow.priority_level}` : null} onClose={() => setSelId(null)} empty={t("sim.pick_hint")}>
+                {selRow && <div className="space-y-1">
+                  <div><Tag tone={selRow.outcome === "saved" ? "good" : selRow.outcome === "no_need" ? "mut" : "crit"}>{t(`sim.out.${selRow.outcome}`)}</Tag></div>
+                  <div>{t("col.recommended_mbp")}: <b>{selRow.mbp || "—"}</b> · {fKm(selRow.km)} · ETA {fMin(selRow.eta_min)}</div>
+                  <div>BBT: {selRow.bbt_text ? t("bbt.no_battery_ticket") : fMin(selRow.bbt_shown)} <EvTag v={String(selRow.bbt_evidence).split(" ")[0]} />{unknownBbt(selRow) && <span className="text-[#8a5a00]"> · {t("sim.unk_row")}</span>}</div>
+                  <div>{t("col.expected_down")}: {fMin(selRow.expected_down_min)}</div>
+                  <div className="text-[11.5px] text-slate">{te(selRow.reasons, "sim")}</div>
+                  <button onClick={() => setPick(siteMap.get(selRow.site_id))} className="mt-1 w-full bg-navy text-white rounded py-1 text-[12px]">{t("ws.full_detail")}</button></div>}
+              </Panel></div>
               <div className="mt-3">
-                <DataTable rows={cur.rows} filename={`pba_simulation_${show}.csv`.replace(/[^\w.]+/g, "_")} onRowClick={(r) => setPick(siteMap.get(r.site_id))} columns={[
+                <DataTable rows={cur.rows} filename={`pba_simulation_${show}.csv`.replace(/[^\w.]+/g, "_")} selectedKey={selId} onSelect={(r) => setSelId(selId === r.site_id ? null : r.site_id)} maxH={480} columns={[
                   { key: "priority", label: "col.mbp_priority", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center"><LevelTag kind="MBP" v={r.priority_level} />{f3(r.priority)}</span>, csv: (r) => `MBP-${r.priority_level} ${r.priority.toFixed(3)}` },
                   { key: "site_id", label: "col.site_id" }, { key: "site_name", label: "col.site_name" }, { key: "site_class", label: "col.class" },
-                  { key: "bbt_min", label: "col.bbt", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center">{r.bbt_text ? <span className="text-slate">{t("bbt.no_battery_ticket")}</span> : fMin(r.bbt_shown)}<EvTag v={String(r.bbt_evidence).split(" ")[0]} /></span>, csv: (r) => r.bbt_text || `${isNum(r.bbt_shown) ? Math.round(r.bbt_shown) : ""} ${r.bbt_evidence}` },
+                  { key: "bbt_min", label: "col.bbt", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center">{r.bbt_text ? <span className="text-slate">{t("bbt.no_battery_ticket")}</span> : fMin(r.bbt_shown)}<EvTag v={String(r.bbt_evidence).split(" ")[0]} />{unknownBbt(r) && <span className="text-[10.5px] text-[#8a5a00]" title={t("sim.sum.unk_tip")}>{t("sim.unk_short")}</span>}</span>, csv: (r) => r.bbt_text || `${isNum(r.bbt_shown) ? Math.round(r.bbt_shown) : ""} ${r.bbt_evidence}` },
                   { key: "mbp", label: "col.recommended_mbp", render: (r) => r.mbp || "—" }, { key: "km", label: "col.distance", num: true, render: (r) => fKm(r.km), csv: (r) => r.km?.toFixed(1) },
                   { key: "eta_min", label: "col.eta", num: true, render: (r) => fMin(r.eta_min), csv: (r) => (isNum(r.eta_min) ? Math.round(r.eta_min) : "") }, { key: "served_before", label: "col.served_before", num: true },
                   { key: "feasible", label: "col.arrives_before_bbt", render: (r) => (r.feasible === true ? <Tag tone="good">✔ {t("common.yes")}</Tag> : r.feasible === false ? <Tag tone="crit">✖ {t("sim.no_fallback")}</Tag> : "—"), csv: (r) => (r.feasible == null ? "" : r.feasible ? "yes" : "no") },

@@ -2,10 +2,13 @@
 // v5.0 — MBP › Coverage & Site Explorer: the map-driven site workspace. Sites, base camps, coverage, ETA, priority and battery
 // evidence on one map + one table (components/Workspace.jsx). Replaces the old coverage map + site list; the drill presets (?sel=…)
 // from other pages still land here.
+// vNext — coverage hero (same KPI layer) with a reached / not reached / not verified bar; the ETA method is in the "Indicative ETA ⓘ"
+// tooltip. "Responsible party" colouring was dropped from this page (not a coverage question; still on the Overview pages).
 import React, { useMemo, useState } from "react";
 import Workspace from "@/components/Workspace";
 import { SiteBriefMbp } from "@/components/SiteBrief";
-import { siteColumns, fInt, fPct, fH, Toggle, Gloss, Note } from "@/components/ui";
+import { siteColumns, fInt, fPct, fH, Toggle, Gloss, Note, InfoTip } from "@/components/ui";
+import { CoverageSnapshot } from "@/components/Snapshot";
 import { applySel } from "@/lib/drill";
 import { kpiFor } from "@/lib/kpi";
 import { coverageGap } from "@/lib/view";
@@ -24,17 +27,13 @@ export default function Explorer(ctx) {
   const T = cfg.travel;
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] bg-white border border-line rounded-md px-3 py-2">
-        <span><b className="tabular">{fInt(DF.rows.length)}</b> {t("ov.sites")}</span>
-        {k && <span title={t("ov.reach_tip", { a: fInt(k.p12_reach_actual), e: fInt(k.p12_reach_estimated), d: fInt(k.p12_reach_derived), u: fInt(k.p12_unverified) })}>
-          <b className="tabular">{k.p12_eval ? `${fInt(k.p12_reach)}/${fInt(k.p12_eval)} · ${fPct(100 * k.p12_reach_pct, 0)}` : t("common.na")}</b> {t("ov.reach")}</span>}
-        <span className="text-[11.5px] text-mut">{t("ex.eta_note", { rf: T.road_factor, mob: T.mobilization_minutes, r: cfg.mbp.max_radius_km, cap: cfg.mbp.reach_cap_km ?? 250 })}</span>
-      </div>
+      <CoverageSnapshot k={k} shown={DF.rows.length} drill={DF.known} partial={scope.some((x) => ctx.coverage?.[x.area] === "PARTIAL")}
+        eta={<InfoTip label={<b className="text-ink">{t("ex.eta_label")}</b>} text={t("ex.eta_note", { rf: T.road_factor, mob: T.mobilization_minutes, r: cfg.mbp.max_radius_km, cap: cfg.mbp.reach_cap_km ?? 250 })} />} />
       {DF.known && <div className="flex flex-wrap items-center gap-2 text-[12.5px]" role="status">
         <span className="inline-flex items-center gap-1.5 bg-s1/10 border border-s1/40 text-navy rounded-full pl-3 pr-1 py-0.5">
           <b>{t("drill.chip.filter")}:</b> {selLabel(drillSel)} · {t("filter.scope_sites", { n: fInt(DF.rows.length) })}
           <button onClick={() => setDrillSel(null)} aria-label={t("drill.chip.clear")} className="w-5 h-5 rounded-full hover:bg-s1/20 leading-none">×</button></span></div>}
-      <Workspace ctx={ctx} rows={DF.rows} modes={["survival", "priority", "design", "resp"]} defaultMode="survival" columns={cols}
+      <Workspace ctx={ctx} rows={DF.rows} modes={["survival", "priority", "design"]} defaultMode="survival" columns={cols}
         title={t("ex.title")} sub={t("ex.sub")} filename={`pba_sites_${String(nop).replace(/\s+/g, "_")}.csv`}
         initialSort={DF.weight ? { key: "_w", dir: -1 } : { key: "mbp_priority_score", dir: -1 }}
         mbpKeyOf={(m) => perf.get(m.mbp_id)?.key || "none"} mbpLegend={perfLegend()} mbpCountsOverride={counts}

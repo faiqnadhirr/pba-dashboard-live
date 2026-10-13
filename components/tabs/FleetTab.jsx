@@ -3,9 +3,13 @@
 // One map + one base-camp table on the same camps: the status chips filter both; a camp row selects the camp on the map (its
 // assigned sites stay bright, lines drawn) and a camp marker selects its row. Historical work (jobs, on time, working time) is kept
 // apart from coverage (sites assigned) and from estimated need (long outages); "working time" = job hours ÷ hours in the period.
+// vNext — Fleet Snapshot hero (model reach · historical on time · fleet status) before the map; the diagnostic tiles (long outages
+// handled, working time, battery-vs-MBP work, model validation by NOP) moved to "Baseline & data confidence" below.
 import React, { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { Card, fInt, fPct, fMin } from "@/components/ui";
+import { Card, Panel, Seg, fInt, fPct, fMin } from "@/components/ui";
+import { FleetSnapshot } from "@/components/Snapshot";
+import { kpiFor } from "@/lib/kpi";
 import Story from "@/components/tabs/Story";
 import MbpOverview from "@/components/tabs/MbpOverview";
 import Performance from "@/components/tabs/Performance";
@@ -17,7 +21,14 @@ const MapView = dynamic(() => import("@/components/MapView"), { ssr: false, load
 
 export default function FleetTab(ctx) {
   const { scope, cfg, mbpsScope, perf, focus, setFocus, bcScope, hasJobs, names, openMbp, nop, setRadius, mbpStats } = ctx;
-  const [hide, setHide] = useState([]), [dim, setDim] = useState("util"), [open, setOpen] = useState({ lists: true, nop: false });
+  const [hide, setHide] = useState([]), [view, setView] = useState("util"), [open, setOpen] = useState({ lists: true, nop: false, base: false });
+  const dim = view === "ontime" ? "ontime" : "util";
+  const k = kpiFor(ctx.K, nop);
+  const partial = useMemo(() => scope.some((s) => ctx.coverage?.[s.area] === "PARTIAL"), [scope, ctx.coverage]);
+  // hero status click = show only that status on the map and in the table (click again = all)
+  const onStatus = (x) => setHide((H) => (H.length === PERF_KEYS.length - 1 && !H.includes(x) ? [] : PERF_KEYS.filter((y) => y !== x)));
+  const onlyKey = hide.length === PERF_KEYS.length - 1 ? PERF_KEYS.filter((y) => !hide.includes(y)) : [];
+  const neutral = view === "util" || view === "ontime";
   const C = useMemo(() => basecampCounts(bcScope), [bcScope]);
   const camps = useMemo(() => mbpsScope.filter((m) => !hide.includes(perf.get(m.mbp_id)?.key)), [mbpsScope, perf, hide]);
   const sel = focus.mbp ? perf.get(focus.mbp) : null;
@@ -29,12 +40,10 @@ export default function FleetTab(ctx) {
   const fromTable = (id) => { selectCamp(id); if (!id) return; setTimeout(() => { const el = mapBox.current; if (!el) return; const b = el.getBoundingClientRect(); if (b.bottom < 120 || b.top > window.innerHeight - 120) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); };
   return (
     <div className="space-y-3">
-      <Story {...ctx} />
-      <MbpOverview {...ctx} part="summary" />
-      <div ref={mapBox} className="scroll-mt-32"><Card title={t("fl.map.title")} sub={t("fl.map.sub")} right={<div className="flex items-center gap-2 text-[12px]">
-        <span className="text-slate">{t("mgmt.color_by")}</span>
-        <div className="flex rounded-md overflow-hidden border border-line" role="group">{["util", "ontime"].map((d) =>
-          <button key={d} aria-pressed={dim === d} onClick={() => setDim(d)} className={`px-2 py-0.5 ${dim === d ? "bg-navy text-white" : "bg-white text-slate hover:text-navy"}`}>{t(`mgmt.dim.${d}`)}</button>)}</div>
+      <FleetSnapshot k={k} C={C} hasJobs={hasJobs} partial={partial} onStatus={onStatus} active={onlyKey} />
+      <div ref={mapBox} className="scroll-mt-32"><Card title={t("fl.map.title")} sub={t("fl.map.sub")} right={<div className="flex flex-wrap items-center gap-2 text-[12px]">
+        <span className="text-slate">{t("map.g.mode")}</span>
+        <Seg value={view} onChange={setView} label={t("map.g.mode")} options={["util", "ontime", "coverage", "priority"].map((d) => [d, t(`fl.view.${d}`), t(`fl.view_tip.${d}`)])} />
         <label className="inline-flex items-center gap-1 text-slate"><input type="checkbox" checked={names} onChange={(e) => ctx.setNames(e.target.checked)} className="accent-navy" />{t("mgmt.names")}</label></div>}>
         <div className="flex flex-wrap items-center gap-2 text-[12px] mb-2" role="group" aria-label={t("perf.legend")}>
           <span className="text-slate">{t("fl.show")}:</span>
@@ -46,16 +55,15 @@ export default function FleetTab(ctx) {
         </div>
         <div className="grid xl:grid-cols-[minmax(0,1fr)_340px] gap-3">
           <MapView sites={scope} mbps={camps} cfg={cfg} onRadius={setRadius} mbpStats={mbpStats} fitKey={nop + "fleet" + (ctx.area || "")} height={600}
-            mode="survival" modes={["survival", "priority"]} showCard={false} selectedMbpId={focus.mbp} onSelectMbp={(m) => selectCamp(m?.mbp_id)}
+            mode={view === "priority" ? "priority" : "survival"} modes={[view === "priority" ? "priority" : "survival"]} showCard={false}
+            colorOverride={neutral ? () => "#B8C0CC" : undefined} keyOverride={neutral ? () => "site" : undefined} hollowOverride={neutral ? () => false : undefined}
+            legendOverride={neutral ? [{ k: "site", c: "#B8C0CC", label: t("fl.sites_neutral") }] : undefined} ttOverride={neutral ? (s) => `${s.site_class} · MBP-${s.mbp_priority_level}` : undefined} selectedMbpId={focus.mbp} onSelectMbp={(m) => selectCamp(m?.mbp_id)}
             selectedSiteId={focus.site} onSelectSite={(s) => setFocus({ ...focus, site: s ? s.site_id : null })} campSiteIds={assigned}
             mbpKeyOf={mbpKeyOf} mbpLegend={dim === "util" ? perfLegend() : ontimeLegend()} mbpPerf={perf} onOpenMbp={openMbp} mbpCountsOverride={dim === "util" ? C.by : null} hideMbpLegend={dim === "util"}
             mbpLabel={(m) => { const p = perf.get(m.mbp_id); return p ? `${nm(p)} · ${t(`perf.key.${p.key}`)}` : ""; }} onPickSite={ctx.setPick} />
-          <aside className="border border-line rounded-md bg-white p-3 text-[12.5px]" aria-label={t("ws.detail")}>
-            {!sel ? <div className="text-mut">{t("fl.pick_hint")}</div> : <>
-              <div className="flex items-start gap-2"><div className="flex-1 min-w-0"><div className="font-semibold text-navy text-[14px]">🚚 {nm(sel)}<DupBadge p={sel} /></div>
-                <div className="text-slate">{sel.nop} · {sel.area}</div></div>
-                <button onClick={() => selectCamp(null)} className="text-slate text-[18px] leading-none" aria-label={t("ws.clear_sel")}>×</button></div>
-              <div className="mt-2"><PerfTag k={sel.key} /></div>
+          <Panel title={sel ? <>🚚 {nm(sel)}<DupBadge p={sel} /></> : null} sub={sel ? `${sel.nop} · ${sel.area}` : null} onClose={() => selectCamp(null)} empty={t("fl.pick_hint")}>
+            {sel && <>
+              <div><PerfTag k={sel.key} /></div>
               {!sel.selectable && <div className="mt-1 text-[11.5px] text-[#8a5a00]">{t("fl.not_usable")}: {sel.clean_reasons.map((x) => t(`clean.${x}`)).join(" · ")}</div>}
               <table className="w-full mt-2"><tbody>
                 {[[t("fl.sites"), fInt(sel.sites_assigned)], [t("perf.col.jobs"), hasJobs ? `${fInt(sel.jobs)} (${(sel.jobs / 6).toFixed(1)}/${t("perf.month_short")})` : t("common.na")],
@@ -69,10 +77,13 @@ export default function FleetTab(ctx) {
                 <button onClick={() => ctx.navigate({ view: "mbp.explorer" })} className="flex-1 border border-navy text-navy rounded py-1 text-[12px]">{t("fl.to_sites")}</button>
                 <button onClick={() => openMbp(ctx.data.mbps.find((m) => m.mbp_id === sel.mbp_id))} className="flex-1 bg-navy text-white rounded py-1 text-[12px]">{t("perf.card.open")}</button></div>
             </>}
-          </aside>
+          </Panel>
         </div>
       </Card></div>
       {hasJobs ? <Performance {...ctx} embedded hide={hide} setHide={setHide} selectedId={focus.mbp} onSelect={fromTable} /> : <Card title={t("perf.table.title")}><div className="text-mut text-[12.5px]">{t("perf.na")}</div></Card>}
+      <details open={open.base} onToggle={(e) => setOpen({ ...open, base: e.currentTarget.open })}>
+        <summary className="cursor-pointer text-[13px] font-semibold text-navy py-1">{t("fl.baseline")}</summary>
+        <div className="mt-2 space-y-2"><div className="text-[12px] text-slate">{t("fl.baseline_sub")}</div><Story {...ctx} /></div></details>
       <details open={open.lists} onToggle={(e) => setOpen({ ...open, lists: e.currentTarget.open })} className="group">
         <summary className="cursor-pointer text-[13px] font-semibold text-navy py-1">{t("fl.lists")}</summary>
         <div className="mt-2"><MbpOverview {...ctx} part="lists" /></div></details>
