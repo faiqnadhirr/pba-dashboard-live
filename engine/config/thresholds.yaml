@@ -52,9 +52,10 @@ load_high_ampere: 45           # NE load considered "high" (upgrade capacity ins
 mbp:
   same_nop_only: true          # coverage + candidates restricted to MBP's own NOP
   assignment_mode: history_then_nearest   # history_then_nearest | nearest
-  max_radius_km: 120           # v4.0: PREFERRED radius (assignment preference, map ring) — NOT a hard cut; adjustable in the app
+  max_radius_km: 25            # vNext (Faiq, 2026-10-13): default 25 km (was 120). v4.0: PREFERRED radius (assignment preference, map ring) — NOT a hard cut; adjustable in the app
   reach_cap_km: 250            # v4.0: hard search cap; a site is covered when some MBP within this cap arrives before its BBT
-  radius_presets: [20, 30, 40, 60, 120]   # v3.7 quick buttons on MBP overview (Dudi: mainland ≈ 40 km)
+  radius_presets: [25, 50, 100]   # vNext quick buttons on every MBP map (+ Custom); v3.7 was [20, 30, 40, 60, 120]
+  radius_max_km: 100           # vNext: largest preferred radius selectable in the app (Custom input / Config slider)
   rh_max_hours_per_ticket: 48  # RH meter diff above this = outlier
   response_target_min: 30      # v3.6 ops response-time target (Pak Nizar); ETA includes travel.mobilization_minutes
   response_bands_min: [30, 60, 120]   # ETA distribution bands on Coverage

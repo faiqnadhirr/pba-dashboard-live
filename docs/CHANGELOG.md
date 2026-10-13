@@ -2,6 +2,9 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## vNext.1 — default preferred radius 25 km (max 100 km)
+- `engine/config/thresholds.yaml`: `mbp.max_radius_km` 120 → **25**, `radius_presets` → [25, 50, 100], new `radius_max_km: 100` (Custom input + Config slider limit). `reach_cap_km` (search limit, 250 km) unchanged, so reach before BBT stays 1,693 / 2,666. Tests G and Simulation updated (they assumed a 120 km default). Data rebuilt (build.py + build_area4.py).
+
 ## vNext — operational hierarchy (snapshot heroes, planning workflow, Battery Condition, Field Actions)
 - Navigation: BBS pages renamed **Kondisi Baterai / Battery Condition** and **Tindak Lanjut Lapangan / Field Actions** (view keys unchanged, old links work); the advanced views sit after a labelled "Supporting" divider.
 - **Fleet Performance**: Fleet Snapshot hero (`components/Snapshot.jsx`) — base camps / sites / priority sites, model reach 1,693 / 2,666 with a reached · not reached · BBT-not-verified bar, historical on time 49 % (n judged jobs), fleet status (13 idle · 36 busy · 72 often late) that filters map + table. Diagnostic tiles moved to a collapsible **Baseline & data confidence** section ("Model validation by NOP"). Map modes Utilization · On-time · Coverage · Priority. Fleet "busy" colour changed from purple to teal (purple = proposed unit).

@@ -87,7 +87,7 @@ export default function ConfigTab({ cfg, saveCfg, data, resetCfg }) {
             {S(["travel", "peak_multiplier_urban"], "cfg.travel.peak_u", 1, 3, 0.05, (v) => `×${fNum(v, 2)}`)}
             {S(["travel", "peak_multiplier_rural"], "cfg.travel.peak_r", 1, 3, 0.05, (v) => `×${fNum(v, 2)}`)}
             {S(["travel", "night_multiplier"], "cfg.travel.night", 1, 3, 0.05, (v) => `×${fNum(v, 2)}`)}
-            {S(["mbp", "max_radius_km"], "cfg.travel.radius", 20, 300, 10, (v) => `${v} km`)}
+            {S(["mbp", "max_radius_km"], "cfg.travel.radius", 5, cfg.mbp.radius_max_km ?? 100, 5, (v) => `${v} km`)}
           </div>
         </Card>
         <Card title={t("cfg.rules")}>

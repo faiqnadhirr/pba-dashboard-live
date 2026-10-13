@@ -191,7 +191,7 @@ function FieldTab({ vis, fme, cfg, R, setRadius, nop, legend, M, cardRows, tt, M
   const [roles, setRoles] = useState(["BPS", "TS", "PM"]);
   const people = fme.filter((p) => isNum(p.lat)).map((p) => ({ mbp_id: `${p.role} · ${p.name}`, lat: p.lat, lon: p.lon, nop: p.nop, role: p.role, pic_name: p.subcluster }));
   const T = F.rows.reduce((a, r) => { for (const k of ["sites", "within", "BPS", "PM", "TS", "prob", "below"]) a[k] = (a[k] || 0) + r[k]; return a; }, {});
-  const RP = cfg.mbp.radius_presets || [20, 30, 40, 60, 120];
+  const RP = cfg.mbp.radius_presets || [25, 50, 100];
   return (
     <div className="space-y-4">
       <Note>{t("a4.field.note")}</Note>

@@ -98,8 +98,9 @@ test("F · MapView has distinct site/MBP markers and independent layer toggles",
 
 /* ---------- G. Radius change propagates ---------- */
 test("G · v4.0 smaller preferred radius → same reach, more assignments inside the preferred radius", () => {
+  // vNext: the default is now 25 km, so compare 40 km against an explicit 120 km run (the old default)
   const c2 = { ...cfg, mbp: { ...cfg.mbp, max_radius_km: 40 } };
-  const M2 = buildModel(sites, mbps, c2);
+  const M2 = buildModel(sites, mbps, c2), M = buildModel(sites, mbps, { ...cfg, mbp: { ...cfg.mbp, max_radius_km: 120 } });
   const cov = (L) => L.filter((s) => s.covered).length;
   assert.equal(cov(M2), cov(M));
   const inside = (L) => L.filter((x) => x.mbp_assigned && x.km_assigned <= 40).length;
@@ -161,7 +162,8 @@ test("Simulation: picked MBP within radius; feasible-first; outcomes classified"
   const r = simulate(M, aff, 6, mbps, { fam }, cfg, { departHour: 17 });
   assert.equal(r.rows.length, aff.length);
   for (const x of r.rows) {
-    if (x.mbp) assert.ok(x.km <= cfg.mbp.max_radius_km);
+    // dispatch searches up to the hard cap (reach_cap_km); the preferred radius is not a cut-off (v4.0)
+    if (x.mbp) assert.ok(x.km <= Math.max(cfg.mbp.max_radius_km, cfg.mbp.reach_cap_km ?? 250));
     if (x.outcome === "saved") assert.equal(x.feasible, true);
     assert.ok(["saved", "late", "unserved_busy", "unserved_no_coverage", "unserved_island", "no_need"].includes(x.outcome));
   }

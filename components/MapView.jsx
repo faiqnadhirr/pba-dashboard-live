@@ -169,7 +169,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             <label className="inline-flex items-center gap-1"><input type="checkbox" checked={showMbps} onChange={(e) => setShowMbps(e.target.checked)} className="accent-navy" />{t("map.basecamps")}</label>
             <label className="inline-flex items-center gap-1" title={t("map.cov_note", { r: R })}><input type="checkbox" checked={coverage} onChange={(e) => setCoverage(e.target.checked)} className="accent-navy" />{t("map.cov_toggle")}</label></>}
           </div>
-          {showMbpLayers && onRadius && <div className="border-l border-line pl-3" title={t("map.cov_note", { r: R })}><RadiusControl value={R} onChange={onRadius} def={nav.radiusDefault} /></div>}
+          {showMbpLayers && onRadius && <div className="border-l border-line pl-3" title={t("map.cov_note", { r: R })}><RadiusControl value={R} onChange={onRadius} def={nav.radiusDefault} presets={cfg.mbp.radius_presets || undefined} max={cfg.mbp.radius_max_km ?? 100} /></div>}
           {canRoll && <div className="flex items-center gap-1.5 border-l border-line pl-3 ml-auto"><span className="text-mut">{t("map.level")}</span>
             <Seg value={level} onChange={(lv) => { setLevel(lv); setUnit(null); }} label={t("map.level")} options={["site", "cluster", "nop"].map((lv) => [lv, t(`map.level.${lv}`), t(`map.level_tip.${lv}`)])} /></div>}
         </div>

@@ -416,24 +416,24 @@ export function Seg({ value, onChange, options, label, size = "sm" }) {
   );
 }
 
-/** vNext — radius: 20 / 40 / 80 km presets + Custom (number input, applied on Enter / blur). The value is cfg.mbp.max_radius_km
+/** vNext — radius: Config presets (25 / 50 / 100 km) + Custom (number input, applied on Enter / blur). The value is cfg.mbp.max_radius_km
  *  (the preferred radius); it never changes the reach-before-BBT KPI (search limit = reach_cap_km). */
-export const RADIUS_PRESETS = [20, 40, 80];
-export function RadiusControl({ value, onChange, def }) {
-  const custom = !RADIUS_PRESETS.includes(value);
+export const RADIUS_PRESETS = [25, 50, 100];   // fallback when Config has no mbp.radius_presets
+export function RadiusControl({ value, onChange, def, presets = RADIUS_PRESETS, max = 100 }) {
+  const custom = !presets.includes(value);
   const [open, setOpen] = React.useState(false), [draft, setDraft] = React.useState(String(value));
   React.useEffect(() => setDraft(String(value)), [value]);
-  const commit = () => { const v = Math.round(Number(draft)); if (Number.isFinite(v) && v >= 5 && v <= 250 && v !== value) onChange?.(v); else setDraft(String(value)); };
+  const commit = () => { const v = Math.round(Number(draft)); if (Number.isFinite(v) && v >= 5 && v <= max && v !== value) onChange?.(v); else setDraft(String(value)); };
   return (
     <div className="flex items-center gap-1.5" role="group" aria-label={t("map.radius")}>
       <span className="text-mut">{t("map.radius")}</span>
       <div className="flex rounded-md overflow-hidden border border-line">
-        {RADIUS_PRESETS.map((r) => <button key={r} aria-pressed={value === r} onClick={() => { setOpen(false); onChange?.(r); }}
+        {presets.map((r) => <button key={r} aria-pressed={value === r} onClick={() => { setOpen(false); onChange?.(r); }}
           className={`px-2 py-0.5 text-[12px] tabular ${value === r ? "bg-navy text-white" : "bg-white text-slate hover:text-navy"}`}>{r} km</button>)}
         <button aria-pressed={custom || open} onClick={() => setOpen(true)} className={`px-2 py-0.5 text-[12px] ${custom ? "bg-navy text-white" : "bg-white text-slate hover:text-navy"}`}>
           {custom ? `${value} km` : t("map.radius_custom")}</button>
       </div>
-      {open && <input type="number" min={5} max={250} step={5} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+      {open && <input type="number" min={5} max={max} step={5} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }} aria-label={t("map.radius_custom")} className="w-16 border border-line rounded px-1.5 py-0.5 text-[12px] tabular" />}
       {def != null && value !== def && <button onClick={() => onChange?.(def)} className="text-s1 underline text-[11.5px]" title={t("map.radius_def_tip")}>{t("map.radius_def", { r: def })}</button>}
     </div>
