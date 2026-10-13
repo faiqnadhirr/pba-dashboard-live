@@ -30,6 +30,7 @@ const MbpTab = lazy(() => import("@/components/tabs/MbpTab"));
 const BbsAnalysis = lazy(() => import("@/components/tabs/BbsAnalysis"));
 const DataQuality = lazy(() => import("@/components/tabs/DataQuality"));
 const Telemetry = lazy(() => import("@/components/tabs/Telemetry"));
+const HistoryTab = lazy(() => import("@/components/tabs/HistoryTab"));
 const Dispatch = lazy(() => import("@/components/tabs/Dispatch"));
 const Area4 = lazy(() => import("@/components/Area4"));
 const DataInventory = lazy(() => import("@/components/DataInventory"));
@@ -42,13 +43,15 @@ const ConfigTab = lazy(() => import("@/components/tabs/ConfigTab"));
 // Tabs in SECONDARY are advanced views shown after a divider in the sub-navigation (kept, not competing with the main flow).
 const GROUPS = [
   ["overview", [["health", "overview.health"], ["acc", "overview.accountability"], ["impact", "overview.impact"], ["trend", "overview.trend"]]],
-  ["mbp", [["fleet", "mbp.fleet"], ["explorer", "mbp.explorer"], ["plan", "mbp.plan"], ["mbp", "mbp.coverage"], ["disp", "mbp.dispatch"], ["tel", "mbp.telemetry"]]],
+  ["mbp", [["fleet", "mbp.fleet"], ["explorer", "mbp.explorer"], ["plan", "mbp.plan"], ["hist", "mbp.history"], ["mbp", "mbp.coverage"], ["disp", "mbp.dispatch"], ["tel", "mbp.telemetry"]]],
   ["bbs", [["risk", "bbs.risk"], ["bbs", "bbs.actions"], ["est", "bbs.estimation"], ["corr", "bbs.correlation"]]],
   ["data", [["dq", "data.quality"], ["inv", "data.inventory"], ["field", "data.field"], ["cfg", "data.config"]]],
 ];
 const SECONDARY = new Set(["mbp", "disp", "tel", "est", "corr"]);
 // tabs that need data AREA 4 does not have yet (MBP jobs / PLN events / battery inventory) → an N/A banner explains it
-const NEEDS_JOBS = new Set(["fleet", "disp"]);
+const NEEDS_JOBS = new Set(["fleet", "disp", "hist"]);
+// vNext.2 — unfinished telemetry design is a prototype: hidden from the navigation unless ?full=1 (direct links still open it)
+const PROTOTYPE = new Set(["tel"]);
 const VIEW_OF = Object.fromEntries(GROUPS.flatMap(([, tabs]) => tabs.map(([k, v]) => [k, v])));
 const TAB_OF = Object.fromEntries(Object.entries(VIEW_OF).map(([k, v]) => [v, k]));
 // v5.0 — links from earlier versions keep working: old view → new page (+ Resource Planning step)
@@ -60,7 +63,7 @@ const DEFAULT_TAB = "fleet";
 // v3.7 — the Overview (availability) menu is hidden from the presentation flow; ?full=1 (or opening one of its views) shows it again
 const HIDDEN_GROUP = "overview";
 // tabs that do not follow the period filter (decisions / estimators / fixed Q1-vs-Q2 comparison)
-const FIXED_TABS = new Set(["inv", "trend", "plan", "fleet", "disp", "est", "corr", "tel", "cfg", "field"]);
+const FIXED_TABS = new Set(["inv", "trend", "plan", "fleet", "hist", "disp", "est", "corr", "tel", "cfg", "field"]);
 const FIRST_OF = Object.fromEntries(GROUPS.map(([g, tabs]) => [g, tabs[0][0]]));
 /** everything the URL can carry; an unknown ?view= falls back to its group's first sub-tab (or Health) with a notice */
 function readUrl() {
@@ -210,7 +213,7 @@ export default function Page() {
   const maxAge = cfg.freshness?.max_age_days ?? 45;
   const ageDays = Math.round((Date.now() - Date.parse((snap.period_end || "2026-06-30") + "T23:59:00+07:00")) / 86400000);
   const fmtD = (d) => { try { return new Date(d + "T12:00:00").toLocaleDateString(lang === "id" ? "id-ID" : "en-GB", { day: "numeric", month: "short", year: "numeric" }); } catch { return d; } };
-  const visibleTabs = (g) => GROUPS.find(([x]) => x === g)[1];
+  const visibleTabs = (g) => GROUPS.find(([x]) => x === g)[1].filter(([k]) => !PROTOTYPE.has(k) || full || tab === k);
   const activeGroup = groupOf(tab);
   const groups = GROUPS.filter(([g]) => g !== HIDDEN_GROUP || full || activeGroup === HIDDEN_GROUP);
   const filtered = area !== "all" || clu || nop !== "All NOPs" || classes.length > 0 || inactive || offair || gen || per !== "h1";
@@ -321,7 +324,8 @@ export default function Page() {
           {tab === "corr" && <BbsAnalysis {...ctx} part="corr" />}
           {tab === "est" && <BbsAnalysis {...ctx} part="est" />}
           {tab === "dq" && <DataQuality {...ctx} />}
-          {tab === "tel" && <Telemetry {...ctx} />}
+          {tab === "tel" && <><div role="status" className="mb-3 text-[12.5px] border border-warn/60 bg-warn/10 rounded-md px-3 py-1.5">{t("tel.prototype")}</div><Telemetry {...ctx} /></>}
+          {tab === "hist" && <HistoryTab {...ctx} />}
           {tab === "cfg" && <ConfigTab {...ctx} />}
           {tab === "inv" && <InventoryTab meta1={data.meta} />}
         </div>}

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test tests/logic.test.mjs"
+    "test": "node --test tests/logic.test.mjs",
+    "reconcile": "node scripts/reconcile.mjs"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

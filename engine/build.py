@@ -820,7 +820,7 @@ def main():
                    dict(area="AREA 1", source="MBP Team", raw=len(team), clean=len(mbps), grain="MBP", derived_from=None, data_max_date=None),
                    dict(area="AREA 1", source="Tracking Ticket", raw=qa["ticket_rows"], clean=len(tickets), grain="ticket", derived_from=None, data_max_date=max_date(tickets, "occurred_at")),
                    dict(area="AREA 1", source="BBT events", raw=qa["bbt_event_rows"], clean=len(events), grain="event", derived_from=None, data_max_date=max_date(events, "mf_start")),
-                   dict(area="AREA 1", source="PLN outage intervals (merged)", raw=len(ev), clean=len(iv), grain="interval",
+                   dict(area="AREA 1", source="PLN off — mains-fail alarm intervals (merged; not a confirmed PLN outage feed)", raw=len(ev), clean=len(iv), grain="interval",
                         derived_from="BBT events (mains-fail alarms of AREA 1 sites) — raw = BBT events kept for AREA 1 sites", data_max_date=max_date(iv, "end")),
                    dict(area="AREA 1", source="BBT monthly (6 CSV)", raw=len(monthly_raw), clean=len(monthly), grain="site-month", derived_from=None, data_max_date=max_month(monthly, "month")),
                    dict(area="AREA 1", source="RAN availability", raw=len(ran_m), clean=len(ran), grain="site-month (wall-clock)", derived_from=None, data_max_date=max_month(ran, "ym")),

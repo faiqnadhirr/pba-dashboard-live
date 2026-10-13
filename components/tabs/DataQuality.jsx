@@ -18,7 +18,7 @@ export default function DataQuality(props) {
   const snap = data.meta.snapshot || {}, mb = data.meta.mbp || {}, m = data.meta, qa = m.qa;
   const prec = useMemo(() => { const c = {}; scope.forEach((x) => { const d = !(isNum(x.lat) && isNum(x.lon)) ? "none" : x.coord_decimals ?? "unknown"; c[d] = (c[d] || 0) + 1; }); return Object.entries(c).sort((a, b) => String(b[0]).localeCompare(String(a[0]))); }, [scope]);
   const acc = useMemo(() => { const c = {}; scope.forEach((x) => { c[x.access_class] = (c[x.access_class] || 0) + 1; }); return c; }, [scope]);
-  const dz = useMemo(() => { const c = { DERIVED: 0, ESTIMATED: 0, PROXY: 0 }; scope.forEach((x) => { c[x.bbt_design_evidence] = (c[x.bbt_design_evidence] || 0) + 1; }); return c; }, [scope]);
+  const dz = useMemo(() => { const c = { site_load: 0, median_load: 0, class_default: 0 }; scope.forEach((x) => { c[x.bbt_design_kind] = (c[x.bbt_design_kind] || 0) + 1; }); return c; }, [scope]);
   const unk = useMemo(() => ({ pln: scope.filter((x) => !x.pln_known).length, hist: scope.filter((x) => !x.mbp_hist_known).length, o25: scope.filter((x) => !x.o25_known).length }), [scope]);
   // v4.2 (FIX-03) — base camps to clean up first = basecamp_final.selectable = false (same list as on the MBP map)
   const hiddenBc = useMemo(() => needsCleanup(bcScope), [bcScope]);
@@ -32,7 +32,7 @@ export default function DataQuality(props) {
   const miss = ["site_class", "lat", "hub_site", "battery_type", "battery_age_y", "load_a", "battery_banks", "bbt_measured_min", "bbt_lower_bound_min", "pln_source", "avail_wc_pct", "mbp_assigned"]
     .map((k) => ({ field: k, missing_pct: (100 * scope.filter((s) => s[k] == null).length) / Math.max(1, scope.length) }));
   const um = m.dq.unmatched.reduce((a, u) => { a[u.source] = (a[u.source] || 0) + 1; return a; }, {});
-  const cal = useMemo(() => { const r = scope.filter((x) => x.battery.source === "ACTUAL" && x.bbt_design_evidence === "DERIVED").map((x) => x.bbt_value_min / x.bbt_design_min).sort((a, b) => a - b);
+  const cal = useMemo(() => { const r = scope.filter((x) => x.battery.source === "ACTUAL" && x.bbt_design_kind === "site_load").map((x) => x.bbt_value_min / x.bbt_design_min).sort((a, b) => a - b);
     return { n: r.length, med: r.length ? r[Math.floor(r.length / 2)] : null, capped: scope.filter((x) => x.bbt_design_min >= (cfg.bbt.design_from_battery?.max_minutes ?? 480)).length }; }, [scope, cfg]);
   return (
     <div className="space-y-4">
@@ -73,7 +73,7 @@ export default function DataQuality(props) {
       <div className="grid xl:grid-cols-3 gap-4">
         <Card title={<>{t("dq.design.title")}<Gloss k="bbt_design" /></>} sub={t("dq.design.sub", { d: cfg.bbt.design_minutes })}>
           <table className="w-full text-[12.5px] tabular"><tbody>
-            {["DERIVED", "ESTIMATED", "PROXY"].map((k) => <tr key={k} className="border-b border-line/60"><td className="py-1"><EvTag v={k} /> {t(`dq.design.${k}`)}</td><td className="text-right">{fInt(dz[k])}</td><td className="text-right text-slate">{pct(dz[k], scope.length)}</td></tr>)}
+            {[["site_load", "ESTIMATED", "DERIVED"], ["median_load", "PROXY", "ESTIMATED"], ["class_default", "PROXY", "PROXY"]].map(([k, e, old]) => <tr key={k} className="border-b border-line/60"><td className="py-1"><EvTag v={e} /> {t(`dq.design.${old}`)}</td><td className="text-right">{fInt(dz[k])}</td><td className="text-right text-slate">{pct(dz[k], scope.length)}</td></tr>)}
           </tbody></table>
           {cal.med != null && <div className="mt-2"><Note tone="warn">{t("dq.design.cal", { n: fInt(cal.n), p: fPct(cal.med * 100, 0), c: fInt(cal.capped), max: cfg.bbt.design_from_battery?.max_minutes ?? 480 })}</Note></div>}
         </Card>

@@ -2,6 +2,19 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## vNext.2 — operational integrity (reconciliation, history, capability, demand centre, rule fixes)
+- **Reconciliation**: `npm run reconcile` (`scripts/reconcile.mjs`) regenerates `docs/RECONCILIATION_generated.md` with the dashboard's own functions (site / base-camp / ticket chains, metric definitions, design bases, Σ NOP = area). Discrepancies with source, formula, observed, expected and resolution: `docs/DISCREPANCIES_vNext2.md`.
+- **One on-time rule**: `judgeTicket()` (lib/mbpperf.js) used by the KPI layer and the new history lib; test VN-5 checks per-camp equality.
+- **History & Patterns** (MBP, new page `components/tabs/HistoryTab.jsx`, `lib/history.js`): historical badge, months / base camp / outage category / outcome filters + header Area / NOP / class on ONE job set → scorecards (jobs, on time with n, power-on with n, no check-in, not judged, unknown PIC), weekly / monthly outcome timeline, demand-hotspot map, capability profile per base camp (CSV). Jobs grouped by the camp's NOP, as in the KPI layer.
+- **Power-on outcome (REPORTED)**: ticket resolution "connect genset" AND running hours > 0; no check-in = missing, not failure; never inferred from visits. Also in the Fleet camp panel.
+- **Demand centre vs recommended location** (History › second view): weighted centre (Config › gravity weights shown) kept apart from the recommended real anchor site; feasibility checks (active site, not island, ≥ 4 coordinate decimals, same regency, riverine flagged), explicit exclusions, baseline comparison (own sites within 30 min, weighted ETA). Engine `basecampGravity` unchanged; it was previously only reachable with `?full=1`.
+- **Rule fix (verified defect)**: BBS R10 no longer recommends a battery upgrade on an unknown (→ R10b collect field data) or estimated BBT (→ R10c inspect & verify). Test VN-6 checks that condition, evidence and action cannot contradict.
+- **Definition fixes**: computed per-site design now ESTIMATED (site load) / PROXY (median load, class default) with `bbt_design_kind` (was DERIVED although the Ah rating is assumed). "PLN outage" labels → "PLN off (mains-fail alarms)"; engine source name updated.
+- **Outage scenario**: unknown BBT shown as "not evaluable" with the engine's (BBT = 0) result kept beside it (`simOutcomeView`, test VN-7).
+- **Maps**: wheel zoom only after a click on the map (page scroll no longer hijacked), zoom 4–17, bounds around Indonesia; Fleet on-time view relabels the status chips as a filter (no conflicting colours); demand-centre map draws sites neutral so purple = recommendation only.
+- Telemetry design hidden from the navigation (prototype banner; `?full=1` or a direct link still opens it).
+- Tests 76 → 79 (VN-5 … VN-7) plus updated B1 / G / Simulation tests.
+
 ## vNext.1 — default preferred radius 25 km (max 100 km)
 - `engine/config/thresholds.yaml`: `mbp.max_radius_km` 120 → **25**, `radius_presets` → [25, 50, 100], new `radius_max_km: 100` (Custom input + Config slider limit). `reach_cap_km` (search limit, 250 km) unchanged, so reach before BBT stays 1,693 / 2,666. Tests G and Simulation updated (they assumed a 120 km default). Data rebuilt (build.py + build_area4.py).
 

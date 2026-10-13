@@ -240,9 +240,12 @@ test("A6 · battery_banks present in the export (Data quality and correlation us
 
 test("B1 · per-site BBT design whenever banks are known; class fallback (PROXY) only when banks are missing", () => {
   for (const s of M) {
-    if (s.battery_banks > 0) assert.notEqual(s.bbt_design_evidence, "PROXY", s.site_id);
-    else assert.equal(s.bbt_design_evidence, "PROXY", s.site_id);
-    if (s.battery_banks > 0 && s.load_a > 0) assert.equal(s.bbt_design_evidence, "DERIVED", s.site_id);
+    if (s.battery_banks > 0) assert.notEqual(s.bbt_design_kind, "class_default", s.site_id);
+    else { assert.equal(s.bbt_design_kind, "class_default", s.site_id); assert.equal(s.bbt_design_evidence, "PROXY", s.site_id); }
+    if (s.bbt_design_kind === "median_load") assert.equal(s.bbt_design_evidence, "PROXY", s.site_id);   // load AND Ah assumed
+    // vNext.2: computed design with the site's own load = ESTIMATED (Ah per bank is assumed); never DERIVED (that label = monthly BBT summary)
+    if (s.battery_banks > 0 && s.load_a > 0) { assert.equal(s.bbt_design_evidence, "ESTIMATED", s.site_id); assert.equal(s.bbt_design_kind, "site_load"); }
+    assert.notEqual(s.bbt_design_evidence, "DERIVED", s.site_id);
   }
 });
 
@@ -943,4 +946,59 @@ test("VN-4 navigation + labels: BBS pages renamed in both languages, legacy link
   assert.ok(!perf.includes("#6b4bd8"), "fleet 'busy' no longer purple (purple = proposed unit in planning)");
   // every new vNext key exists in both languages
   for (const k of Object.keys(en).filter((k) => /^(snap|cond|fa|plan\.q|plan\.base|place\.seq|place\.stop|sim\.sum)\./.test(k))) assert.ok(id[k], k);
+});
+
+// ---------------------------------------------------------------- vNext.2
+test("VN-5 history lib: one on-time rule (equals mbpPerformance per camp), outcomes counted once, timeline + filters add up", async () => {
+  const H = await import("../lib/history.js"), P = await import("../lib/mbpperf.js");
+  const tk = fromColumnar(JSON.parse(fs.readFileSync("public/data/tickets.json", "utf8")));
+  const camps = new Set(mbps.map((m) => m.mbp_id));
+  const R = H.enrichTickets(tk, byId).filter((r) => camps.has(r.mbp));
+  const perf = P.mbpPerformance(M, mbps, tk, cfg);
+  const cap = new Map(H.capability(R).map((c) => [c.mbp_id, c]));
+  for (const [id, p] of perf) { const c = cap.get(id); if (!p.jobs) { assert.ok(!c, id); continue; }
+    assert.equal(c.jobs, p.jobs, id); assert.equal(c.ontime, p.ontime, id); assert.equal(c.late, p.late, id); }
+  const T = H.historyTotals(R);
+  assert.equal(H.OUTCOMES.reduce((a, o) => a + T[o], 0), T.jobs, "every job has exactly one outcome");
+  assert.equal(H.JUDGE.reduce((a, j) => a + T[j], 0), T.jobs, "every job has exactly one judgement");
+  assert.ok(H.OUTCOMES.every((o) => !H.JUDGE.includes(o)), "outcome and judgement keys never collide");
+  assert.equal(H.timeline(R, "month").reduce((a, b) => a + b.n, 0), T.jobs);
+  assert.equal(H.timeline(R, "week").reduce((a, b) => a + b.n, 0), T.jobs);
+  assert.equal(H.timeline([], "month").length, 6, "empty months are present as 0, not missing");
+  const f = H.filterTickets(R, { months: [3, 4], cats: ["P"], outcomes: ["power_on"] });
+  assert.ok(f.every((r) => r.month >= 3 && r.month <= 4 && r.rc === "P" && r.outcome === "power_on"));
+  // power-on is never inferred from visits: a job without check-in is "no_checkin", never power_on
+  assert.equal(H.ticketOutcome({ out: "N", job: 5 }), "no_checkin");
+  assert.equal(H.ticketOutcome({ out: "G", job: 0 }), "connected_no_rh");
+  assert.equal(H.ticketOutcome({ out: "G", job: 2.5 }), "power_on");
+  assert.equal(H.monthOf(0), 1); assert.equal(H.monthOf(31 * 1440), 2);
+  for (const c of cap.values()) assert.ok(c.rh_heap == null || (c.rh_heap >= 0 && c.rh_heap <= 1), c.mbp_id);
+});
+
+test("VN-6 BBS: condition, evidence and action never contradict; every priority has its drivers", () => {
+  const A = M.filter((s) => s.site_active === 1);
+  const measured = (s) => !!s.battery?.measured;
+  for (const s of A) {
+    const at = s.action_type, st = s.bbt_status, id = s.site_id;
+    if (at === "REPLACE") assert.ok(["Dead", "Critical"].includes(st) && (measured(s) || s.battery.source === "TICKET"), `${id} replace needs measured Dead/Critical`);
+    if (at === "UPGRADE") assert.ok(measured(s), `${id} upgrade needs a measured BBT (was R10 on unknown / estimated)`);
+    if (at === "SETTING") assert.ok(st === "Critical" && measured(s), id);
+    if (at === "MONITOR") assert.equal(st, "Degraded", id);
+    if (at === "DATA") assert.equal(st, "Unknown", id);
+    if (st === "Unknown") assert.ok(["DATA", "NONE"].includes(at), `${id} unknown BBT → only collect data`);
+    if (["Dead", "Critical", "Degraded"].includes(st)) assert.notEqual(at, "NONE", `${id} problem status must have an action`);
+    if (s.bbs_priority_level) assert.ok(String(s.bbs_priority_drivers || "").length > 0, `${id} priority without drivers`);
+  }
+});
+
+test("VN-7 outage scenario: unknown BBT is shown as not evaluable, never as a measured late / unserved result", async () => {
+  const { simOutcomeView, simCounts, SIM_OUTCOMES } = await import("../lib/dispatch.js");
+  const nop = "NOP PALEMBANG";
+  const aff = active.filter((s) => s.nop === nop).sort((a, b) => (b.pln_freq || 0) - (a.pln_freq || 0)).slice(0, 60).map((s) => s.site_id);
+  const unk = active.filter((s) => s.nop === nop && s.battery.source === "UNAVAILABLE").slice(0, 5).map((s) => s.site_id);
+  const r = simulate(M, [...aff, ...unk], 6, mbps, { fam }, cfg, { departHour: 17 });
+  const c = simCounts(r.rows);
+  assert.equal(SIM_OUTCOMES.reduce((a, k) => a + c[k], 0), r.rows.length, "every simulated site has exactly one displayed outcome");
+  for (const x of r.rows) if (String(x.bbt_evidence).startsWith("UNAVAILABLE") && x.mbp_needed) assert.equal(simOutcomeView(x), "not_evaluable", x.site_id);
+  if (unk.length) assert.ok(c.not_evaluable > 0);
 });

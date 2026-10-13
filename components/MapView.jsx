@@ -47,6 +47,18 @@ function FlyTo({ pt, sig }) {
   }, [sig]); // eslint-disable-line
   return null;
 }
+/** vNext.2 — the page scrolls normally over the map; wheel zoom is enabled after a click on the map and disabled when the pointer
+ *  leaves it (no accidental zoom while scrolling the page). */
+function WheelGuard({ onArm }) {
+  const map = useMap();
+  useEffect(() => {
+    map.scrollWheelZoom.disable();
+    const on = () => { map.scrollWheelZoom.enable(); onArm?.(true); }, off = () => { map.scrollWheelZoom.disable(); onArm?.(false); };
+    map.on("click", on); map.on("focus", on); map.on("mouseout", off); map.on("blur", off);
+    return () => { map.off("click", on); map.off("focus", on); map.off("mouseout", off); map.off("blur", off); };
+  }, [map]); // eslint-disable-line
+  return null;
+}
 function ClickWatch({ onClick }) {
   useMapEvents({ click: (e) => onClick?.(e.latlng.lat, e.latlng.lng) });
   return null;
@@ -120,7 +132,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
   const selMbp = ctlMbp ? (selectedMbpId ? [...mbps, ...extraMbps].find((m) => m.mbp_id === selectedMbpId) || null : null) : selMbpL;
   const setSelSite = (x) => (ctlSite ? onSelectSite?.(x) : setSelSiteL(x));
   const setSelMbp = (x) => (ctlMbp ? onSelectMbp?.(x) : setSelMbpL(x));
-  const [zoom, setZoom] = useState(6);
+  const [zoom, setZoom] = useState(6), [armed, setArmed] = useState(false);
   const nav = useNav();
   const R = cfg.mbp.max_radius_km;
   const MM = colorOverride ? null : MAP_MODES[mode];
@@ -176,7 +188,9 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
       )}
       <div className="relative">
         <div style={{ height }} className="rounded-md overflow-hidden border border-line">
-          <MapContainer center={[0, 102]} zoom={6} zoomSnap={0.5} preferCanvas style={{ height: "100%", width: "100%" }} scrollWheelZoom>
+          <MapContainer center={[0, 102]} zoom={6} zoomSnap={0.5} preferCanvas style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}
+            minZoom={4} maxZoom={17} maxBounds={[[-15, 88], [12, 145]]} maxBoundsViscosity={0.8}>
+            <WheelGuard onArm={setArmed} />
             {!offline && <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap"
               eventHandlers={{ tileerror: () => setTileFail((n) => n + 1), tileload: () => setTileOk((n) => n + 1) }} />}
             <Fit pts={fitPts} sig={fitOnce ? fitKey : fitKey + ":" + fitPts.length} />
@@ -209,6 +223,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
               <CircleMarker center={[selSite.lat, selSite.lon]} radius={15} interactive={false} pathOptions={{ color: "#eda100", weight: 3, fillOpacity: 0 }} /></>}
           </MapContainer>
         </div>
+        {!armed && <div className="pointer-events-none absolute bottom-2 left-2 z-[400] text-[11px] bg-white/85 border border-line rounded px-1.5 py-0.5 text-slate">{t("map.wheel_hint")}</div>}
         {showCard && (selMbp || selSite) && (
           <div className="absolute top-2 right-2 z-[400] w-[300px] bg-white/95 border border-line rounded-lg shadow p-3 text-[12px]" role="dialog" aria-label={t("map.selection")}>
             <button onClick={() => { setSelMbp(null); setSelSite(null); }} className="absolute top-1.5 right-2 text-slate text-[16px]" aria-label={t("common.close")}>×</button>
@@ -283,7 +298,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             </button>) : <span key={l.label} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: l.c }} />{l.label}</span>;
         })}
         {keyOf && hidden.length > 0 && <button onClick={() => (onHidden || setHiddenL)([])} className="text-s1 underline">{t("map.leg_all")}</button>}
-        <span className="text-mut">· {level !== "site" && canRoll ? t("map.leg.pie") : <>{MM?.size || !MM ? t("map.leg.size_m", { m: MM ? t(`map.size.${mode}`) : t("map.tt_power") }) : ""}{(MM ? MM.hollow : true) ? ` · ${hollowLabel || (MM ? t(`map.hollow.${mode}`) : t("map.leg.hollow", { r: R }))}` : ""}</>} · {t("map.leg.click")}</span>
+        <span className="text-mut">· {level !== "site" && canRoll ? t("map.leg.pie") : <>{MM?.size || !MM ? t("map.leg.size_m", { m: MM ? t(`map.size.${mode}`) : t("map.tt_power") }) : ""}{(MM ? MM.hollow : !hollowOverride || !!hollowLabel) ? ` · ${hollowLabel || (MM ? t(`map.hollow.${mode}`) : t("map.leg.hollow", { r: R }))}` : ""}</>} · {t("map.leg.click")}</span>
         {selMbp && showMbpLayers && <span className="inline-flex items-center gap-1 text-ink"><span className="w-3 h-3 rounded-full inline-block border-2 border-dashed border-[#eda100]" />{t("map.radius_sel", { r: R })}</span>}
         {offline && <span className="text-[#8a5a00]">{t("map.offline")}</span>}
       </div>
