@@ -332,13 +332,15 @@ test("4 · config hash is stable and key-order independent", () => {
   assert.notEqual(configHash({ ...cfg, mbp: { ...cfg.mbp, max_radius_km: cfg.mbp.max_radius_km + 5 } }), h);
 });
 
-test("1 · navigation: 4 groups in order Overview · MBP · BBS · Data & Config, landing = MBP overview (v3.7, Overview hidden unless ?full=1), view in URL", () => {
+test("1 · navigation (v5.0): MBP = Fleet · Explorer · Planning, BBS = Battery Risk · Actions; advanced views kept; legacy links resolve", () => {
   const src = fs.readFileSync("app/page.jsx", "utf8");
   const order = [...src.matchAll(/^\s+\["(overview|mbp|bbs|data)", \[/gm)].map((m) => m[1]);
   assert.deepEqual(order, ["overview", "mbp", "bbs", "data"]);
-  assert.ok(src.includes('DEFAULT_TAB = "mgmt"') && src.includes('HIDDEN_GROUP = "overview"') && src.includes('q.set("full"') && src.includes('q.set("view"') && src.includes("popstate"));
-  assert.ok(/\["mbp", \[\["mgmt", "mbp.overview"\]/.test(src), "MBP opens on the management overview");
-  assert.ok(/\["bbs", \[\["bbs", "bbs.actions"\]/.test(src), "BBS opens on the action list");
+  assert.ok(src.includes('DEFAULT_TAB = "fleet"') && src.includes('HIDDEN_GROUP = "overview"') && src.includes('q.set("full"') && src.includes('q.set("view"') && src.includes("popstate"));
+  assert.ok(/\["mbp", \[\["fleet", "mbp.fleet"\], \["explorer", "mbp.explorer"\], \["plan", "mbp.plan"\]/.test(src));
+  assert.ok(/\["bbs", \[\["risk", "bbs.risk"\], \["bbs", "bbs.actions"\]/.test(src));
+  for (const v of ["mbp.overview", "mbp.performance", "mbp.sitelist", "mbp.simmap", "mbp.placement", "mbp.backtest", "mbp.simulation"]) assert.ok(src.includes(`"${v}"`), `legacy ${v}`);
+  for (const k of ["mbp", "disp", "tel", "est", "corr"]) assert.ok(new RegExp(`\\["${k}", "`).test(src), `advanced view ${k} kept`);
 });
 
 /* ================= fourth pass ================= */
@@ -822,4 +824,68 @@ test("TC-17 (FIX-17) the dashboard does not recount: its basecamp_final equals t
   assert.equal(J.size, V42.BC.length);
   for (const r of V42.BC) { const j = J.get(r.mbp_id); assert.ok(j, r.mbp_id); for (const k of ["status", "selectable", "nop", "area", "sites_assigned", "code", "dup_state"]) assert.deepEqual(r[k], j[k], `${r.mbp_id}.${k}`); }
   assert.deepEqual(V42.kpi.problems, []);
+});
+
+// ---------------------------------------------------------------- v5.0 — map + table workspace, dispatch, planning baseline
+import { workspaceRows, selectionState, markerKey } from "../lib/workspace.js";
+import { searchRows, sortRows, pageOfKey } from "../lib/table.js";
+import { dispatchFor } from "../lib/dispatch.js";
+import { reachOf as reachOfV5 } from "../lib/mbpperf.js";
+
+test("WS-1/3/4 one record set: legend + base-camp focus filter map and table alike; selection never filters", () => {
+  const rows = active.filter((s) => s.nop === "NOP JAMBI");
+  const hid = workspaceRows(rows, { mode: "survival", hidden: ["arrive"] });
+  assert.ok(hid.length < rows.length && hid.every((s) => MAP_KEYS.survival(s) !== "arrive"));
+  const camp = rows.find((s) => s.mbp_assigned)?.mbp_assigned;
+  const cs = workspaceRows(rows, { camp });
+  assert.ok(cs.length > 0 && cs.every((s) => s.mbp_assigned === camp));
+  assert.deepEqual(workspaceRows(rows, {}), rows, "no filter = same records (selection is not a filter)");
+  const id = rows[0].site_id;
+  assert.equal(selectionState(rows, rows, id).state, "shown");
+  assert.equal(selectionState(rows, rows.slice(1), id).state, "hidden_by_map");
+  assert.equal(selectionState(rows.slice(1), rows.slice(1), id).state, "excluded");
+  assert.equal(selectionState(rows, rows, null).state, "none");
+});
+
+test("WS-2/5 table pipeline: the selected record's page is found after sorting; sorting never changes a marker's colour key", () => {
+  const rows = active.filter((s) => s.nop === "NOP PALEMBANG");
+  const cols = [{ key: "mbp_priority_score" }, { key: "site_id" }, { key: "eta_min" }];
+  const before = new Map(rows.map((s) => [s.site_id, markerKey("survival", s)]));
+  for (const sort of [{ key: "mbp_priority_score", dir: -1 }, { key: "eta_min", dir: 1 }, { key: "site_id", dir: -1 }]) {
+    const S = sortRows(rows, sort, cols);
+    assert.equal(S.length, rows.length);
+    const target = S[S.length - 3].site_id, pg = pageOfKey(S, target, 50);
+    assert.equal(S.slice(pg * 50, pg * 50 + 50).some((s) => s.site_id === target), true, "selected row is on the page the table opens");
+    for (const s of S) assert.equal(markerKey("survival", s), before.get(s.site_id));
+  }
+  const sr = searchRows(rows, rows[5].site_id, [{ key: "site_id" }]);
+  assert.ok(sr.length >= 1 && sr.some((s) => s.site_id === rows[5].site_id));
+  assert.equal(pageOfKey(sr, "NOT-A-SITE", 50), null);
+});
+
+test("WS-6 dispatch: engine ranking, explicit outcome for every case, busy marks respected", () => {
+  const s = active.find((x) => x.nop === "NOP JAMBI" && x.covered && x.can_arrive_before_bbt && x.bbt_status !== "Unknown" && x.access_class !== "island");
+  const fam = new Map(famRows.map((r) => [r.site_id + "|" + r.mbp_id, r.served_n]));
+  const r = dispatchFor(s, mbps, fam, cfg);
+  assert.equal(r.outcome, "before"); assert.ok(r.pick && r.pick.eta_min <= s.bbt_effective_min);
+  assert.equal(r.list[0].mbp_id, r.pick.mbp_id, "chosen camp ranks first");
+  assert.equal(dispatchFor(s, mbps, fam, cfg, { outageMin: Math.max(0, s.bbt_effective_min - 5) }).outcome, "no_need");
+  const allBusy = new Set(r.list.map((x) => x.mbp_id));
+  assert.equal(dispatchFor(s, mbps, fam, cfg, { busy: allBusy }).outcome, "all_busy");
+  const r2 = dispatchFor(s, mbps, fam, cfg, { busy: new Set([r.pick.mbp_id]) });
+  assert.notEqual(r2.pick?.mbp_id, r.pick.mbp_id);
+  const unk = active.find((x) => x.bbt_status === "Unknown" && Number.isFinite(x.lat) && x.access_class !== "island");
+  assert.equal(dispatchFor(unk, mbps, fam, cfg).outcome === "unknown" || dispatchFor(unk, mbps, fam, cfg).outcome === "none_in_range", true);
+  const isl = active.find((x) => x.access_class === "island");
+  if (isl) assert.equal(dispatchFor(isl, mbps, fam, cfg).outcome, "unknown");
+  assert.equal(dispatchFor(s, [], fam, cfg).outcome, "none_in_range");
+});
+
+test("WS-8 planning baseline = KPI layer: with no change the scenario reach equals the dashboard reach, per NOP", () => {
+  for (const nop of ["NOP PALEMBANG", "NOP ACEH", "NOP BATAM"]) {
+    const sn = M.filter((s) => s.nop === nop), act = sn.filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected && Number.isFinite(s.lat));
+    const r = reachOfV5(sn, mbps.filter((m) => Number.isFinite(m.lat)), cfg);
+    assert.equal(r.ok, act.filter(reachOk).length, nop);
+    assert.equal(r.p12ok, act.filter((s) => reachOk(s) && ["P1", "P2"].includes(s.mbp_priority_level)).length, nop);
+  }
 });

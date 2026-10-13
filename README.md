@@ -1,4 +1,4 @@
-# PBA — Power Backup Analytic (v4.0)
+# PBA — Power Backup Analytic (v5.0)
 
 Decision-support dashboard for Telkomsel **AREA1** power backup (ENOM · Triple-E).
 Dasbor pendukung keputusan untuk backup daya Telkomsel **AREA1** (ENOM · Triple-E).
@@ -22,6 +22,7 @@ Dasbor pendukung keputusan untuk backup daya Telkomsel **AREA1** (ENOM · Triple
 - **Every number is computed per site and rolled up** to cluster and NOP; every menu opens with a clickable hero map whose legend filters the tab, and a Site · Cluster · NOP justification panel.
 - **v3.6 (ops feedback):** fixed-genset sites excluded from MBP analysis; 'No battery' tickets are a field-check flag, not a status; BBT design-vs-actual gap; 30-min response target with kecamatan-level placement and fleet dimensioning (concurrency); base-camp centre of gravity → kecamatan; MBP productivity tab.
 - **v3.7:** MBP-first navigation (Overview hidden for presentations, `?full=1`); MBP overview per NOP; MBP performance & utilisation from H1 job tickets; relocation backtest (replay); static dispatch priority with audit; BBS action types incl. *check rectifier/LVD/BMS setting*.
+- **v5.0:** map-first revamp — MBP: Fleet Performance · Coverage & Site Explorer · Resource Planning; BBS: Battery Risk · Recommended Actions; map and table share one record set and one selection (`components/Workspace.jsx`). Still a demo on the H1 2026 snapshot: no real-time MBP availability, what-if config only in the browser. See `docs/AUDIT_v5.md`.
 - **v4.0:** practical flow — one KPI layer reconciled at build (`scripts/kpi_check.mjs`), need coverage from event pairs (≤ 100 %), radius = preference with calibrated ETA and a ±5 pp model check before any relocation advice, drag-and-drop simulation map, fleet size with knee + cost per dark hour, AREA 4 in the AREA 1 shape (N/A where no source). Build order: `python engine/build.py` then `python engine/build_area4.py`.
 - **v3.8:** AREA 4 (light) — availability & causes, weekly/monthly trend, battery from BBT Site Details, field staff (HW Master FME); *Data available* page with the feature matrix per AREA and the next data to send. Rebuild: `python engine/build_area4.py`.
 - Every value carries its evidence: **ACTUAL · DERIVED · ESTIMATED · PROXY · UNAVAILABLE**. Bilingual UI (ID default, EN); CSV exports in English.

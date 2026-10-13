@@ -36,6 +36,16 @@ function Fit({ pts, sig }) {
   }, [sig]); // eslint-disable-line
   return null;
 }
+/** v5.0 — bring the selected record into view (only when it is outside the current view, so the map does not jump on every click) */
+function FlyTo({ pt, sig }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!pt) return;
+    const b = map.getBounds().pad(-0.12);
+    if (!b.contains(pt)) map.flyTo(pt, Math.max(map.getZoom(), 9), { duration: 0.6 });
+  }, [sig]); // eslint-disable-line
+  return null;
+}
 function ClickWatch({ onClick }) {
   useMapEvents({ click: (e) => onClick?.(e.latlng.lat, e.latlng.lng) });
   return null;
@@ -92,7 +102,7 @@ function SiteLayer({ sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, onPick, zo
 
 export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSite, mbpStats, fitKey = "", height = 520, colorOverride, legendOverride, keyOverride,
   defaultMode = "priority", extraMbps = [], compact = false, mode: modeProp, onMode, hidden: hiddenProp, onHidden, modes = ["priority", "design", "survival"],
-  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true, mbpKeyOf, mbpLegend, mbpPerf, onOpenMbp, mbpLabel, hollowOverride, ttOverride, cardRows, hollowLabel, mbpLegendTitle, draggableMbps = false, onMbpDrag, onMapClick, mbpCardExtra, fitOnce = false, mbpCountsOverride = null }) {
+  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true, mbpKeyOf, mbpLegend, mbpPerf, onOpenMbp, mbpLabel, hollowOverride, ttOverride, cardRows, hollowLabel, mbpLegendTitle, draggableMbps = false, onMbpDrag, onMapClick, mbpCardExtra, fitOnce = false, mbpCountsOverride = null, hideMbpLegend = false, selectedSiteId, onSelectSite, selectedMbpId, onSelectMbp, showCard = true, campSiteIds = null }) {
   const [mbpHidden, setMbpHidden] = useState([]);
   const [tileFail, setTileFail] = useState(0), [tileOk, setTileOk] = useState(0);
   const [showSites, setShowSites] = useState(true), [showMbps, setShowMbps] = useState(true), [coverage, setCoverage] = useState(false);
@@ -101,7 +111,14 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
   const mode = modeProp ?? modeL, hidden = hiddenProp ?? hiddenL;
   const setMode = (m) => { (onMode || setModeL)(m); (onHidden || setHiddenL)([]); };
   const toggle = (k) => (onHidden || setHiddenL)(hidden.includes(k) ? hidden.filter((x) => x !== k) : [...hidden, k]);
-  const [selMbp, setSelMbp] = useState(null), [selSite, setSelSite] = useState(null);
+  // v5.0 — selection can be controlled by the page (map + table share it): selectedSiteId / selectedMbpId + onSelect… callbacks
+  const [selMbpL, setSelMbpL] = useState(null), [selSiteL, setSelSiteL] = useState(null);
+  const ctlSite = selectedSiteId !== undefined, ctlMbp = selectedMbpId !== undefined;
+  const siteById = useMemo(() => (ctlSite ? new Map(sites.map((x) => [x.site_id, x])) : null), [sites, ctlSite]);
+  const selSite = ctlSite ? (selectedSiteId ? siteById.get(selectedSiteId) || null : null) : selSiteL;
+  const selMbp = ctlMbp ? (selectedMbpId ? [...mbps, ...extraMbps].find((m) => m.mbp_id === selectedMbpId) || null : null) : selMbpL;
+  const setSelSite = (x) => (ctlSite ? onSelectSite?.(x) : setSelSiteL(x));
+  const setSelMbp = (x) => (ctlMbp ? onSelectMbp?.(x) : setSelMbpL(x));
   const [zoom, setZoom] = useState(6);
   const R = cfg.mbp.max_radius_km;
   const MM = colorOverride ? null : MAP_MODES[mode];
@@ -129,10 +146,10 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
   const visAll = useMemo(() => (keyOf && hidden.length ? sites.filter((s) => !hidden.includes(keyOf(s))) : sites), [sites, keyOf, hidden]);
   const units = useMemo(() => (canRoll && level !== "site" ? rollup(shown, level, mode).filter((u) => u.lat != null) : []), [canRoll, level, shown, mode]);
   const mbpSites = useMemo(() => (selMbp ? located.filter((s) => s.mbp_assigned === selMbp.mbp_id) : []), [selMbp, located]);
-  const inRadiusOfSel = useMemo(() => (selMbp ? new Set(located.filter((s) => s.coverage?.inRadius?.some((x) => x.mbp_id === selMbp.mbp_id)).map((s) => s.site_id)) : null), [selMbp, located]);
+  const inRadiusOfSel = useMemo(() => (campSiteIds || (selMbp ? new Set(located.filter((s) => s.coverage?.inRadius?.some((x) => x.mbp_id === selMbp.mbp_id)).map((s) => s.site_id)) : null)), [selMbp, located, campSiteIds]);
   const offline = tileFail > 3 && tileOk === 0;
   const st = selMbp && mbpStats ? mbpStats.get(selMbp.mbp_id) : null;
-  const pick = useMemo(() => (s) => { setSelSite(s); setSelMbp(null); }, []);
+  const pick = (s) => { setSelSite(s); if (!ctlMbp) setSelMbp(null); };
   if (!fitPts.length) return <div className="text-mut text-sm p-6 border border-line rounded-md">{t("map.no_coords")}</div>;
   const chip = (on) => `inline-flex items-center gap-1.5 px-2 py-[3px] rounded-full border text-[11.5px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1 ${on ? "bg-white border-slate/40 text-ink hover:border-slate" : "bg-surface border-line text-mut line-through decoration-1"}`;
 
@@ -165,6 +182,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             {!offline && <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap"
               eventHandlers={{ tileerror: () => setTileFail((n) => n + 1), tileload: () => setTileOk((n) => n + 1) }} />}
             <Fit pts={fitPts} sig={fitOnce ? fitKey : fitKey + ":" + fitPts.length} />
+            <FlyTo pt={selSite && isNum(selSite.lat) ? [selSite.lat, selSite.lon] : selMbp && isNum(selMbp.lat) ? [selMbp.lat, selMbp.lon] : null} sig={(selSite?.site_id || "") + "|" + (selMbp?.mbp_id || "")} />
             {onMapClick && <ClickWatch onClick={onMapClick} />}
             <ZoomWatch onZoom={setZoom} />
             {showMbpLayers && coverage && showMbps && mbpsLoc.map((m) => (
@@ -185,15 +203,16 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
               </Marker>))}
             {showMbpLayers && showMbps && mbpsLoc.map((m) => (
               <Marker key={"m" + m.mbp_id} position={[m.lat, m.lon]} icon={(zoom >= 8 || draggableMbps ? TRUCK : CAMP_DOT)(selMbp?.mbp_id === m.mbp_id, m.is_new, mbpCol(m))} keyboard draggable={draggableMbps}
-                eventHandlers={{ click: () => { setSelMbp(m); setSelSite(null); },
+                eventHandlers={{ click: () => { setSelMbp(m); if (!ctlSite) setSelSite(null); },
                   dragend: (e) => { const p = e.target.getLatLng(); onMbpDrag?.(m, p.lat, p.lng); setSelMbp({ ...m, lat: p.lat, lon: p.lng }); } }}>
                 <Tooltip direction="top"><b>{m.is_new ? (m.new_label || t("map.new_scenario")) + " " : ""}MBP</b> {m.mbp_id}{mbpLabel && !m.is_new ? <><br />{mbpLabel(m)}</> : null}<br />{t("map.tt_camp_click", { r: R })}</Tooltip>
               </Marker>
             ))}
-            {selSite && <CircleMarker center={[selSite.lat, selSite.lon]} radius={12} interactive={false} pathOptions={{ color: "#141821", weight: 3, fillOpacity: 0 }} />}
+            {selSite && isNum(selSite.lat) && <><CircleMarker center={[selSite.lat, selSite.lon]} radius={15} interactive={false} pathOptions={{ color: "#ffffff", weight: 6, fillOpacity: 0 }} />
+              <CircleMarker center={[selSite.lat, selSite.lon]} radius={15} interactive={false} pathOptions={{ color: "#eda100", weight: 3, fillOpacity: 0 }} /></>}
           </MapContainer>
         </div>
-        {(selMbp || selSite) && (
+        {showCard && (selMbp || selSite) && (
           <div className="absolute top-2 right-2 z-[400] w-[300px] bg-white/95 border border-line rounded-lg shadow p-3 text-[12px]" role="dialog" aria-label={t("map.selection")}>
             <button onClick={() => { setSelMbp(null); setSelSite(null); }} className="absolute top-1.5 right-2 text-slate text-[16px]" aria-label={t("common.close")}>×</button>
             {selMbp && (
@@ -248,7 +267,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
           </div>
         )}
       </div>
-      {mbpKeyOf && mbpLegend && showMbpLayers && <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 mt-2 text-[11.5px] text-slate" role="group" aria-label={t("perf.legend")}>
+      {mbpKeyOf && mbpLegend && showMbpLayers && !hideMbpLegend && <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 mt-2 text-[11.5px] text-slate" role="group" aria-label={t("perf.legend")}>
         <span className="text-ink font-medium">🚚 {mbpLegendTitle || t("perf.legend")}:</span>
         {mbpLegend.map((l) => { const on = !mbpHidden.includes(l.k); return (
           <button key={l.k} onClick={() => setMbpHidden(on ? [...mbpHidden, l.k] : mbpHidden.filter((x) => x !== l.k))} aria-pressed={on} className={chip(on)} title={l.tip || ""}>

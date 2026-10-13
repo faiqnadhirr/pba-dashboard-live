@@ -7,9 +7,9 @@
 // When the model cannot reproduce the actual on-time of that NOP within ±5 pp (calibration), the screen says so and gives no relocation advice.
 import React, { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { Card, Kpi, Note, DataTable, fInt, fPct, fKm, isNum } from "@/components/ui";
+import { Card, Kpi, Note, DataTable, fInt, fPct, fKm, fMin, isNum } from "@/components/ui";
 import { reachOf, replayDelta, backtestMove, campCode } from "@/lib/mbpperf";
-import { haversineKm } from "@/lib/logic";
+import { haversineKm, bbtUnknown, REACH_EVIDENCE } from "@/lib/logic";
 import { perfLegend, PERF_COLOR } from "@/components/perfUi";
 import NopPicker from "@/components/NopPicker";
 import { t } from "@/lib/i18n";
@@ -19,7 +19,7 @@ const COL = { gain: "#2a78d6", ok: "#0ca30c", lost: "#eb6834", no: "#d03b3b", un
 const pp = (a, b) => (isNum(a) && isNum(b) ? 100 * (a - b) : null);
 const sign = (v, d = 0, u = "") => (!isNum(v) ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : "±"}${Math.abs(v).toFixed(d)}${u}`);
 
-export default function SimMap({ data, cfg, model, active, nop, setNop, allNops, perf, K, tickets, setPick, openMbp, names }) {
+export default function SimMap({ data, cfg, model, active, nop, setNop, allNops, perf, K, tickets, setPick, openMbp, names, focus, setFocus }) {
   const sitesN = useMemo(() => active.filter((s) => s.nop === nop), [active, nop]);
   const mbpsN = useMemo(() => data.mbps.filter((m) => m.nop === nop && isNum(m.lat)), [data.mbps, nop]);
   const allN = useMemo(() => model.filter((s) => s.nop === nop), [model, nop]);
@@ -34,13 +34,19 @@ export default function SimMap({ data, cfg, model, active, nop, setNop, allNops,
 
   const camps = useMemo(() => [...mbpsN.filter((m) => !removed.has(m.mbp_id)).map((m) => (moves.has(m.mbp_id) ? { ...m, ...moves.get(m.mbp_id), moved: true } : m)),
     ...added.map((a) => ({ ...a, is_new: true, new_label: t("sim2.new_unit") }))], [mbpsN, moves, added, removed]);
-  const base = useMemo(() => reachOf(sitesN, mbpsN, cfg), [sitesN, mbpsN, cfg]);
-  const scen = useMemo(() => reachOf(sitesN, camps, cfg), [sitesN, camps, cfg]);
+  // camps of the neighbouring NOPs (same AREA) can reach border sites: they stay in the pool, unchanged, so the baseline equals the KPI layer
+  const others = useMemo(() => { const a = mbpsN[0]?.area; return data.mbps.filter((m) => m.nop !== nop && isNum(m.lat) && (!a || m.area === a)); }, [data.mbps, nop, mbpsN]);
+  const base = useMemo(() => reachOf(sitesN, [...mbpsN, ...others], cfg), [sitesN, mbpsN, others, cfg]);
+  const scen = useMemo(() => reachOf(sitesN, [...camps, ...others], cfg), [sitesN, camps, others, cfg]);
+  const [allSites, setAllSites] = useState(false);
+  const siteRows = useMemo(() => sitesN.filter((s) => isNum(s.lat)).map((s) => ({ ...s, _k: keyOfS(s), _e0: base.eta.get(s.site_id) ?? null, _e1: scen.eta.get(s.site_id) ?? null }))
+    .filter((r) => allSites || r._k === "gain" || r._k === "lost" || (isNum(r._e0) && isNum(r._e1) && Math.abs(r._e1 - r._e0) >= 1)), [sitesN, base, scen, allSites]); // eslint-disable-line
   const rb = useMemo(() => (hasJobs ? replayDelta(byId, mbpsN, ticketsN, cfg) : null), [hasJobs, byId, mbpsN, ticketsN, cfg]);
   const rs = useMemo(() => (hasJobs ? replayDelta(byId, mbpsN, ticketsN, cfg, { moves, added, removed }) : null), [hasJobs, byId, mbpsN, ticketsN, cfg, moves, added, removed]);
   const changed = moves.size + added.length + removed.size;
 
-  const keyOf = (s) => (s.bbt_status === "Unknown" ? "unk" : scen.ok_ids.has(s.site_id) ? (base.ok_ids.has(s.site_id) ? "ok" : "gain") : base.ok_ids.has(s.site_id) ? "lost" : "no");
+  function keyOfS(s) { return bbtUnknown(s) || !REACH_EVIDENCE.has(s.battery?.display?.evidence) ? "unk" : scen.ok_ids.has(s.site_id) ? (base.ok_ids.has(s.site_id) ? "ok" : "gain") : base.ok_ids.has(s.site_id) ? "lost" : "no"; }
+  const keyOf = keyOfS;
   const colorOf = (s) => COL[keyOf(s)];
   const legend = ["gain", "ok", "lost", "no", "unk"].map((k) => ({ k, c: COL[k], label: t(`sim2.leg.${k}`) }));
   const mbpKeyOf = (m) => (m.is_new ? "none" : perf.get(m.mbp_id)?.key || "none");
@@ -98,8 +104,22 @@ export default function SimMap({ data, cfg, model, active, nop, setNop, allNops,
           <MapView sites={sitesN} mbps={camps} cfg={cfg} onPickSite={setPick} fitKey={"sim2" + nop} fitOnce height={600} colorOverride={colorOf} keyOverride={keyOf} legendOverride={legend}
             hollowOverride={() => false} ttOverride={(s) => `${t(`sim2.leg.${keyOf(s)}`)} · BBT ${isNum(s.bbt_effective_min) && s.bbt_status !== "Unknown" ? Math.round(s.bbt_effective_min) + " min" : "?"}`}
             draggableMbps onMbpDrag={onDrag} onMapClick={onMapClick} mbpCardExtra={cardExtra} mbpKeyOf={mbpKeyOf} mbpLegend={perfLegend()} mbpPerf={perf} onOpenMbp={openMbp}
-            mbpLabel={(m) => label(m)} />
+            mbpLabel={(m) => label(m)} selectedSiteId={focus?.site ?? null} onSelectSite={(x) => setFocus?.({ ...focus, site: x ? x.site_id : null })} />
         </div>
+      </Card>
+      <Card title={t("sim2.sites.title", { n: fInt(siteRows.length) })} sub={t("sim2.sites.sub")} right={<label className="inline-flex items-center gap-1 text-[12px] text-slate">
+        <input type="checkbox" checked={allSites} onChange={(e) => setAllSites(e.target.checked)} className="accent-navy" />{t("sim2.sites.all")}</label>}>
+        {!siteRows.length ? <div className="text-mut text-[12.5px]">{t("sim2.sites.none")}</div> :
+          <DataTable rows={siteRows} pageSize={15} filename={`pba_scenario_sites_${nop.replace(/\s+/g, "_").toLowerCase()}.csv`} initialSort={{ key: "_k", dir: 1 }}
+            selectedKey={focus?.site ?? null} onSelect={(x) => setFocus?.({ ...focus, site: focus?.site === x.site_id ? null : x.site_id })} maxH={420} columns={[
+              { key: "_k", label: "col.change", sortVal: (x) => ["gain", "lost", "no", "ok", "unk"].indexOf(x._k), render: (x) => <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COL[x._k] }} />{t(`sim2.leg.${x._k}`)}</span>, csv: (x) => x._k },
+              { key: "site_id", label: "col.site" }, { key: "site_name", label: "col.name", wrap: true }, { key: "site_class", label: "col.class" },
+              { key: "mbp_priority_level", label: "col.mbp_priority", render: (x) => `MBP-${x.mbp_priority_level}` },
+              { key: "bbt_effective_min", label: "col.bbt", num: true, sortVal: (x) => (bbtUnknown(x) ? null : x.bbt_effective_min), render: (x) => (bbtUnknown(x) ? t("common.na") : fMin(x.bbt_effective_min)), csv: (x) => (bbtUnknown(x) ? "" : Math.round(x.bbt_effective_min)) },
+              { key: "_e0", label: "col.eta_before", num: true, render: (x) => fMin(x._e0), csv: (x) => (isNum(x._e0) ? Math.round(x._e0) : "") },
+              { key: "_e1", label: "col.eta_after", num: true, render: (x) => fMin(x._e1), csv: (x) => (isNum(x._e1) ? Math.round(x._e1) : "") },
+              { key: "_d", label: "col.eta_delta", num: true, sortVal: (x) => (isNum(x._e0) && isNum(x._e1) ? x._e1 - x._e0 : null), render: (x) => (isNum(x._e0) && isNum(x._e1) ? sign(x._e1 - x._e0, 0, " min") : "—"), csv: (x) => (isNum(x._e0) && isNum(x._e1) ? Math.round(x._e1 - x._e0) : "") }]} />}
+        <div className="text-[11px] text-mut mt-1">{t("sim2.sites.note", { rf: cfg.travel.road_factor, mob: cfg.travel.mobilization_minutes })}</div>
       </Card>
       <div className="grid lg:grid-cols-2 gap-4">
         <Card title={t("sim2.camps.title")} sub={t("sim2.camps.sub")}>

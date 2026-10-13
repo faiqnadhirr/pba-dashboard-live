@@ -2,6 +2,15 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## v5.0 — map-first revamp (MBP 3 pages, BBS 2 pages, map ↔ table connected)
+- Navigation: **MBP** = Fleet Performance · Coverage & Site Explorer · Resource Planning; **BBS** = Battery Risk · Recommended Actions. Advanced views kept after a divider (coverage detail, dispatch audit, telemetry design, BBT estimate, BBT factors). Old links (`mbp.overview`, `mbp.sitelist`, `mbp.placement`, …) resolve to the new pages.
+- `components/Workspace.jsx` + `lib/workspace.js`: one record set for map and table (page filters → legend → base-camp focus); shared selection `focus` (URL `site=` / `camp=`); row click highlights + flies to the marker, marker click selects the row (page opened, scrolled); "selected record outside filters" state; selection never filters.
+- `lib/table.js`: search → sort (stable) → page as pure functions shared by the table, the CSV export and the tests.
+- `lib/dispatch.js` + Site panel: which MBP to send for one outage, on the existing engine (candidatesFor / selectMbp), outcomes before BBT / after BBT / no MBP in reach / all marked busy / no MBP needed / cannot decide; busy = marked by hand (no live availability).
+- Resource Planning: scenario baseline now equals the KPI layer (neighbour NOP camps kept, evidence rule applied); site-change table (gain / lose reach, ETA before → after) with CSV, connected to the map.
+- Battery Risk page: measured / estimated / design BBT kept separate with evidence; thresholds 120 / 60 / 30 / dead.
+- Secondary pages code-split (loaded when opened). Tests 68 → 72 (WS-1 … WS-8). Audit: `docs/AUDIT_v5.md`.
+
 ## v4.2 — review fixes FIX-01 … FIX-17 (one source of truth + build guardrails)
 - **basecamp_final** (`lib/basecamp.js`, written to `public/data/basecamps.json` by the build): one row per base camp with `nop` (or "Unassigned / no location"), `area`, `has_location`, `selectable`, `status`. Header, legend, NOP table, lists and KPIs all read it (FIX-01/02). One status per camp, order: no location → no data (area) → no jobs → too few jobs → idle → busy → often late → sometimes late → on time.
 - Recommendation lists hold selectable camps only; "Clean up first" panel lists no location / no NOP / no sites / possible duplicate with the reason (FIX-03). Base-camp codes are unique (BPS004-BJI·2).

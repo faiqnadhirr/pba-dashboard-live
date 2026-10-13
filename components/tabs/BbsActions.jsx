@@ -5,15 +5,16 @@ import { STATUS_ORDER, ACTION_TYPES } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { coverageGap } from "@/lib/view";
-import MapHero, { useMapLegend, LegendChip } from "@/components/MapHero";
+import Workspace from "@/components/Workspace";
+import { SiteBriefBbs } from "@/components/SiteBrief";
 
 const LV = ["P1", "P2", "P3", "P4"];
 const PROB = ["Dead", "Critical", "Degraded"];
 
 export default function BbsActions(props) {
-  const { scope: scopeAll, cfg, setPick, openDrill: od0, period } = props;
-  const L = useMapLegend(scopeAll, "batch"), scope = L.vis;
-  const openDrill = (id, f) => od0(id, f, L.hidden.length ? scope : undefined);
+  // v5.0 — the action list and the map are one workspace: chips / type tiles filter the records, the map shows exactly those
+  const { scope: scopeAll, cfg, setPick, openDrill, period } = props;
+  const scope = scopeAll;
   const fx = !!period && period.gran !== "h1";
   const [lv, setLv] = useState([]), [st, setSt] = useState([]), [ev, setEv] = useState([]), [ac, setAc] = useState([]), [at, setAt] = useState([]);
   // v3.7 — "collect data" sites (no BBT evidence) have no BBS priority; they join the list only when that action type is picked (field worklist)
@@ -23,9 +24,33 @@ export default function BbsActions(props) {
   const rows = all.filter((s) => (!lv.length || lv.includes(s.bbs_priority_level)) && (!st.length || st.includes(s.bbt_status))
     && (!ev.length || ev.includes(s.battery.source)) && (!ac.length || ac.includes(s.recommended_action)) && (!at.length || at.includes(s.action_type)));
   const typeCount = useMemo(() => Object.fromEntries(ACTION_TYPES.map((k) => [k, scopeAll.filter((s) => s.action_type === k).length])), [scopeAll]);
-  const pickType = (k) => { L.setMode("actiontype"); setTimeout(() => L.setHidden(ACTION_TYPES.filter((x) => x !== k)), 0); setAt([k]); setLv([]); setSt([]); setEv([]); setAc([]); };
+  const pickType = (k) => { setAt(at.length === 1 && at[0] === k ? [] : [k]); setLv([]); setSt([]); setEv([]); setAc([]); };
   const c = (f) => rows.filter(f).length;
   const b = cfg.bbt;
+  const EXPAND = (r) => (
+              <div className="space-y-2">
+                {r.battery.conflict && <Note tone="warn"><b>{t("bbs.conflict")}:</b> {te(r.battery.conflict, "conflict")}</Note>}
+                <div className="text-[12px] text-slate">{t("bbs.basis")}: <b className="text-ink">{te(r.battery.precedence, "prec")}</b> · {t("ev.rule")} {te(r.rule, "rule")} · {t(`batch.${r.bbs_priority_level}`)}{r.priority_floor ? ` · ${t("bbs.floor", { a: `BBS-${r.priority_floor}`, b: `BBS-${r.bbs_priority_level}` })}` : ""}</div>
+                <EvidenceTable rows={r.evidence} action={r.recommended_action} />
+                <button className="text-[12px] text-s1 underline" onClick={() => props.setPick(r)}>{t("common.open_detail")}</button>
+              </div>
+            );
+  const COLS = [
+              { key: "site_id", label: "col.site", render: (r) => <span className="inline-block max-w-[230px] truncate align-bottom" title={r.site_name}><span className="font-semibold text-navy">{r.site_id}</span> <span className="text-slate">{r.site_name}</span></span>, csv: (r) => r.site_id },
+              { key: "nop", label: "col.nop" },
+              { key: "bbs_priority_score", label: "col.bbs_priority", num: true, render: (r) => <span title={t("bbs.cutoffs", { p1: cfg.bbs_priority_levels.P1, p2: cfg.bbs_priority_levels.P2, p3: cfg.bbs_priority_levels.P3, s: r.bbs_priority_score?.toFixed(3) })}><LevelTag kind="BBS" v={r.bbs_priority_level} /></span>, csv: (r) => `BBS-${r.bbs_priority_level} ${r.bbs_priority_score?.toFixed(3)}` },
+              { key: "recommended_action", label: "col.action", wrap: true, render: (r) => <span className="font-medium"><ActionLabel r={r} />{r.mbp_standby_flag ? <> <Tag tone="warn">{t("bbs.standby")}</Tag></> : null}</span>, csv: (r) => r.recommended_action },
+              { key: "bbt_value_min", label: "col.bbt", num: true, sortVal: (r) => r.battery.display.value, render: (r) => <BbtCell r={r} showStatus />, csv: (r) => `${bbtCsv(r)} ${r.bbt_status}` },
+              { key: "bbt_gap_ratio", label: "col.bbt_gap", num: true, render: (r) => (r.bbt_gap_ratio == null ? <span className="text-mut">—</span> : <span title={t("bbs.gap_cell", { a: fMin(r.battery.display.value), d: fMin(r.bbt_design_min) })} className={r.bbt_gap_ratio < 0.5 ? "text-[#b42318] font-semibold" : ""}>{fPct(100 * r.bbt_gap_ratio, 0)}</span>), csv: (r) => (r.bbt_gap_ratio == null ? "" : (100 * r.bbt_gap_ratio).toFixed(0)) },
+              { key: "ran_power_down_h", label: "col.power_downtime", num: true, render: (r) => fH(r.ran_power_down_h), csv: (r) => r.ran_power_down_h?.toFixed(1) },
+              { key: "avail_delta_pp", label: "col.avail_triple", num: true, render: (r) => <AvailTriple a={r.avail_wc_pct} t={r.ran_target_pct} g={r.avail_delta_pp} compact />, csv: (r) => (isNum(r.avail_wc_pct) ? `${r.avail_wc_pct.toFixed(2)} / ${r.ran_target_pct.toFixed(2)} / ${r.avail_delta_pp.toFixed(2)}` : "") },
+            ];
+  const XCSV = [
+              { key: "site_name", label: "Site name" }, { key: "site_class", label: "Class" }, { key: "rule", label: "Rule" }, { key: "action_batch", label: "Batch" },
+              { key: "precedence", label: "Status basis", csv: (r) => r.battery.precedence }, { key: "conflict", label: "Evidence conflict", csv: (r) => r.battery.conflict || "" },
+              { key: "reason", label: "Why" }, { key: "pln_freq", label: "PLN outages", csv: (r) => (r.pln_known ? r.pln_freq : "") }, { key: "dependency_children", label: "Dependency (PROXY)" },
+              { key: "eta_min", label: "MBP ETA (min)", csv: (r) => (isNum(r.eta_min) ? Math.round(r.eta_min) : "") }, { key: "can_arrive_before_bbt", label: "MBP arrives before BBT" }, { key: "coverage_gap", label: "coverage_gap", csv: (r) => String(coverageGap(r)) },
+            ];
   // battery vs design distribution (all sites in scope, measured vs estimated kept apart)
   const dist = useMemo(() => STATUS_ORDER.map((k) => ({
     k, measured: scope.filter((s) => s.bbt_status === k && s.battery.measured).length,
@@ -46,7 +71,6 @@ export default function BbsActions(props) {
 
   return (
     <div className="space-y-4">
-      <LegendChip L={L} />
       <Note>
         <b>{t("bbs.note.criteria")}<Gloss k="bbt_design" /></b> {t("bbs.note.criteria_body", { d: b.design_minutes, ok: P(b.ok_pct), dg: P(b.degraded_pct), dead: b.dead_max_minutes })}
         {" "}<b>{t("bbs.note.precedence")}</b> {t("bbs.note.precedence_body")}
@@ -69,9 +93,20 @@ export default function BbsActions(props) {
               <div className="text-[11px] text-mut leading-snug">{t(`atype.${k}_sub`)}</div>
             </button>))}
         </div>
-        {at.length > 0 && <button onClick={() => { setAt([]); L.setHidden([]); }} className="mt-2 text-s1 underline text-[12px]">{t("atype.clear")}</button>}
+        {at.length > 0 && <button onClick={() => setAt([])} className="mt-2 text-s1 underline text-[12px]">{t("atype.clear")}</button>}
       </Card>
-      <MapHero L={L} ctx={props} modes={["batch", "actiontype", "bbsstatus", "bbtgap"]} title={t("hero.bbs.title")} sub={t("hero.bbs.sub2")} />
+      <div className="flex flex-wrap gap-4 bg-white border border-line rounded-md px-3 py-2">
+        <Chips label={t("col.bbs_priority")} options={LV} value={lv} onChange={setLv} fmt={(o) => `BBS-${o}`} />
+        <Chips label={t("bbs.f.status")} options={[...new Set([...PROB, ...st])]} value={st} onChange={setSt} fmt={(o) => tv("status", o)} />
+        <Chips label={t("bbs.f.basis")} options={[...new Set([...sources, ...ev])]} value={ev} onChange={setEv} />
+        <Chips label={t("atype.chip")} options={ACTION_TYPES.filter((k) => k !== "NONE")} value={at} onChange={setAt} fmt={(o) => t(`atype.${o}`)} />
+        <Chips label={t("col.action")} options={actions} value={ac} onChange={setAc} fmt={(o) => tv("action", o)} />
+      </div>
+      <div id="bbs-action-list" className="scroll-mt-28">{!rows.length ? <Note>{t("bbs.list.none")}</Note> : (
+        <Workspace ctx={props} rows={rows} modes={["batch", "actiontype", "bbsstatus", "bbtgap"]} defaultMode="batch" showMbpLayers={false}
+          title={t("hero.bbs.title")} sub={t("hero.bbs.sub2")} tableTitle={t("bbs.list.title")} tableSub={t("bbs.list.sub2")} filename="pba_bbs_action_list.csv" initialSort={{ key: "bbs_priority_score", dir: -1 }}
+          detail={(s) => <SiteBriefBbs s={s} ctx={props} />} expand={EXPAND} columns={COLS} extraCsv={XCSV} />)}</div>
+      <details><summary className="cursor-pointer text-[13px] font-semibold text-navy py-1">{t("bbs.dist.title")}</summary>
       <Card title={t("bbs.dist.title")} sub={t("bbs.dist.sub")}>
         <div className="overflow-x-auto">
           <table className="w-full text-[12.5px] tabular min-w-[620px]">
@@ -82,43 +117,9 @@ export default function BbsActions(props) {
           </table>
         </div>
       </Card>
+      </details>
 
-      <div id="bbs-action-list" className="scroll-mt-28"><Card title={t("bbs.list.title")} sub={t("bbs.list.sub")}>
-        <div className="flex flex-wrap gap-4 mb-3">
-          <Chips label={t("col.bbs_priority")} options={LV} value={lv} onChange={setLv} fmt={(o) => `BBS-${o}`} />
-          <Chips label={t("bbs.f.status")} options={[...new Set([...PROB, ...st])]} value={st} onChange={setSt} fmt={(o) => tv("status", o)} />
-          <Chips label={t("bbs.f.basis")} options={[...new Set([...sources, ...ev])]} value={ev} onChange={setEv} />
-        </div>
-        <div className="mb-3 flex flex-wrap gap-4"><Chips label={t("atype.chip")} options={ACTION_TYPES.filter((k) => k !== "NONE")} value={at} onChange={setAt} fmt={(o) => t(`atype.${o}`)} />
-          <Chips label={t("col.action")} options={actions} value={ac} onChange={setAc} fmt={(o) => tv("action", o)} /></div>
-        {!rows.length ? <Note>{t("bbs.list.none")}</Note> : (
-          <DataTable rows={rows} filename="pba_bbs_action_list.csv" initialSort={{ key: "bbs_priority_score", dir: -1 }}
-            expand={(r) => (
-              <div className="space-y-2">
-                {r.battery.conflict && <Note tone="warn"><b>{t("bbs.conflict")}:</b> {te(r.battery.conflict, "conflict")}</Note>}
-                <div className="text-[12px] text-slate">{t("bbs.basis")}: <b className="text-ink">{te(r.battery.precedence, "prec")}</b> · {t("ev.rule")} {te(r.rule, "rule")} · {t(`batch.${r.bbs_priority_level}`)}{r.priority_floor ? ` · ${t("bbs.floor", { a: `BBS-${r.priority_floor}`, b: `BBS-${r.bbs_priority_level}` })}` : ""}</div>
-                <EvidenceTable rows={r.evidence} action={r.recommended_action} />
-                <button className="text-[12px] text-s1 underline" onClick={() => setPick(r)}>{t("common.open_detail")}</button>
-              </div>
-            )}
-            columns={[
-              { key: "site_id", label: "col.site", render: (r) => <span className="inline-block max-w-[230px] truncate align-bottom" title={r.site_name}><span className="font-semibold text-navy">{r.site_id}</span> <span className="text-slate">{r.site_name}</span></span>, csv: (r) => r.site_id },
-              { key: "nop", label: "col.nop" },
-              { key: "bbs_priority_score", label: "col.bbs_priority", num: true, render: (r) => <span title={t("bbs.cutoffs", { p1: cfg.bbs_priority_levels.P1, p2: cfg.bbs_priority_levels.P2, p3: cfg.bbs_priority_levels.P3, s: r.bbs_priority_score?.toFixed(3) })}><LevelTag kind="BBS" v={r.bbs_priority_level} /></span>, csv: (r) => `BBS-${r.bbs_priority_level} ${r.bbs_priority_score?.toFixed(3)}` },
-              { key: "recommended_action", label: "col.action", wrap: true, render: (r) => <span className="font-medium"><ActionLabel r={r} />{r.mbp_standby_flag ? <> <Tag tone="warn">{t("bbs.standby")}</Tag></> : null}</span>, csv: (r) => r.recommended_action },
-              { key: "bbt_value_min", label: "col.bbt", num: true, sortVal: (r) => r.battery.display.value, render: (r) => <BbtCell r={r} showStatus />, csv: (r) => `${bbtCsv(r)} ${r.bbt_status}` },
-              { key: "bbt_gap_ratio", label: "col.bbt_gap", num: true, render: (r) => (r.bbt_gap_ratio == null ? <span className="text-mut">—</span> : <span title={t("bbs.gap_cell", { a: fMin(r.battery.display.value), d: fMin(r.bbt_design_min) })} className={r.bbt_gap_ratio < 0.5 ? "text-[#b42318] font-semibold" : ""}>{fPct(100 * r.bbt_gap_ratio, 0)}</span>), csv: (r) => (r.bbt_gap_ratio == null ? "" : (100 * r.bbt_gap_ratio).toFixed(0)) },
-              { key: "ran_power_down_h", label: "col.power_downtime", num: true, render: (r) => fH(r.ran_power_down_h), csv: (r) => r.ran_power_down_h?.toFixed(1) },
-              { key: "avail_delta_pp", label: "col.avail_triple", num: true, render: (r) => <AvailTriple a={r.avail_wc_pct} t={r.ran_target_pct} g={r.avail_delta_pp} compact />, csv: (r) => (isNum(r.avail_wc_pct) ? `${r.avail_wc_pct.toFixed(2)} / ${r.ran_target_pct.toFixed(2)} / ${r.avail_delta_pp.toFixed(2)}` : "") },
-            ]}
-            extraCsv={[
-              { key: "site_name", label: "Site name" }, { key: "site_class", label: "Class" }, { key: "rule", label: "Rule" }, { key: "action_batch", label: "Batch" },
-              { key: "precedence", label: "Status basis", csv: (r) => r.battery.precedence }, { key: "conflict", label: "Evidence conflict", csv: (r) => r.battery.conflict || "" },
-              { key: "reason", label: "Why" }, { key: "pln_freq", label: "PLN outages", csv: (r) => (r.pln_known ? r.pln_freq : "") }, { key: "dependency_children", label: "Dependency (PROXY)" },
-              { key: "eta_min", label: "MBP ETA (min)", csv: (r) => (isNum(r.eta_min) ? Math.round(r.eta_min) : "") }, { key: "can_arrive_before_bbt", label: "MBP arrives before BBT" }, { key: "coverage_gap", label: "coverage_gap", csv: (r) => String(coverageGap(r)) },
-            ]} />
-        )}
-      </Card></div>
+
     </div>
   );
 }

@@ -14,7 +14,10 @@ const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 const pc = (v, d = 0) => (v == null ? t("common.na") : fPct(100 * v, d));
 const MATCH_WARN = 0.9;
 
-export default function MbpOverview({ scope, data, cfg, nop, setNop, mbpsScope, mbpStats, perf, setRadius, setPick, openMbp, K, names, setNames, hasJobs, bcScope }) {
+/** v5.0 — parts used by MBP › Fleet Performance: "summary" (one line), "lists" (idle / late / busy / clean up), "nop" (per-NOP table).
+ *  The map moved to the fleet map + base-camp table workspace (FleetTab). part="all" keeps the v4.2 screen for ?full=1. */
+export default function MbpOverview({ scope, data, cfg, nop, setNop, mbpsScope, mbpStats, perf, setRadius, setPick, openMbp, K, names, setNames, hasJobs, bcScope, part = "all", focus, setFocus }) {
+  const show = (x) => part === "all" || part === x;
   const k = kpiFor(K, nop);
   const [dim, setDim] = useState("util");
   const C = useMemo(() => basecampCounts(bcScope), [bcScope]);
@@ -28,7 +31,7 @@ export default function MbpOverview({ scope, data, cfg, nop, setNop, mbpsScope, 
   const clean = needsCleanup(bcScope);
   const [mapMode, setMapMode] = useState("survival");
   const lbl = (m) => { const p = perf.get(m.mbp_id); return p ? `${nm(p)} · ${t(`perf.key.${p.key}`)} · ${fInt(p.jobs)} job · ${p.ontime_rate == null ? "—" : fPct(100 * p.ontime_rate, 0)} ${t("perf.ontime_short")}` : ""; };
-  const open = (id) => openMbp(data.mbps.find((m) => m.mbp_id === id));
+  const open = (id) => (setFocus ? (setFocus({ site: null, mbp: id }), window.scrollTo({ top: 0, behavior: "smooth" })) : openMbp(data.mbps.find((m) => m.mbp_id === id)));
   const MiniList = ({ title, list, value, tone }) => (
     <Card title={`${title} (${fInt(list.length)})`}>
       {!list.length ? <div className="text-mut text-[12.5px]">{hasJobs ? t("mgmt.none") : t("common.na")}</div> : <ul className="text-[12.5px] divide-y divide-line/70">
@@ -42,7 +45,7 @@ export default function MbpOverview({ scope, data, cfg, nop, setNop, mbpsScope, 
   const warnMatch = k.ticket_match_pct != null && k.ticket_match_pct < MATCH_WARN;
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-ink bg-white border border-line rounded-md px-3 py-2">
+      {show("summary") && <><div className="flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-ink bg-white border border-line rounded-md px-3 py-2">
         <span title={t("ov.units_tip")}><b className="tabular">{fInt(C.total)}</b> {t("ov.units")}{C.by.noloc ? <span className="text-mut"> ({fInt(C.by.noloc)} {t("ov.noloc")})</span> : null}</span>
         <span><b className="tabular">{fInt(k.sites)}</b> {t("ov.sites")} · <b className="tabular">{fInt(k.p12)}</b> {t("ov.p12")}</span>
         <span title={t("ov.reach_tip", { a: fInt(k.p12_reach_actual), e: fInt(k.p12_reach_estimated), d: fInt(k.p12_reach_derived), u: fInt(k.p12_unverified) })}>
@@ -50,8 +53,8 @@ export default function MbpOverview({ scope, data, cfg, nop, setNop, mbpsScope, 
         <span title={t("mgmt.kpi.ontime_help")}><b className="tabular">{hasJobs ? pc(k.jobs_ontime_pct) : t("common.na")}</b> {t("ov.ontime")}{warnMatch && <b className="text-[#8a5a00]" title={t("ov.match_warn", { p: pc(k.ticket_match_pct, 1) })}> ⚠ {t("ov.match", { p: pc(k.ticket_match_pct, 1) })}</b>}</span>
         {hasJobs && <span>{["under", "high", "low"].map((s, i) => <React.Fragment key={s}>{i ? " · " : ""}<b className="tabular">{fInt(C.by[s] || 0)}</b> {t(`ov.st.${s}`)}</React.Fragment>)}</span>}
       </div>
-      {k.p12_eval > 0 && <div className="text-[11.5px] text-mut -mt-2">{t("ov.reach_basis", { a: fInt(k.p12_reach_actual), e: fInt(k.p12_reach_estimated), d: fInt(k.p12_reach_derived), u: fInt(k.p12_unverified) })}</div>}
-      <Card title={t("mgmt.map.title")} sub={t("mgmt.map.sub2")} right={<div className="flex items-center gap-2 text-[12px]">
+      {k.p12_eval > 0 && <div className="text-[11.5px] text-mut -mt-2">{t("ov.reach_basis", { a: fInt(k.p12_reach_actual), e: fInt(k.p12_reach_estimated), d: fInt(k.p12_reach_derived), u: fInt(k.p12_unverified) })}</div>}</>}
+      {part === "all" && <Card title={t("mgmt.map.title")} sub={t("mgmt.map.sub2")} right={<div className="flex items-center gap-2 text-[12px]">
         <span className="text-slate">{t("mgmt.color_by")}</span>
         <div className="flex rounded-md overflow-hidden border border-line" role="group">{["util", "ontime"].map((d) =>
           <button key={d} aria-pressed={dim === d} onClick={() => setDim(d)} className={`px-2 py-0.5 ${dim === d ? "bg-navy text-white" : "bg-white text-slate hover:text-navy"}`}>{t(`mgmt.dim.${d}`)}</button>)}</div>
@@ -59,8 +62,8 @@ export default function MbpOverview({ scope, data, cfg, nop, setNop, mbpsScope, 
         <MapView sites={scope} mbps={mbpsScope} cfg={cfg} onRadius={setRadius} onPickSite={setPick} mbpStats={mbpStats} fitKey={nop + "mgmt"} height={680}
           mode={mapMode} onMode={setMapMode} modes={["survival", "priority", "design"]} mbpKeyOf={mbpKeyOf} mbpLegend={legend} mbpPerf={perf} onOpenMbp={openMbp} mbpLabel={lbl}
           mbpCountsOverride={legendCounts} />
-      </Card>
-      <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+      </Card>}
+      {show("lists") && <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
         <MiniList title={t("mgmt.list.under")} list={under} value={(p) => `${fInt(p.jobs)} job · ${fPct(100 * p.busy, 1)}`} tone="text-mut" />
         <MiniList title={t("mgmt.list.low")} list={low} value={(p) => `${fPct(100 * p.ontime_rate, 0)} ${t("perf.ontime_short")} · n ${fInt(p.judged)}`} tone="text-crit" />
         <MiniList title={t("mgmt.list.high")} list={high} value={(p) => `${fPct(100 * p.busy, 0)} ${t("perf.busy_short")}`} tone="text-[#6b4bd8]" />
@@ -71,8 +74,8 @@ export default function MbpOverview({ scope, data, cfg, nop, setNop, mbpsScope, 
               <span className="text-[11px] text-[#8a5a00] text-right">{p.clean_reasons.map((r) => t(`clean.${r}`)).join(" · ")}</span></button></li>)}
           </ul>}
         </Card>
-      </div>
-      <Card title={t("mgmt.nop.title")} sub={t("mgmt.nop.sub3")}>
+      </div>}
+      {show("nop") && <Card title={t("mgmt.nop.title")} sub={t("mgmt.nop.sub3")}>
         <DataTable rows={K.nops} pageSize={25} filename="pba_mbp_by_nop.csv" initialSort={{ key: "area", dir: 1 }}
           rowClass={(r) => (r.nop === nop ? "bg-warn/10 font-semibold" : r.nop === UNASSIGNED ? "text-mut" : "")} onRowClick={(r) => r.nop !== UNASSIGNED && setNop(r.nop === nop ? "All NOPs" : r.nop)}
           columns={[
@@ -91,7 +94,7 @@ export default function MbpOverview({ scope, data, cfg, nop, setNop, mbpsScope, 
           ]} />
         <div className="mt-2 text-[11.5px] text-mut">{t("mgmt.nop.totals", { u: fInt(K.nops.reduce((a, r) => a + r.mbp, 0)), l: fInt(C.total) })}</div>
         <div className="mt-1"><PerfFormula cfg={cfg} /></div>
-      </Card>
+      </Card>}
     </div>
   );
 }

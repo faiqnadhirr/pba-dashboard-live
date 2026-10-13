@@ -1,5 +1,6 @@
 "use client";
 import React, { Fragment, useMemo, useState } from "react";
+import { searchRows, sortRows, pageOfKey, rowKey } from "@/lib/table";
 import { bbtDisplay } from "@/lib/logic";
 import { t, tv, locale, withEnglish } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
@@ -216,29 +217,27 @@ export function exportCsv(rows, columns, filename) {
   const blob = new Blob(["﻿" + head + "\n" + body], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); URL.revokeObjectURL(a.href);
 }
-export function DataTable({ rows, columns, initialSort, onRowClick, filename = "export.csv", pageSize = 100, dense = true, rowClass, expand, extraCsv = [] }) {
+/** v5.0 — selectedKey / onSelect make the table one half of a map + table workspace: the selected record is highlighted, its page
+ *  is opened and the row scrolled into view; clicking a row selects it (and still opens its expandable detail when there is one).
+ *  Search → sort → page run through lib/table.js, the same pipeline the CSV export uses. */
+export function DataTable({ rows, columns, initialSort, onRowClick, filename = "export.csv", pageSize = 100, dense = true, rowClass, expand, extraCsv = [], selectedKey = null, onSelect, keyFn, maxH = 620 }) {
   const [sort, setSort] = useState(initialSort || { key: null, dir: -1 });
   const [page, setPage] = useState(0);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(() => new Set());
-  const filtered = useMemo(() => {
-    if (!q) return rows;
-    const s = q.toLowerCase();
-    return rows.filter((r) => columns.some((c) => String(c.csv ? c.csv(r) : r[c.key] ?? "").toLowerCase().includes(s)));
-  }, [rows, q, columns]);
-  const sorted = useMemo(() => {
-    if (!sort.key) return filtered;
-    const col = columns.find((c) => c.key === sort.key), val = col?.sortVal || ((r) => r[sort.key]);
-    return [...filtered].sort((a, b) => {
-      const x = val(a), y = val(b);
-      if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
-      return (x > y ? 1 : x < y ? -1 : 0) * sort.dir;
-    });
-  }, [filtered, sort, columns]);
-  const pages = Math.max(1, Math.ceil(sorted.length / pageSize)), p = Math.min(page, pages - 1);
+  const filtered = useMemo(() => searchRows(rows, q, columns), [rows, q, columns]);
+  const sorted = useMemo(() => sortRows(filtered, sort, columns), [filtered, sort, columns]);
+  const keyOf = keyFn || rowKey;
+  const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const selPage = useMemo(() => pageOfKey(sorted, selectedKey, pageSize, keyOf), [sorted, selectedKey, pageSize]); // eslint-disable-line
+  // follow the selection to its page (only when the selection changes, so the user can still page away from it)
+  React.useEffect(() => { if (selPage != null) setPage(selPage); }, [selectedKey]); // eslint-disable-line
+  const p = Math.min(page, pages - 1);
   const view = sorted.slice(p * pageSize, (p + 1) * pageSize);
+  const selRow = React.useRef(null), box = React.useRef(null);
+  React.useEffect(() => { const el = selRow.current, b = box.current; if (el && b) { const top = el.offsetTop - b.clientHeight / 2; b.scrollTo({ top: Math.max(0, top), behavior: "auto" }); } }, [selectedKey, p]);
   const toggle = (k) => setOpen((o) => { const n = new Set(o); n.has(k) ? n.delete(k) : n.add(k); return n; });
-  const keyOf = (r, i) => r.site_id || r.mbp_id || r.cluster || i;
+  const click = (r, k) => { if (onSelect) onSelect(r); if (expand) toggle(k); else if (!onSelect) onRowClick?.(r); };
   // frozen (sticky-left) columns: c.freeze = width in px
   const lefts = []; { let x = expand ? 24 : 0; for (const c of columns) { lefts.push(c.freeze ? x : null); if (c.freeze) x += c.freeze; } }
   const fz = (i, bg) => (columns[i].freeze ? { className: `sticky z-[5] ${bg}`, style: { left: lefts[i], minWidth: columns[i].freeze, maxWidth: columns[i].freeze } } : { className: "", style: undefined });
@@ -252,7 +251,9 @@ export function DataTable({ rows, columns, initialSort, onRowClick, filename = "
           <button onClick={() => exportCsv(sorted, [...columns, ...extraCsv], filename)} className="px-2 py-1 border border-line rounded-md bg-white text-slate hover:border-slate focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1" title={t("table.export_tip")}>{t("table.export")}</button>
         </div>
       </div>
-      <div className="overflow-auto border border-line rounded-md max-h-[620px]">
+      {selectedKey != null && selPage == null && rows.some((r, i) => keyOf(r, i) === selectedKey) && <div role="status" className="mb-2 text-[12px] text-[#8a5a00] bg-warn/10 border border-warn/40 rounded px-2 py-1">
+        {t("table.sel_hidden_search", { k: selectedKey })} <button className="underline" onClick={() => setQ("")}>{t("table.clear_search")}</button></div>}
+      <div ref={box} className="overflow-auto border border-line rounded-md relative" style={{ maxHeight: maxH }}>
         <table className="w-full text-[12px] tabular">
           <thead className="sticky top-0 bg-surface z-10">
             <tr>
@@ -269,13 +270,13 @@ export function DataTable({ rows, columns, initialSort, onRowClick, filename = "
           </thead>
           <tbody>
             {view.map((r, i) => {
-              const k = keyOf(r, i), isOpen = open.has(k);
+              const k = keyOf(r, p * pageSize + i), isOpen = open.has(k), isSel = selectedKey != null && k === selectedKey;
               return (
                 <Fragment key={k}>
-                  <tr tabIndex={onRowClick || expand ? 0 : undefined}
-                    onKeyDown={(e) => { if (e.key === "Enter") (expand ? toggle(k) : onRowClick?.(r)); }}
-                    onClick={() => (expand ? toggle(k) : onRowClick?.(r))}
-                    className={`border-b border-line/70 ${onRowClick || expand ? "cursor-pointer hover:bg-s1/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1" : ""} ${isOpen ? "bg-s1/5" : ""} ${rowClass ? rowClass(r) : ""}`}>
+                  <tr tabIndex={onRowClick || expand || onSelect ? 0 : undefined} ref={isSel ? selRow : undefined} aria-selected={onSelect ? isSel : undefined}
+                    onKeyDown={(e) => { if (e.key === "Enter") click(r, k); }}
+                    onClick={() => click(r, k)}
+                    className={`border-b border-line/70 ${onRowClick || expand || onSelect ? "cursor-pointer hover:bg-s1/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1" : ""} ${isSel ? "!bg-warn/25 outline outline-2 outline-[#eda100] -outline-offset-2" : isOpen ? "bg-s1/5" : ""} ${rowClass ? rowClass(r) : ""}`}>
                     {expand && <td className="px-1 text-slate" aria-hidden>{isOpen ? "▾" : "▸"}</td>}
                     {columns.map((c, ci) => { const v = c.render ? c.render(r) : r[c.key] ?? "—";
                       // tooltip of a truncated cell = the displayed (translated) text when it is plain text, else the CSV value
