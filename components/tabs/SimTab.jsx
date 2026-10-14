@@ -6,6 +6,7 @@ import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { simulate, kmeans } from "@/lib/logic";
 import { simOutcomeView, simCounts } from "@/lib/dispatch";
+import { campCode } from "@/lib/mbpperf";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
 // vNext — island no longer purple (purple = proposed / new unit across planning)
@@ -21,7 +22,7 @@ const OUT_EN = {   // CSV value (English, stable)
 // vNext — outage dispatch SCENARIO for the planning NOP (not live dispatch): every simulated site gets an outcome; the worklist and the
 // map share one selection; BBT unknown (assumed 0 min by the engine) is flagged on the row and counted, never hidden.
 export default function SimTab({ model: scored, data, cfg, nop, setPick, setRadius, names }) {
-  const [selId, setSelId] = useState(null);
+  const [selId, setSelId] = useState(null), [selMbp, setSelMbp] = useState(null);
   const inNop = useMemo(() => scored.filter((s) => s.nop === nop && s.site_active === 1), [scored, nop]);
   const clusters = useMemo(() => [...new Set(inNop.map((s) => s.cluster_to).filter(Boolean))].sort(), [inNop]);
   const [mode, setMode] = useState("top");
@@ -72,7 +73,7 @@ export default function SimTab({ model: scored, data, cfg, nop, setPick, setRadi
   };
 
   // C5 — pre-run the default scenario (top-20 PLN-frequency sites, 4 h outage) whenever the NOP changes, so the page is never empty
-  useEffect(() => { setRes(null); setBusy([]); setMoveMbp(""); setMoveTo(""); setSelId(null); }, [nop]);
+  useEffect(() => { setRes(null); setBusy([]); setMoveMbp(""); setMoveTo(""); setSelId(null); setSelMbp(null); }, [nop]);
   useEffect(() => { if (inNop.length && mode === "top") run(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [nop, inNop.length]);
   const cur = res && res[show];
   const kRows = res ? Object.entries(res).map(([k, v]) => { const c = simCounts(v.rows); return { scenario: k, ...v.kpi, unk: v.rows.filter(unknownBbt).length, ne: c.not_evaluable, late_v: c.late, unb_v: c.unserved_busy, unc_v: c.unserved_no_coverage, uni_v: c.unserved_island }; }) : [];
@@ -144,6 +145,7 @@ export default function SimTab({ model: scored, data, cfg, nop, setPick, setRadi
             <Card title={t("sim.alloc", { s: show })} right={<Select value={show} onChange={setShow} options={Object.keys(res)} />}>
               <div className="grid xl:grid-cols-[minmax(0,1fr)_300px] gap-3">
               <MapView fitKey={show} onPickSite={setPick} cfg={cfg} onRadius={setRadius} compact selectedSiteId={selId} onSelectSite={(x) => setSelId(x ? x.site_id : null)} showCard={false}
+                selectedMbpId={selMbp} onSelectMbp={(m) => setSelMbp(m && selMbp !== m.mbp_id ? m.mbp_id : null)}
                 sites={cur.rows.map((r) => ({ ...siteMap.get(r.site_id), _o: simOutcomeView(r) }))}
                 colorOverride={(s) => OUT[s._o]} keyOverride={(s) => s._o} hollowOverride={(s) => s._o === "not_evaluable"}
                 mbps={data.mbps.filter((m) => cur.rows.some((r) => r.mbp === m.mbp_id))} extraMbps={cur.extra || []}
@@ -159,7 +161,10 @@ export default function SimTab({ model: scored, data, cfg, nop, setPick, setRadi
                   <button onClick={() => setPick(siteMap.get(selRow.site_id))} className="mt-1 w-full bg-navy text-white rounded py-1 text-[12px]">{t("ws.full_detail")}</button></div>}
               </Panel></div>
               <div className="mt-3">
-                <DataTable rows={cur.rows} filename={`pba_simulation_${show}.csv`.replace(/[^\w.]+/g, "_")} selectedKey={selId} onSelect={(r) => setSelId(selId === r.site_id ? null : r.site_id)} maxH={480} columns={[
+                {selMbp && <div className="mb-2 text-[12.5px]" role="status"><span className="inline-flex items-center gap-1.5 bg-warn/15 border border-warn/50 rounded-full pl-3 pr-1 py-0.5">
+                  🚚 <b>{names ? selMbp : campCode(selMbp)}</b> · {t("sim.mbp_rows", { n: fInt(cur.rows.filter((r) => r.mbp === selMbp).length) })}
+                  <button onClick={() => setSelMbp(null)} aria-label={t("ws.clear")} className="w-5 h-5 rounded-full hover:bg-warn/30 leading-none">×</button></span></div>}
+                <DataTable rows={selMbp ? cur.rows.filter((r) => r.mbp === selMbp) : cur.rows} filename={`pba_simulation_${show}.csv`.replace(/[^\w.]+/g, "_")} selectedKey={selId} onSelect={(r) => setSelId(selId === r.site_id ? null : r.site_id)} maxH={480} columns={[
                   { key: "priority", label: "col.mbp_priority", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center"><LevelTag kind="MBP" v={r.priority_level} />{f3(r.priority)}</span>, csv: (r) => `MBP-${r.priority_level} ${r.priority.toFixed(3)}` },
                   { key: "site_id", label: "col.site_id" }, { key: "site_name", label: "col.site_name" }, { key: "site_class", label: "col.class" },
                   { key: "bbt_min", label: "col.bbt", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center">{r.bbt_text ? <span className="text-slate">{t("bbt.no_battery_ticket")}</span> : fMin(r.bbt_shown)}<EvTag v={String(r.bbt_evidence).split(" ")[0]} />{unknownBbt(r) && <span className="text-[10.5px] text-[#8a5a00]" title={t("sim.sum.unk_tip")}>{t("sim.unk_short")}</span>}</span>, csv: (r) => r.bbt_text || `${isNum(r.bbt_shown) ? Math.round(r.bbt_shown) : ""} ${r.bbt_evidence}` },

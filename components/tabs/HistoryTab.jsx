@@ -79,13 +79,19 @@ export default function HistoryTab(ctx) {
             [t("hist.k.pon"), pc(T.power_on_rate), t("hist.k.pon_sub", { a: fInt(T.power_on), n: fInt(T.outcome_known) }), t("hist.k.pon_tip")],
             [t("hist.k.nock"), fInt(T.no_checkin), t("hist.k.nock_sub")],
             [t("hist.k.unj"), fInt(T.bbt_unknown + T.no_arrival), t("hist.k.unj_sub", { b: fInt(T.bbt_unknown), c: fInt(T.no_arrival), o: fInt(T.not_pln) })],
-            [t("hist.k.pic"), fInt(unknownPic), t("hist.k.pic_sub")]].map(([l, v, s, tip]) =>
-            <div key={l} className="bg-white border border-line rounded-md px-3 py-2"><div className="text-[10.5px] uppercase tracking-wide font-semibold text-slate">{tip ? <InfoTip text={tip} label={l} /> : l}</div>
-              <div className="text-[20px] font-bold tabular text-ink leading-tight">{v}</div><div className="text-[11px] text-slate leading-snug">{s}</div></div>)}
+            [t("hist.k.pic"), fInt(unknownPic), t("hist.k.pic_sub")]].map(([l, v, s, tip], i) => {
+            // vNext.2 — scorecards are filters: jobs = clear outcome filter · on time = PLN-off jobs · power on / no check-in = that outcome
+            const act = [() => { setOuts([]); setCats([]); }, () => setCats(cats.length === 1 && cats[0] === "P" ? [] : ["P"]), () => setOuts(outs.length === 1 && outs[0] === "power_on" ? [] : ["power_on"]),
+              () => setOuts(outs.length === 1 && outs[0] === "no_checkin" ? [] : ["no_checkin"]), null, () => ctx.navigate({ view: "data.quality" })][i];
+            const on = (i === 1 && cats.length === 1 && cats[0] === "P") || (i === 2 && outs.length === 1 && outs[0] === "power_on") || (i === 3 && outs.length === 1 && outs[0] === "no_checkin");
+            const Tg = act ? "button" : "div";
+            return <Tg key={l} onClick={act || undefined} title={act ? t("hist.k.click") : undefined} className={`text-left bg-white border rounded-md px-3 py-2 ${on ? "border-navy ring-1 ring-navy/40" : "border-line"} ${act ? "hover:border-slate" : ""}`}><div className="text-[10.5px] uppercase tracking-wide font-semibold text-slate">{tip ? <InfoTip text={tip} label={l} /> : l}{act && <span className="text-s1 ml-1">↗</span>}</div>
+              <div className="text-[20px] font-bold tabular text-ink leading-tight">{v}</div><div className="text-[11px] text-slate leading-snug">{s}</div></Tg>; })}
         </div>
         <Card title={t("hist.tl.title", { by: t(`hist.by.${by}`) })} sub={t("hist.tl.sub")} right={<Seg value={by} onChange={setBy} label={t("hist.tl.title")} options={[["week", t("hist.by.week")], ["month", t("hist.by.month")]]} />}>
           <div className="h-[230px]"><ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chart} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <BarChart data={chart} margin={{ top: 4, right: 8, left: 0, bottom: 0 }} style={{ cursor: "pointer" }}
+              onClick={(e) => { const b = e?.activePayload?.[0]?.payload; if (!b) return; const m = by === "month" ? b.k : monthOf(b.k * 7 * 1440); if (mFrom === m && mTo === m) { setMFrom(1); setMTo(6); } else { setMFrom(m); setMTo(m); } }}>
               <CartesianGrid stroke="#E3E7ED" vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 10.5, fill: "#55627A" }} interval={by === "week" ? 2 : 0} />
               <YAxis tick={{ fontSize: 11, fill: "#6B7588" }} width={44} tickFormatter={(v) => fInt(v)} />
@@ -93,7 +99,7 @@ export default function HistoryTab(ctx) {
               <Legend formatter={(n) => t(`hist.out.${n}`)} wrapperStyle={{ fontSize: 11.5 }} />
               {OUTCOMES.map((o) => <Bar key={o} dataKey={o} stackId="a" fill={OUT_COLOR[o]} isAnimationActive={false} />)}
             </BarChart></ResponsiveContainer></div>
-          <div className="text-[11px] text-mut mt-1">{t("hist.tl.note")}</div>
+          <div className="text-[11px] text-mut mt-1">{t("hist.tl.note")} {t("hist.tl.click")}</div>
         </Card>
         <Card title={t("hist.map.title")} sub={t("hist.map.sub")}>
           {!hotSites.length ? <div className="text-mut text-[12.5px]">{t("hist.none_f")}</div> :

@@ -15,6 +15,9 @@ export default function DataQuality(props) {
   const { scope: scopeAll, data, offairSites = [], gensetSites = [], mbpStats, cfg, setPick, openDrill: od0, bcScope = [], names } = props;
   const L = useMapLegend(scopeAll, "dq"), scope = L.vis;
   const openDrill = (id, f) => od0(id, f, L.hidden.length ? scope : undefined);
+  // vNext.2 — every count row opens the matching sites in Coverage & Site Explorer (?sel=…, lib/drill.js)
+  const go = (sel) => props.navigate({ view: "mbp.explorer", sel });
+  const RC = "border-b border-line/60 cursor-pointer hover:bg-s1/5";
   const snap = data.meta.snapshot || {}, mb = data.meta.mbp || {}, m = data.meta, qa = m.qa;
   const prec = useMemo(() => { const c = {}; scope.forEach((x) => { const d = !(isNum(x.lat) && isNum(x.lon)) ? "none" : x.coord_decimals ?? "unknown"; c[d] = (c[d] || 0) + 1; }); return Object.entries(c).sort((a, b) => String(b[0]).localeCompare(String(a[0]))); }, [scope]);
   const acc = useMemo(() => { const c = {}; scope.forEach((x) => { c[x.access_class] = (c[x.access_class] || 0) + 1; }); return c; }, [scope]);
@@ -57,13 +60,13 @@ export default function DataQuality(props) {
       <div className="grid xl:grid-cols-3 gap-4">
         <Card title={t("dq.unknown.title")} sub={t("dq.unknown.sub", { n: fNum(cfg.unknown_handling?.neutral_rank ?? 0.5, 2) })}>
           <table className="w-full text-[12.5px] tabular"><tbody>
-            <tr className="border-b border-line/60"><td className="py-1">{t("dq.unknown.pln")}</td><td className="text-right">{fInt(unk.pln)}</td><td className="text-right text-slate">{pct(unk.pln, scope.length)}</td></tr>
-            <tr className="border-b border-line/60"><td className="py-1">{t("dq.unknown.hist")}</td><td className="text-right">{fInt(unk.hist)}</td><td className="text-right text-slate">{pct(unk.hist, scope.length)}</td></tr>
-            <tr className="border-b border-line/60"><td className="py-1">{t("dq.unknown.o25")}</td><td className="text-right">{fInt(unk.o25)}</td><td className="text-right text-slate">{pct(unk.o25, scope.length)}</td></tr>
+            <tr className={RC} onClick={() => go("unknown~pln")} title={t("drill.open")}><td className="py-1">{t("dq.unknown.pln")}</td><td className="text-right">{fInt(unk.pln)}</td><td className="text-right text-slate">{pct(unk.pln, scope.length)}</td></tr>
+            <tr className={RC} onClick={() => go("unknown~hist")} title={t("drill.open")}><td className="py-1">{t("dq.unknown.hist")}</td><td className="text-right">{fInt(unk.hist)}</td><td className="text-right text-slate">{pct(unk.hist, scope.length)}</td></tr>
+            <tr className={RC} onClick={() => go("unknown~o25")} title={t("drill.open")}><td className="py-1">{t("dq.unknown.o25")}</td><td className="text-right">{fInt(unk.o25)}</td><td className="text-right text-slate">{pct(unk.o25, scope.length)}</td></tr>
           </tbody></table>
         </Card>
         <Card title={t("dq.missing.title")}>
-          <table className="w-full text-[12.5px] tabular"><tbody>{miss.map((r) => <tr key={r.field} className="border-b border-line/60"><td className="py-1"><code className="text-[11.5px]">{r.field}</code>{r.missing_pct > 50 && <LowCov />}</td><td className="text-right">{fPct(r.missing_pct, 1)}</td></tr>)}</tbody></table>
+          <table className="w-full text-[12.5px] tabular"><tbody>{miss.map((r) => <tr key={r.field} className={RC} onClick={() => go(`missing~${r.field}`)} title={t("drill.open")}><td className="py-1"><code className="text-[11.5px]">{r.field}</code>{r.missing_pct > 50 && <LowCov />}</td><td className="text-right">{fPct(r.missing_pct, 1)}</td></tr>)}</tbody></table>
         </Card>
         <Card title={t("dq.unmatched.title")}>
           <table className="w-full text-[12.5px] tabular"><tbody>{Object.entries(um).map(([k, v]) => <tr key={k} className="border-b border-line/60"><td className="py-1">{k}</td><td className="text-right">{fInt(v)}</td></tr>)}</tbody></table>
@@ -73,7 +76,7 @@ export default function DataQuality(props) {
       <div className="grid xl:grid-cols-3 gap-4">
         <Card title={<>{t("dq.design.title")}<Gloss k="bbt_design" /></>} sub={t("dq.design.sub", { d: cfg.bbt.design_minutes })}>
           <table className="w-full text-[12.5px] tabular"><tbody>
-            {[["site_load", "ESTIMATED", "DERIVED"], ["median_load", "PROXY", "ESTIMATED"], ["class_default", "PROXY", "PROXY"]].map(([k, e, old]) => <tr key={k} className="border-b border-line/60"><td className="py-1"><EvTag v={e} /> {t(`dq.design.${old}`)}</td><td className="text-right">{fInt(dz[k])}</td><td className="text-right text-slate">{pct(dz[k], scope.length)}</td></tr>)}
+            {[["site_load", "ESTIMATED", "DERIVED"], ["median_load", "PROXY", "ESTIMATED"], ["class_default", "PROXY", "PROXY"]].map(([k, e, old]) => <tr key={k} className={RC} onClick={() => go(`design_kind~${k}`)} title={t("drill.open")}><td className="py-1"><EvTag v={e} /> {t(`dq.design.${old}`)}</td><td className="text-right">{fInt(dz[k])}</td><td className="text-right text-slate">{pct(dz[k], scope.length)}</td></tr>)}
           </tbody></table>
           {cal.med != null && <div className="mt-2"><Note tone="warn">{t("dq.design.cal", { n: fInt(cal.n), p: fPct(cal.med * 100, 0), c: fInt(cal.capped), max: cfg.bbt.design_from_battery?.max_minutes ?? 480 })}</Note></div>}
         </Card>
@@ -125,11 +128,11 @@ export default function DataQuality(props) {
       </Card>
       <div className="grid xl:grid-cols-3 gap-4">
         <Card title={t("dq.access.title")} sub={t("dq.access.sub")}>
-          <table className="w-full text-[12.5px] tabular"><tbody>{Object.entries(acc).sort((a, b) => b[1] - a[1]).map(([k, v]) => <tr key={k} className="border-b border-line/60"><td className="py-1">{tv("access", k)}</td><td className="text-right">{fInt(v)}</td></tr>)}</tbody></table>
+          <table className="w-full text-[12.5px] tabular"><tbody>{Object.entries(acc).sort((a, b) => b[1] - a[1]).map(([k, v]) => <tr key={k} className={RC} onClick={() => go(`access~${k}`)} title={t("drill.open")}><td className="py-1">{tv("access", k)}</td><td className="text-right">{fInt(v)}</td></tr>)}</tbody></table>
           <div className="text-[11.5px] text-mut mt-2">{t("dq.access.note")}</div>
         </Card>
         <Card title={t("dq.coord.title")} sub={t("dq.coord.sub2")}>
-          <table className="w-full text-[12.5px] tabular"><tbody>{prec.map(([d, v]) => <tr key={d} className="border-b border-line/60"><td className="py-1">{d === "none" ? t("dq.coord.none") : d === "unknown" ? t("dq.coord.unknown") : t("dq.coord.decimals", { n: d })}</td><td className="text-slate">{d === "none" || d === "unknown" ? "" : precisionNote(+d)}</td><td className="text-right">{fInt(v)}</td></tr>)}</tbody></table>
+          <table className="w-full text-[12.5px] tabular"><tbody>{prec.map(([d, v]) => <tr key={d} className={RC} onClick={() => go(`coordprec~${d}`)} title={t("drill.open")}><td className="py-1">{d === "none" ? t("dq.coord.none") : d === "unknown" ? t("dq.coord.unknown") : t("dq.coord.decimals", { n: d })}</td><td className="text-slate">{d === "none" || d === "unknown" ? "" : precisionNote(+d)}</td><td className="text-right">{fInt(v)}</td></tr>)}</tbody></table>
           <div className="text-[11.5px] text-mut mt-2">{t("dq.coord.plotted", { a: fInt(scopeAll.length - noCoord.length), n: fInt(noCoord.length), t: fInt(scopeAll.length) })}{noCoord.length ? `: ${noCoord.slice(0, 20).map((x) => x.site_id).join(", ")}` : ""}</div>
         </Card>
         <Card title={t("dq.pic.title")} sub={t("dq.pic.sub")}>

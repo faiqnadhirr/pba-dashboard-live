@@ -27,7 +27,8 @@ export default function Explorer(ctx) {
   const T = cfg.travel;
   return (
     <div className="space-y-3">
-      <CoverageSnapshot k={k} shown={DF.rows.length} drill={DF.known} partial={scope.some((x) => ctx.coverage?.[x.area] === "PARTIAL")}
+      <CoverageSnapshot k={k} shown={DF.rows.length} drill={DF.known}
+        onReach={(x) => setDrillSel(drillSel === `reach_p12~${x}` ? null : `reach_p12~${x}`)} active={String(drillSel || "").startsWith("reach_p12~") ? [String(drillSel).split("~")[1]] : []} partial={scope.some((x) => ctx.coverage?.[x.area] === "PARTIAL")}
         eta={<InfoTip label={<b className="text-ink">{t("ex.eta_label")}</b>} text={t("ex.eta_note", { rf: T.road_factor, mob: T.mobilization_minutes, r: cfg.mbp.max_radius_km, cap: cfg.mbp.reach_cap_km ?? 250 })} />} />
       {DF.known && <div className="flex flex-wrap items-center gap-2 text-[12.5px]" role="status">
         <span className="inline-flex items-center gap-1.5 bg-s1/10 border border-s1/40 text-navy rounded-full pl-3 pr-1 py-0.5">

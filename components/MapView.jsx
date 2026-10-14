@@ -14,9 +14,16 @@ import RollupPanel from "./RollupPanel";
 
 // far zoom: a small square per base camp so the trucks do not cover the sites; full truck icon from zoom 8
 // v3.7 — base camps can carry a performance colour (fill) — the dark outline keeps them distinct from site dots
-const CAMP_DOT = (sel, isNew, col) => L.divIcon({ className: "", iconSize: [col ? 14 : 10, col ? 14 : 10], iconAnchor: [col ? 7 : 5, col ? 7 : 5],
+// vNext.2 (bug fix) — icons are cached by their look: a NEW L.divIcon object on every render made react-leaflet replace the marker's
+// DOM element whenever the map re-rendered (e.g. on hover / wheel-guard state), so the element under the pointer changed between
+// mousedown and mouseup and the click was lost ("map icons not clickable").
+const ICONS = new Map();
+const cached = (k, mk) => ICONS.get(k) || ICONS.set(k, mk()).get(k);
+const CAMP_DOT = (sel, isNew, col) => cached(`d|${sel ? 1 : 0}|${isNew ? 1 : 0}|${col || ""}`, () => CAMP_DOT0(sel, isNew, col));
+const TRUCK = (sel, isNew, col) => cached(`t|${sel ? 1 : 0}|${isNew ? 1 : 0}|${col || ""}`, () => TRUCK0(sel, isNew, col));
+const CAMP_DOT0 = (sel, isNew, col) => L.divIcon({ className: "", iconSize: [col ? 14 : 10, col ? 14 : 10], iconAnchor: [col ? 7 : 5, col ? 7 : 5],
   html: `<div style="width:${col ? 14 : 10}px;height:${col ? 14 : 10}px;border-radius:3px;background:${isNew ? "#4a3aa7" : sel ? "#eda100" : col || "#1F2A44"};border:${col ? 2 : 1.5}px solid #fff;box-shadow:0 0 0 1.5px #1F2A44"></div>` });
-const TRUCK = (sel, isNew, col) => L.divIcon({
+const TRUCK0 = (sel, isNew, col) => L.divIcon({
   className: "", iconSize: [26, 26], iconAnchor: [13, 13],
   html: `<div style="width:26px;height:26px;border-radius:6px;background:${isNew ? "#4a3aa7" : sel ? "#eda100" : col || "#1F2A44"};border:2px solid #fff;box-shadow:0 0 0 1px #1F2A44;display:flex;align-items:center;justify-content:center" aria-label="MBP base camp">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v9H3z"/><path d="M14 9h4l3 3v3h-7z"/><circle cx="7" cy="17" r="1.8" fill="#fff"/><circle cx="17" cy="17" r="1.8" fill="#fff"/></svg></div>`,
@@ -77,9 +84,9 @@ const PIE = (u, keys, colorOfKey, label, center) => {
     if (v === u.n) paths += `<circle cx="${cx}" cy="${cy}" r="${r - 1}" fill="${colorOfKey(k)}"/>`;
     else paths += `<path d="M${cx},${cy} L${cx + (r - 1) * Math.cos(a0)},${cy + (r - 1) * Math.sin(a0)} A${r - 1},${r - 1} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${cx + (r - 1) * Math.cos(a1)},${cy + (r - 1) * Math.sin(a1)} Z" fill="${colorOfKey(k)}"/>`;
     a0 = a1; }
-  return L.divIcon({ className: "", iconSize: [d, d + 14], iconAnchor: [r, r],
-    html: `<div style="position:relative;width:${d}px"><svg width="${d}" height="${d}" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">${paths}<circle cx="${cx}" cy="${cy}" r="${r - 1}" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="${cx}" cy="${cy}" r="${Math.max(7, r * 0.42)}" fill="#fff"/><text x="${cx}" y="${cy + 3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="#141821" font-family="Inter,system-ui">${center}</text></svg>`
-      + (label ? `<div style="position:absolute;left:50%;top:${d}px;transform:translateX(-50%);white-space:nowrap;font:600 10.5px Inter,system-ui;color:#141821;text-shadow:0 0 3px #fff,0 0 3px #fff">${label}</div>` : "") + `</div>` });
+  const html = `<div style="position:relative;width:${d}px"><svg width="${d}" height="${d}" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">${paths}<circle cx="${cx}" cy="${cy}" r="${r - 1}" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="${cx}" cy="${cy}" r="${Math.max(7, r * 0.42)}" fill="#fff"/><text x="${cx}" y="${cy + 3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="#141821" font-family="Inter,system-ui">${center}</text></svg>`
+      + (label ? `<div style="position:absolute;left:50%;top:${d}px;transform:translateX(-50%);white-space:nowrap;font:600 10.5px Inter,system-ui;color:#141821;text-shadow:0 0 3px #fff,0 0 3px #fff">${label}</div>` : "") + `</div>` ;
+  return cached(`p|${d}|${html}`, () => L.divIcon({ className: "", iconSize: [d, d + 14], iconAnchor: [r, r], html }));
 };
 const PRIO_Z = { P4: 0, P3: 1, P2: 2, P1: 3 };
 

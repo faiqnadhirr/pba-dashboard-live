@@ -1002,3 +1002,19 @@ test("VN-7 outage scenario: unknown BBT is shown as not evaluable, never as a me
   for (const x of r.rows) if (String(x.bbt_evidence).startsWith("UNAVAILABLE") && x.mbp_needed) assert.equal(simOutcomeView(x), "not_evaluable", x.site_id);
   if (unk.length) assert.ok(c.not_evaluable > 0);
 });
+
+test("VN-8 click-through filters: hero reach segments and data-quality rows open exactly the counted sites", async () => {
+  const { applySel } = await import("../lib/drill.js");
+  const { computeKpis, kpiFor, reachSplit } = await import("../lib/kpi.js");
+  const A = M.filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected);
+  const sp = reachSplit(kpiFor(computeKpis(A, mbps, [], [], cfg), "All NOPs"));
+  assert.equal(applySel(A, "reach_p12~ok").rows.length, sp.ok);
+  assert.equal(applySel(A, "reach_p12~no").rows.length, sp.no);
+  assert.equal(applySel(A, "reach_p12~unv").rows.length, sp.unv);
+  assert.equal(applySel(A, "missing~load_a").rows.length, A.filter((s) => s.load_a == null).length);
+  assert.equal(applySel(A, "unknown~pln").rows.length, A.filter((s) => !s.pln_known).length);
+  assert.equal(applySel(A, "design_kind~site_load").rows.length, A.filter((s) => s.bbt_design_kind === "site_load").length);
+  // map icons are cached (a new icon object per render made markers unclickable)
+  const mv = fs.readFileSync("components/MapView.jsx", "utf8");
+  assert.ok(mv.includes("const ICONS = new Map()") && /icon=\{\(zoom >= 8 \|\| draggableMbps \? TRUCK : CAMP_DOT\)/.test(mv));
+});

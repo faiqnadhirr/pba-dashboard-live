@@ -102,7 +102,7 @@ export default function Placement({ model, data, cfg, nop, setNop, setPick, setR
           </ResponsiveContainer>
           <table className="w-full text-[12px] tabular mt-2">
             <thead><tr className="text-slate text-left">{["added", "share", "mdark", "cost"].map((h) => <th key={h} className="py-1 border-b border-line">{t(`place.gain.${h}`)}</th>)}</tr></thead>
-            <tbody>{steps.map((r) => <tr key={r.k} className={`border-b border-line/60 ${plan.knee === r.k && r.k ? "bg-good/10 font-semibold" : r.k > plan.knee ? "text-mut" : ""}`}><td className="py-1">{r.label}{plan.knee === r.k && r.k ? " ◀" : ""}</td><td>{fPct(r.pct, 0)}</td><td>{r.k ? fH(r.marginal_dark_h) : "—"}</td><td>{r.cost_per_dark_h ? fRp(r.cost_per_dark_h) : "—"}</td></tr>)}</tbody>
+            <tbody>{steps.map((r) => <tr key={r.k} onClick={() => { const a = plan.added[r.k - 1]; if (a) setPick(model.find((s) => s.site_id === a.anchor_site)); }} title={r.k ? t("place.gain.row_tip") : undefined} className={`border-b border-line/60 ${r.k ? "cursor-pointer hover:bg-s1/5" : ""} ${plan.knee === r.k && r.k ? "bg-good/10 font-semibold" : r.k > plan.knee ? "text-mut" : ""}`}><td className="py-1">{r.label}{plan.knee === r.k && r.k ? " ◀" : ""}</td><td>{fPct(r.pct, 0)}</td><td>{r.k ? fH(r.marginal_dark_h) : "—"}</td><td>{r.cost_per_dark_h ? fRp(r.cost_per_dark_h) : "—"}</td></tr>)}</tbody>
           </table>
           <div className="mt-1 text-[11px] text-mut inline-flex items-center gap-1">{t("place.all_estimated")} <EvTag v="ESTIMATED" /></div>
           <div className="text-[11px] text-mut">{t("place.cost_note", { c: fRp(plan.unit_cost || 0) })}</div>

@@ -29,7 +29,7 @@ function Block({ title, tip, children, className = "" }) {
   );
 }
 
-export function ReachBlock({ k, partial }) {
+export function ReachBlock({ k, partial, onReach, active = [] }) {
   if (!k || !k.p12_eval) return <Block title={t("snap.reach.title")} tip={t("snap.reach.tip")}>
     <div className="text-[22px] font-bold text-mut">{t("common.na")}</div>
     <div className="text-[12px] text-slate">{partial ? t("snap.partial_na") : t("snap.reach.none")}</div></Block>;
@@ -41,12 +41,13 @@ export function ReachBlock({ k, partial }) {
         <span className="text-[15px] font-semibold tabular text-ink">· {pc(k.p12_reach_pct)}</span>
       </div>
       <div className="text-[12px] text-slate mb-1.5">{t("snap.reach.line")}</div>
-      <Meter parts={reachParts(k)} total={k.p12_eval} height={12} />
+      <Meter parts={reachParts(k)} total={k.p12_eval} height={12} onSeg={onReach} active={active} />
+      {onReach && <div className="text-[11px] text-mut mt-0.5">{t("snap.reach.click")}</div>}
     </Block>
   );
 }
 
-export function FleetSnapshot({ k, C, hasJobs, partial, onStatus, active = [] }) {
+export function FleetSnapshot({ k, C, hasJobs, partial, onStatus, active = [], onReach, onOntime }) {
   if (!k) return null;
   const st = PERF_KEYS.map((x) => ({ k: x, label: t(`perf.key.${x}`), v: C.by[x] || 0, c: PERF_COLOR[x] === "#ffffff" ? "#F1F3F6" : PERF_COLOR[x] }));
   return (
@@ -59,10 +60,10 @@ export function FleetSnapshot({ k, C, hasJobs, partial, onStatus, active = [] })
         {partial && <span className="text-[11.5px] text-[#8a5a00] cursor-help" title={t("a4.note")}>{t("snap.partial_chip")} ⓘ</span>}
       </div>
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)_minmax(0,1.1fr)]">
-        <ReachBlock k={k} partial={partial} />
+        <ReachBlock k={k} partial={partial} onReach={onReach} />
         <Block title={t("snap.ontime.title")} tip={t("snap.ontime.tip")} className="lg:border-l lg:border-line lg:pl-5">
           {hasJobs && k.jobs_ontime_pct != null ? <>
-            <div className="flex items-baseline gap-2"><span className="text-[28px] leading-none font-bold tabular text-ink">{pc(k.jobs_ontime_pct)}</span></div>
+            <button onClick={onOntime} disabled={!onOntime} title={t("snap.ontime.click")} className="flex items-baseline gap-2 hover:underline disabled:no-underline"><span className="text-[28px] leading-none font-bold tabular text-ink">{pc(k.jobs_ontime_pct)}</span>{onOntime && <span className="text-s1 text-[12px]">↗</span>}</button>
             <div className="text-[12px] text-slate mb-1.5">{t("snap.ontime.line", { a: fInt(k.jobs_ontime), n: fInt(k.jobs_judged) })}</div>
             <Meter showLegend={false} height={8} total={k.jobs_judged} parts={[{ k: "ok", label: t("snap.ontime.ok"), v: k.jobs_ontime, c: SEM.good }, { k: "late", label: t("snap.ontime.late"), v: Math.max(0, k.jobs_judged - k.jobs_ontime), c: SEM.crit }]} />
           </> : <><div className="text-[22px] font-bold text-mut">{t("common.na")}</div><div className="text-[12px] text-slate">{t("snap.no_jobs")}</div></>}
@@ -85,7 +86,7 @@ export function FleetSnapshot({ k, C, hasJobs, partial, onStatus, active = [] })
 }
 
 /** Coverage & Site Explorer hero: sites in scope + reach of the evaluable priority sites (same KPI layer) */
-export function CoverageSnapshot({ k, shown, partial, eta, drill }) {
+export function CoverageSnapshot({ k, shown, partial, eta, drill, onReach, active }) {
   if (!k) return null;
   return (
     <section className="bg-white border border-line rounded-lg px-4 py-3" aria-label={t("snap.cov.title")}>
@@ -97,7 +98,7 @@ export function CoverageSnapshot({ k, shown, partial, eta, drill }) {
         <span className="ml-auto text-[12px]">{eta}</span>
         {partial && <span className="text-[11.5px] text-[#8a5a00] cursor-help" title={t("a4.note")}>{t("snap.partial_chip")} ⓘ</span>}
       </div>
-      <div className="max-w-[760px]"><ReachBlock k={k} partial={partial} /></div>
+      <div className="max-w-[760px]"><ReachBlock k={k} partial={partial} onReach={onReach} active={active} /></div>
     </section>
   );
 }

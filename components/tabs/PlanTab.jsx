@@ -32,7 +32,8 @@ function Baseline({ ctx }) {
   const { nop, K, bcScope, hasJobs, data } = ctx;
   const k = kpiFor(K, nop), r = K?.byNop.get(nop), C = basecampCounts(bcScope);
   const snap = data.meta.snapshot || {};
-  const Item = ({ label, value, tip }) => <div className="min-w-0"><div className="text-[10.5px] uppercase tracking-wide text-slate font-semibold">{tip ? <InfoTip text={tip} label={label} /> : label}</div><div className="text-[14px] font-semibold text-ink tabular">{value}</div></div>;
+  const Item = ({ label, value, tip, go }) => <div className="min-w-0"><div className="text-[10.5px] uppercase tracking-wide text-slate font-semibold">{tip ? <InfoTip text={tip} label={label} /> : label}</div>
+    {go ? <button onClick={go} className="text-[14px] font-semibold text-ink tabular hover:underline text-left">{value} <span className="text-s1 text-[12px]">↗</span></button> : <div className="text-[14px] font-semibold text-ink tabular">{value}</div>}</div>;
   return (
     <section className="bg-white border border-line rounded-lg px-4 py-2.5" aria-label={t("plan.base.title")}>
       <div className="flex flex-wrap items-center gap-2 mb-1.5">
@@ -44,10 +45,10 @@ function Baseline({ ctx }) {
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Item label={t("plan.base.period")} value={`${snap.period_start || "2026-01-01"} → ${snap.period_end || "2026-06-30"}`} tip={t("plan.base.period_tip")} />
-        <Item label={t("plan.base.units")} value={`${fInt(C.total)}${C.by.noloc ? ` · ${fInt(C.by.noloc)} ${t("ov.noloc")}` : ""}`} />
+        <Item label={t("plan.base.units")} value={`${fInt(C.total)}${C.by.noloc ? ` · ${fInt(C.by.noloc)} ${t("ov.noloc")}` : ""}`} go={() => ctx.navigate({ view: "mbp.fleet" })} />
         <Item label={t("plan.base.sites")} value={k ? `${fInt(k.sites)} · ${fInt(k.p12_eval)} P1/P2` : t("common.na")} />
-        <Item label={t("plan.base.reach")} value={k?.p12_eval ? `${fInt(k.p12_reach)}/${fInt(k.p12_eval)} · ${pc(k.p12_reach_pct)}` : t("common.na")} tip={t("snap.reach.tip")} />
-        <Item label={t("plan.base.ontime")} value={hasJobs && k?.jobs_ontime_pct != null ? `${pc(k.jobs_ontime_pct)} · n ${fInt(k.jobs_judged)}` : t("common.na")} tip={t("snap.ontime.tip")} />
+        <Item label={t("plan.base.reach")} value={k?.p12_eval ? `${fInt(k.p12_reach)}/${fInt(k.p12_eval)} · ${pc(k.p12_reach_pct)}` : t("common.na")} tip={t("snap.reach.tip")} go={k?.p12_eval ? () => ctx.navigate({ view: "mbp.explorer", sel: "reach_p12~ok+no+unv" }) : null} />
+        <Item label={t("plan.base.ontime")} value={hasJobs && k?.jobs_ontime_pct != null ? `${pc(k.jobs_ontime_pct)} · n ${fInt(k.jobs_judged)}` : t("common.na")} tip={t("snap.ontime.tip")} go={hasJobs ? () => ctx.navigate({ view: "mbp.history" }) : null} />
         <Item label={t("plan.base.avail")} value={t("plan.base.avail_v")} tip={t("plan.base.avail_tip")} />
       </div>
     </section>

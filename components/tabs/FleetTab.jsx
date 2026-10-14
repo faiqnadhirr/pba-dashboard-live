@@ -44,7 +44,8 @@ export default function FleetTab(ctx) {
   const fromTable = (id) => { selectCamp(id); if (!id) return; setTimeout(() => { const el = mapBox.current; if (!el) return; const b = el.getBoundingClientRect(); if (b.bottom < 120 || b.top > window.innerHeight - 120) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); };
   return (
     <div className="space-y-3">
-      <FleetSnapshot k={k} C={C} hasJobs={hasJobs} partial={partial} onStatus={onStatus} active={onlyKey} />
+      <FleetSnapshot k={k} C={C} hasJobs={hasJobs} partial={partial} onStatus={onStatus} active={onlyKey}
+        onReach={(x) => ctx.navigate({ view: "mbp.explorer", sel: `reach_p12~${x}` })} onOntime={() => ctx.navigate({ view: "mbp.history" })} />
       <div ref={mapBox} className="scroll-mt-32"><Card title={t("fl.map.title")} sub={t("fl.map.sub")} right={<div className="flex flex-wrap items-center gap-2 text-[12px]">
         <span className="text-slate">{t("map.g.mode")}</span>
         <Seg value={view} onChange={setView} label={t("map.g.mode")} options={["util", "ontime", "coverage", "priority"].map((d) => [d, t(`fl.view.${d}`), t(`fl.view_tip.${d}`)])} />

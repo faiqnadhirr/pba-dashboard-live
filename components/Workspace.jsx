@@ -12,9 +12,14 @@ import { t } from "@/lib/i18n";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false, loading: () => <div className="h-[560px] rounded-md border border-line bg-surface animate-pulse" /> });
 
 export default function Workspace({ ctx, rows, modes, defaultMode, columns, filename, initialSort, expand, extraCsv, detail, title, sub, toolbar, height = 600,
-  mbps, mbpKeyOf, mbpLegend, mbpLegendTitle, mbpCountsOverride, mbpLabel, campFilter = true, pageSize = 50, showMbpLayers = true, tableTitle, tableSub, below }) {
+  mbps, mbpKeyOf, mbpLegend, mbpLegendTitle, mbpCountsOverride, mbpLabel, campFilter = true, pageSize = 50, showMbpLayers = true, tableTitle, tableSub, below, legendCmd }) {
   const { cfg, setRadius, nop, mbpStats, perf, openMbp, focus, setFocus } = ctx;
-  const [mode, setModeS] = useState(defaultMode || modes[0]), [hidden, setHidden] = useState([]);
+  // vNext.2 — a hero segment (here or on another page) can open this workspace with a legend filter: { mode, show: [keys] }.
+  // Cross-page hand-off via window.__pbaLeg (read once), same-page via the legendCmd prop ({ mode, show, n }).
+  const hiddenFor = (m, show) => (MAP_MODES[m]?.keys || []).filter((k) => !show.includes(k));
+  const [init] = useState(() => { try { const L = window.__pbaLeg; if (L && modes.includes(L.mode)) { window.__pbaLeg = null; return L; } } catch {} return null; });
+  const [mode, setModeS] = useState(init?.mode || defaultMode || modes[0]), [hidden, setHidden] = useState(init ? hiddenFor(init.mode, init.show) : []);
+  React.useEffect(() => { if (legendCmd && modes.includes(legendCmd.mode)) { setModeS(legendCmd.mode); setHidden(legendCmd.show ? hiddenFor(legendCmd.mode, legendCmd.show) : []); } }, [legendCmd?.n]); // eslint-disable-line
   const setMode = (m) => { setModeS(m); setHidden([]); };
   const camp = campFilter && focus.mbp ? focus.mbp : null;
   const shown = useMemo(() => workspaceRows(rows, { mode, hidden, camp }), [rows, mode, hidden, camp]);

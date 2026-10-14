@@ -2,6 +2,15 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## vNext.2.1 — clickability review
+- **Bug fix — map icons not clickable**: every render created new Leaflet `divIcon` objects, so react-leaflet replaced the marker DOM element on each re-render (hover, wheel-guard state) and the click was lost between mousedown and mouseup. Icons (base camps, trucks, roll-up pies) are now cached by appearance (`MapView.jsx › ICONS`). Verified on every map page.
+- Outage scenario: clicking a truck filters the worklist to the sites assigned to it (chip to clear).
+- Hero segments are filters: Fleet / Explorer reach bar → the exact P1/P2 sites (reachable 1,693 · not reachable 873 · not verified 100, drill `reach_p12`); historical on time → History page; Planning baseline items → Explorer / History / Fleet.
+- History: scorecards filter the page (jobs, on time = PLN-off, power on, no check-in; unknown PIC → Data quality); a timeline bar zooms to its month.
+- Data quality count rows (unknown, missing field, design basis, access class, coordinate precision) open the matching sites in the Explorer (new drills).
+- Fleet-size marginal-gain rows open the anchor site of that unit.
+- Test VN-8 (drill counts = KPI split; icon cache). Tests 79 → 80.
+
 ## vNext.2 — operational integrity (reconciliation, history, capability, demand centre, rule fixes)
 - **Reconciliation**: `npm run reconcile` (`scripts/reconcile.mjs`) regenerates `docs/RECONCILIATION_generated.md` with the dashboard's own functions (site / base-camp / ticket chains, metric definitions, design bases, Σ NOP = area). Discrepancies with source, formula, observed, expected and resolution: `docs/DISCREPANCIES_vNext2.md`.
 - **One on-time rule**: `judgeTicket()` (lib/mbpperf.js) used by the KPI layer and the new history lib; test VN-5 checks per-camp equality.
