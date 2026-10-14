@@ -9,6 +9,7 @@ import dynamic from "next/dynamic";
 import { Card, Panel, Seg, DataTable, Toggle, fInt, fPct, fMin, fNum } from "@/components/ui";
 import { FleetSnapshot } from "@/components/Snapshot";
 import { kpiFor } from "@/lib/kpi";
+import { siteScore } from "@/lib/scorecards";
 import Story from "@/components/tabs/Story";
 import MbpOverview from "@/components/tabs/MbpOverview";
 import Performance from "@/components/tabs/Performance";
@@ -30,6 +31,7 @@ export default function FleetTab(ctx) {
   const partial = useMemo(() => scope.some((s) => ctx.coverage?.[s.area] === "PARTIAL"), [scope, ctx.coverage]);
   // ONE record set: base camps in scope with their performance + operational status
   const rows = useMemo(() => bcScope.map((b) => { const p = perf.get(b.mbp_id) || b, o = opStatus(p, cfg); return { ...p, _op: o.op, _reason: o.reason, _clean: needsClean(p) }; }), [bcScope, perf, cfg]);
+  const SS = useMemo(() => siteScore(scope), [scope]);   // scorecards (lib/scorecards.js)
   const OC = useMemo(() => opCounts(rows.map((r) => r), cfg), [rows, cfg]);
   // reported power-on per camp (lib/history.js — same as the History page), computed once for the camps in scope
   const siteById = useMemo(() => new Map(ctx.model.map((s) => [s.site_id, s])), [ctx.model]);
@@ -70,7 +72,8 @@ export default function FleetTab(ctx) {
     { key: "need", label: "Long outages (need)" }, { key: "need_served", label: "Need served" }, { key: "nobat", label: "No-battery tickets" }];
   return (
     <div className="space-y-3">
-      <FleetSnapshot k={k} C={OC} hasJobs={hasJobs} partial={partial} onOp={onOp} active={activeOps}
+      <FleetSnapshot k={k} C={OC} S={SS} hasJobs={hasJobs} partial={partial} onOp={onOp} active={activeOps}
+        onDbl={() => ctx.navigate({ view: "mbp.explorer", sel: "sc~dbl" })}
         onReach={(x) => ctx.navigate({ view: "mbp.explorer", sel: `reach_p12~${x}` })} onOntime={() => ctx.navigate({ view: "mbp.history" })} />
       <div ref={mapBox} className="scroll-mt-32"><Card title={t("fl.map.title")} sub={t(mode === "camp" ? "fl.map.sub_camp" : "fl.map.sub_site")} right={<div className="flex flex-wrap items-center gap-2 text-[12px]">
         <span className="text-slate">{t("map.g.mode")}</span>

@@ -2,6 +2,13 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## vScorecards — headline scorecards (2026-10-14)
+- **MBP › Fleet Performance**: snapshot = 8 tiles, each "X dari Y (Z%)": base camps (located / not), P1/P2 sites, P1/P2 reached before BBT, jobs on time, **how late late jobs are** (median MBP arrival − BBT over the same 19,166 late jobs as the KPI: 101 min), unit working time (median 10.2 % of 327 camps; ≈ 23 jobs/unit/month), base-camp status, **double risk** (495 of 873 P1/P2 not reached with battery needing action). One factual sentence above the tiles.
+- **BBS › Battery Condition**: existing 4 + 4 groups kept; 6 new tiles: measured BBT vs design (median 88 vs 120 min, n 9,685), measured below design 6,697 / 9,685 (< 30 min 1,453), **PLN outage longer than BBT** 2,106 / 9,685 measured (all evidence 3,168 / 14,602; 3,805 without PLN data not counted), P1/P2 battery needing action 681 / 2,666, double risk 495 / 873, BBS-P1 136 / 4,034 (+ replace / upgrade / collect data); hotspot line (top-3 NOP / cluster share, ≥ 30 sites). A tile click shows exactly its counted sites (card filter chip).
+- `lib/scorecards.js` (predicates + `siteScore`), drill preset `sc~<card>`, `components/Scorecards.jsx` (Tile). KPI layer: additive `late_over_median` / `late_over_n` (from `mbpPerformance`, late jobs only). No existing formula, threshold or definition changed.
+- Dropped as disputable: "cushion 7 min" (two medians of different populations), downtime share (correlation), confidence badge (subjective threshold), P1/P2 per camp (misleading average).
+- Test SC-1 (tile = click-through count, late n = judged − on time per NOP, below / < 30 min = existing statuses). Tests 84 → 85.
+
 ## vSimplify — Simplification brief 2026-10-14 (buckets 1–4, presentation / flow only)
 No calculation, threshold or definition changed. New display groups are partitions of the existing engine states (tests SB-1 … SB-4).
 - **Bucket 1 · Fleet Performance** (`FleetTab.jsx`, `lib/opstatus.js`, `components/opUi.jsx`): one operational status per base camp mapped from `basecamp_final` — Perlu dicek (low + high), Bisa dipindah (idle ∧ selectable), Aman (watch + good; "kadang telat" kept as reason), Belum bisa dinilai (noloc / nodata / none / few / idle not selectable); "Bersihkan data" is a flag (selectable = false). Map modes Base camp / Site (+ P1/P2 only); radius only in Site mode. Linear flow snapshot → map → table tabs (Semua · Perlu dicek · Bisa dipindah · Bersihkan data) → panel with a one-sentence reason. Nine chips and follow-up lists removed; baseline, performance detail and per-NOP collapsed.

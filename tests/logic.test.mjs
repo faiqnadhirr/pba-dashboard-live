@@ -1071,3 +1071,21 @@ test("SB-4 BBS: 4 condition groups and 4 evidence groups partition the sites; ev
   const ex = fs.readFileSync("components/tabs/Explorer.jsx", "utf8"), br = fs.readFileSync("components/tabs/BatteryRisk.jsx", "utf8");
   assert.ok(ex.includes('view: "mbp.plan"') && ex.includes('"bbs.actions" : "bbs.risk"') && br.includes('view: "bbs.actions"'));
 });
+
+test("SC-1 scorecards: every site tile = exact click-through count; late-job median uses the same judged jobs as on-time", { skip: !V42 }, async () => {
+  const { siteScore, SC, SC_KEYS, avgOutageMin, isMeasured } = await import("../lib/scorecards.js");
+  const { applySel } = await import("../lib/drill.js");
+  const { KA, act, D } = V42, c = D.meta.config;
+  for (const r of [KA.area, ...KA.nops]) assert.equal(r.late_over_n, r.jobs_judged - r.jobs_ontime, `late jobs ${r.nop}`);
+  const A1 = act.filter((s) => s.area === "AREA 1"), S = siteScore(A1);
+  for (const k of SC_KEYS) assert.equal(applySel(A1, `sc~${k}`).rows.length, A1.filter(SC[k]).length, k);
+  assert.equal(applySel(A1, "sc~dbl").rows.length, S.dbl); assert.equal(applySel(A1, "sc~expo").rows.length, S.expo);
+  // no new threshold: "below design" by status = measured BBT < design; "< 30 min" = measured Dead + Critical
+  const meas = A1.filter(isMeasured);
+  assert.equal(S.below, meas.filter((s) => s.bbt_effective_min < c.bbt.design_minutes).length);
+  assert.equal(S.lt30, meas.filter((s) => s.bbt_effective_min < c.bbt.design_minutes * c.bbt.degraded_pct).length);
+  assert.ok(S.expo <= S.expo_den && S.expo_den <= S.meas_n && S.expo_all <= S.pln_bbt_n);
+  assert.ok(S.dbl <= S.p12_no && S.dbl <= S.p12bad && S.p12bad <= S.p12);
+  assert.equal(S.st.act + S.st.warn + S.st.ok + S.st.unk, S.n);
+  for (const s of A1.filter(SC.expo)) assert.ok(avgOutageMin(s) > s.bbt_effective_min);
+});

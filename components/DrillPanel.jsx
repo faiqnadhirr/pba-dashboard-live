@@ -25,6 +25,7 @@ export function selLabel(sel) {
   if (["unknown", "missing", "access", "coordprec", "design_kind"].includes(id)) {
     const lab = (k) => (id === "unknown" ? t(`dq.unknown.${k}`) : id === "access" ? tv("access", k) : id === "coordprec" ? (k === "none" ? t("dq.coord.none") : `${k} dp`) : id === "design_kind" ? t(`drill.gen.kind.${k}`) : k);
     return t("drill.chip.gen", { f: t(`drill.gen.${id}`), k: seg.split("+").map(lab).join(", ") }); }
+  if (id === "sc") return t("drill.chip.sc", { k: seg.split("+").map((k) => t(`sc.chip.${k}`)).join(", ") });
   if (id === "reach_p12") return t("drill.chip.reach", { k: seg.split("+").map((k) => t(`snap.reach.${k}`)).join(", ") });
   if (id.startsWith("map_")) { const m = id.slice(4), lab = (k) => (m === "priority" ? `MBP-${k}` : m === "design" ? tv("status", k) : t(`map.key.${k}`));
     return t("drill.chip.map", { m: t(`map.mode.${m}`), k: seg.split("+").map(lab).join(", ") }); }

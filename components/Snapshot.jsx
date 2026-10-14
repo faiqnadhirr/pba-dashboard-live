@@ -6,7 +6,9 @@
 //   · fleet status  — what the base camps did in Jan–Jun (one status per camp, basecamp_final)
 // Missing data is N/A (never 0 %). Unverified BBT is a separate grey segment, not a failure.
 import React from "react";
-import { Meter, InfoTip, fInt, fPct, SEM } from "@/components/ui";
+import { Meter, InfoTip, fInt, fPct, fNum, SEM } from "@/components/ui";
+import { Tile, Fact, shareOf } from "@/components/Scorecards";
+import { MONTHS } from "@/lib/mbpperf";
 import { OP_KEYS, OP_COLOR } from "@/lib/opstatus";
 import { t } from "@/lib/i18n";
 import { reachSplit } from "@/lib/kpi";
@@ -47,38 +49,51 @@ export function ReachBlock({ k, partial, onReach, active = [] }) {
   );
 }
 
-// Bucket 1 — C = opCounts() (lib/opstatus.js): { check, movable, ok, unrated, clean, total }
-export function FleetSnapshot({ k, C, hasJobs, partial, onOp, active = [], onReach, onOntime }) {
+// Scorecards (2026-10-14) — Fleet snapshot = 8 tiles, every number "X dari Y". k = kpiFor (ONE KPI layer), C = opCounts() (basecamp_final),
+// S = siteScore(scope) (lib/scorecards.js). Jobs tiles use the KPI layer's judged jobs (same set as jobs_ontime).
+export function FleetSnapshot({ k, C, S, hasJobs, partial, onOp, active = [], onReach, onOntime, onDbl, dblActive = false }) {
   if (!k) return null;
   const st = OP_KEYS.map((x) => ({ k: x, label: t(`op.${x}`), v: C[x] || 0, c: OP_COLOR[x] }));
+  const R = reachSplit(k), late = Math.max(0, (k.jobs_judged || 0) - (k.jobs_ontime || 0)), jobsOk = hasJobs && k.jobs_judged > 0;
+  const fact = t("sc.f.fact", { a: fInt(R.ok), b: fInt(R.total), c: jobsOk ? fInt(k.jobs_ontime) : "—", d: jobsOk ? fInt(k.jobs_judged) : "—", e: fInt(S?.dbl ?? 0) });
   return (
     <section className="bg-white border border-line rounded-lg px-4 py-3" aria-label={t("snap.fleet.title")}>
-      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[13px] text-slate mb-3">
-        <h2 className="text-[15px] font-semibold text-navy mr-1">{t("snap.fleet.title")}</h2>
-        <span><b className="text-ink tabular">{fInt(C.total)}</b> {t("ov.units")}</span>
-        <span><b className="text-ink tabular">{fInt(k.sites)}</b> {t("ov.sites")}</span>
-        <span><b className="text-ink tabular">{fInt(k.p12_eval || k.p12)}</b> {t("snap.p12")}</span>
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-1">
+        <h2 className="text-[15px] font-semibold text-navy">{t("snap.fleet.title")}</h2>
+        <span className="text-[11.5px] text-mut">{t("sc.scope")}</span>
         {partial && <span className="text-[11.5px] text-[#8a5a00] cursor-help" title={t("a4.note")}>{t("snap.partial_chip")} ⓘ</span>}
       </div>
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)_minmax(0,1.1fr)]">
-        <ReachBlock k={k} partial={partial} onReach={onReach} />
-        <Block title={t("snap.ontime.title")} tip={t("snap.ontime.tip")} className="lg:border-l lg:border-line lg:pl-5">
-          {hasJobs && k.jobs_ontime_pct != null ? <>
-            <button onClick={onOntime} disabled={!onOntime} title={t("snap.ontime.click")} className="flex items-baseline gap-2 hover:underline disabled:no-underline"><span className="text-[28px] leading-none font-bold tabular text-ink">{pc(k.jobs_ontime_pct)}</span>{onOntime && <span className="text-s1 text-[12px]">↗</span>}</button>
-            <div className="text-[12px] text-slate mb-1.5">{t("snap.ontime.line", { a: fInt(k.jobs_ontime), n: fInt(k.jobs_judged) })}</div>
-            <Meter showLegend={false} height={8} total={k.jobs_judged} parts={[{ k: "ok", label: t("snap.ontime.ok"), v: k.jobs_ontime, c: SEM.good }, { k: "late", label: t("snap.ontime.late"), v: Math.max(0, k.jobs_judged - k.jobs_ontime), c: SEM.crit }]} />
-          </> : <><div className="text-[22px] font-bold text-mut">{t("common.na")}</div><div className="text-[12px] text-slate">{t("snap.no_jobs")}</div></>}
-        </Block>
-        <Block title={t("snap.op.title")} tip={t("snap.op.tip")} className="lg:border-l lg:border-line lg:pl-5">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mb-1.5 text-[13px]">
+      <Fact text={fact} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <Tile label={t("sc.f.units")} tip={t("sc.f.units_tip")} value={fInt(C.total)} of={t("sc.f.units_of", { l: fInt(k.mbp_located), n: fInt(C.total - (k.mbp_located || 0)) })} />
+        <Tile label={t("sc.f.p12")} tip={t("sc.f.p12_tip")} value={fInt(k.p12)} of={t("sc.of_sites", { n: fInt(k.sites), p: shareOf(k.p12, k.sites) })}
+          onClick={onReach ? () => onReach("ok+no+unv") : null} />
+        <Tile label={t("sc.f.reach")} tip={t("snap.reach.tip_basis", { a: fInt(k.p12_reach_actual), e: fInt(k.p12_reach_estimated), d: fInt(k.p12_reach_derived), u: fInt(k.p12_unverified) })} ev="ESTIMATED"
+          na={!R.total} value={fInt(R.ok)} of={t("sc.f.reach_of", { n: fInt(R.total), p: shareOf(R.ok, R.total) })}
+          sub={t("sc.f.reach_sub", { no: fInt(R.no), u: fInt(R.unv) })}>
+          {R.total > 0 && <div className="mt-1"><Meter parts={reachParts(k)} total={R.total} height={8} onSeg={onReach} active={active} showLegend={false} /></div>}
+        </Tile>
+        <Tile label={t("sc.f.ontime")} tip={t("snap.ontime.tip")} ev="ACTUAL" na={!jobsOk} value={fInt(k.jobs_ontime)}
+          of={t("sc.f.ontime_of", { n: fInt(k.jobs_judged), p: shareOf(k.jobs_ontime, k.jobs_judged) })}
+          sub={t("sc.f.ontime_sub", { j: fInt(k.jobs), x: fInt((k.jobs || 0) - (k.jobs_judged || 0)) })} onClick={jobsOk && onOntime ? onOntime : null} />
+        <Tile label={t("sc.f.late")} tip={t("sc.f.late_tip")} na={!jobsOk || k.late_over_median == null} tone="crit"
+          value={t("sc.min", { m: fInt(Math.round(k.late_over_median ?? 0)) })} of={t("sc.f.late_of", { n: fInt(k.late_over_n), l: fInt(late) })} sub={t("sc.f.late_sub")}
+          onClick={jobsOk && onOntime ? onOntime : null} />
+        <Tile label={t("sc.f.busy")} tip={t("sc.f.busy_tip")} na={!jobsOk || k.occupancy_median == null} value={fPct(100 * (k.occupancy_median || 0), 1)}
+          of={t("sc.f.busy_of", { n: fInt(k.occupancy_n) })} sub={t("sc.f.busy_sub", { j: fNum((k.jobs || 0) / Math.max(1, C.total) / MONTHS, 0), a: fInt(k.jobs), u: fInt(C.total), m: MONTHS })} />
+        <Tile label={t("snap.op.title")} tip={t("snap.op.tip")} value={null} className="md:col-span-1">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-0.5 mb-1 text-[12px]">
             {OP_KEYS.map((x) => <button key={x} onClick={() => onOp?.(x)} aria-pressed={active.includes(x)} title={t(`op.tip.${x}`)}
-              className={`inline-flex items-baseline gap-1.5 rounded px-1 -mx-1 text-left ${active.includes(x) ? "bg-navy/10 ring-1 ring-navy/40" : "hover:bg-surface"}`}>
-              <span className="w-2.5 h-2.5 rounded-full inline-block self-center shrink-0" style={{ background: OP_COLOR[x] }} />
-              <b className="text-[19px] tabular text-ink leading-none">{fInt(C[x] || 0)}</b> <span className="text-slate">{t(`op.${x}`)}</span></button>)}
+              className={`inline-flex items-baseline gap-1 rounded px-1 -mx-1 text-left ${active.includes(x) ? "bg-navy/10 ring-1 ring-navy/40" : "hover:bg-surface"}`}>
+              <span className="w-2 h-2 rounded-full inline-block self-center shrink-0" style={{ background: OP_COLOR[x] }} />
+              <b className="text-[16px] tabular text-ink leading-none">{fInt(C[x] || 0)}</b> <span className="text-slate truncate">{t(`op.${x}`)}</span></button>)}
           </div>
-          <Meter parts={st} total={C.total} onSeg={onOp} active={active} height={10} showLegend={false} />
-          <div className="text-[11px] text-mut mt-1">{t("snap.op.line", { n: fInt(C.total), c: fInt(C.clean) })}</div>
-        </Block>
+          <Meter parts={st} total={C.total} onSeg={onOp} active={active} height={6} showLegend={false} />
+          <div className="text-[11px] text-mut mt-0.5">{t("sc.f.status_of", { n: fInt(C.total), c: fInt(C.clean) })}</div>
+        </Tile>
+        <Tile label={t("sc.dbl")} tip={t("sc.dbl_tip")} tone="crit" na={!S || !S.p12_no && !S.dbl} value={fInt(S?.dbl ?? 0)}
+          of={t("sc.dbl_of", { n: fInt(S?.p12_no ?? 0), p: shareOf(S?.dbl ?? 0, S?.p12_no ?? 0, 0) })} sub={t("sc.dbl_sub", { m: fInt(S?.dbl_meas ?? 0) })}
+          onClick={onDbl} active={dblActive} />
       </div>
     </section>
   );

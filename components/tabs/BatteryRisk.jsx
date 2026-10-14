@@ -6,7 +6,9 @@
 import React, { useMemo, useState } from "react";
 import Workspace from "@/components/Workspace";
 import { SiteBriefBbs } from "@/components/SiteBrief";
-import { BbtCell, bbtCsv, EvTag, Meter, InfoTip, fInt, fH } from "@/components/ui";
+import { BbtCell, bbtCsv, EvTag, Meter, InfoTip, fInt, fH, fPct } from "@/components/ui";
+import { siteScore, SC } from "@/lib/scorecards";
+import { Tile, Fact, shareOf } from "@/components/Scorecards";
 import { STATUS_GROUPS, STATUS_GROUP_OF, STATUS_GROUP_COLOR, statusGroup, EV_GROUPS, EV_GROUP_OF, EV_GROUP_COLOR, evGroup, evLabel, groupCounts } from "@/lib/bbsgroups";
 import { STATUS_ORDER } from "@/lib/logic";
 import { t, tv } from "@/lib/i18n";
@@ -19,9 +21,13 @@ const tog = (L, x) => (L.includes(x) ? L.filter((y) => y !== x) : [...L, x]);
 
 export default function BatteryRisk(ctx) {
   const { scope, cfg } = ctx;
-  const [sg, setSg] = useState([]), [eg, setEg] = useState([]), [pln, setPln] = useState(false);
+  const [sg, setSgS] = useState([]), [eg, setEgS] = useState([]), [pln, setPlnS] = useState(false), [sc, setScS] = useState(null);
+  // a scorecard click shows exactly its counted sites: it replaces the group / PLN filters (and vice versa)
+  const setSg = (v) => { setScS(null); setSgS(v); }, setEg = (v) => { setScS(null); setEgS(v); }, setPln = (v) => { setScS(null); setPlnS(v); };
+  const setSc = (k) => { setSgS([]); setEgS([]); setPlnS(false); setScS(sc === k ? null : k); };
+  const S = useMemo(() => siteScore(scope), [scope]);
   const okP = (s) => !pln || (s.pln_known && (s.pln_freq || 0) > 0);
-  const rows = useMemo(() => scope.filter((s) => (!sg.length || sg.includes(statusGroup(s))) && (!eg.length || eg.includes(evGroup(s))) && okP(s)), [scope, sg, eg, pln]); // eslint-disable-line
+  const rows = useMemo(() => scope.filter((s) => (sc ? SC[sc](s) : (!sg.length || sg.includes(statusGroup(s))) && (!eg.length || eg.includes(evGroup(s))) && okP(s))), [scope, sg, eg, pln, sc]); // eslint-disable-line
   const b = cfg.bbt, D = b.design_minutes;
   const cntSt = useMemo(() => groupCounts(scope.filter((s) => (!eg.length || eg.includes(evGroup(s))) && okP(s))).st, [scope, eg, pln]); // eslint-disable-line
   const cntEv = useMemo(() => groupCounts(scope.filter((s) => (!sg.length || sg.includes(statusGroup(s))) && okP(s))).ev, [scope, sg, pln]); // eslint-disable-line
@@ -29,7 +35,7 @@ export default function BatteryRisk(ctx) {
   const detail = useMemo(() => { const c = {}; for (const s of scope) if ((!eg.length || eg.includes(evGroup(s))) && okP(s)) c[s.bbt_status || "Unknown"] = (c[s.bbt_status || "Unknown"] || 0) + 1; return c; }, [scope, eg, pln]); // eslint-disable-line
   const evDetail = useMemo(() => { const c = {}; for (const s of scope) if ((!sg.length || sg.includes(statusGroup(s))) && okP(s)) c[evLabel(s)] = (c[evLabel(s)] || 0) + 1; return c; }, [scope, sg, pln]); // eslint-disable-line
   const nSt = STATUS_GROUPS.reduce((a, k) => a + cntSt[k], 0), nEv = EV_GROUPS.reduce((a, k) => a + cntEv[k], 0);
-  const active = sg.length || eg.length || pln;
+  const active = sg.length || eg.length || pln || sc;
   const thr = { d: D, a: Math.round(D * b.ok_pct), c: Math.round(D * b.degraded_pct), z: b.dead_max_minutes };
   const inGroup = (g) => STATUS_ORDER.filter((k) => (STATUS_GROUP_OF[k] || "unk") === g);
   const cols = [
@@ -56,9 +62,11 @@ export default function BatteryRisk(ctx) {
           <h2 className="text-[15px] font-semibold text-navy">{t("cond.title")}</h2>
           <span className="text-[12.5px] text-slate">{active ? t("cond.scope_f", { n: fInt(rows.length), N: fInt(scope.length) }) : t("cond.scope_all", { N: fInt(scope.length) })}</span>
           <label className="inline-flex items-center gap-1.5 text-[12px] text-slate"><input type="checkbox" checked={pln} onChange={(e) => setPln(e.target.checked)} className="accent-navy" />{t("risk.f.pln")}</label>
-          {active ? <button onClick={() => { setSg([]); setEg([]); setPln(false); }} className="text-s1 underline text-[12px]">{t("cond.reset")}</button> : null}
+          {sc && <span className="inline-flex items-center gap-1 bg-navy/10 border border-navy/30 rounded-full pl-2.5 pr-1 py-0.5 text-[12px] text-navy">{t("sc.chip_active", { k: t(`sc.chip.${sc}`) })}<button onClick={() => setScS(null)} aria-label={t("ws.clear")} className="w-5 h-5 rounded-full hover:bg-navy/20 leading-none">×</button></span>}
+          {active ? <button onClick={() => { setSgS([]); setEgS([]); setPlnS(false); setScS(null); }} className="text-s1 underline text-[12px]">{t("cond.reset")}</button> : null}
           <span className="ml-auto text-[11.5px] text-mut"><InfoTip text={t("cond.design_tip", { d: D })} label={t("risk.thresholds", thr)} /></span>
         </div>
+        <Fact text={t("sc.b.fact", { a: fInt(S.st.act), n: fInt(S.n), p: shareOf(S.st.act, S.n), b: fInt(S.below), m: fInt(S.meas_n), q: shareOf(S.below, S.meas_n, 0), d: D })} />
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
           <div>
             <div className="text-[11px] uppercase tracking-wide font-semibold text-slate mb-1"><InfoTip text={t("cond.status_tip")} label={t("cond.status")} /></div>
@@ -80,6 +88,27 @@ export default function BatteryRisk(ctx) {
             <div className="text-[11px] text-mut mt-1">{t("cond.ev_note")}</div>
           </div>
         </div>
+        {/* scorecards 4–9 (lib/scorecards.js): every tile "X dari Y"; a click shows exactly the counted sites */}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mt-3 pt-3 border-t border-line">
+          <Tile label={t("sc.b.bbt")} tip={t("sc.b.bbt_tip")} na={S.bbt_med_meas == null} value={t("sc.min", { m: fInt(Math.round(S.bbt_med_meas ?? 0)) })}
+            of={t("sc.b.bbt_of", { n: fInt(S.meas_n), d: D })} sub={t("sc.b.bbt_sub", { g: `${(S.bbt_med_meas ?? 0) < D ? "−" : "+"}${fInt(Math.abs(Math.round((S.bbt_med_meas ?? 0) - D)))}` })} tone={S.bbt_med_meas != null && S.bbt_med_meas < D ? "crit" : "ink"} />
+          <Tile label={t("sc.b.below")} tip={t("sc.b.below_tip", { d: D })} value={fInt(S.below)} of={t("sc.of_meas", { n: fInt(S.meas_n), p: shareOf(S.below, S.meas_n, 0) })}
+            sub={t("sc.b.below_sub", { l: fInt(S.lt30), n: fInt(S.meas_n), p: shareOf(S.lt30, S.meas_n, 0) })} onClick={() => setSc("below")} active={sc === "below"} />
+          <Tile label={t("sc.b.expo")} tip={t("sc.b.expo_tip")} value={fInt(S.expo)} of={t("sc.of_meas", { n: fInt(S.expo_den), p: shareOf(S.expo, S.expo_den, 1) })}
+            sub={t("sc.b.expo_sub", { a: fInt(S.expo_all), n: fInt(S.pln_bbt_n), x: fInt(S.no_pln), m: fInt(Math.round(S.outage_med ?? 0)) })} onClick={() => setSc("expo")} active={sc === "expo"} />
+          <Tile label={t("sc.b.p12bad")} tip={t("sc.b.p12bad_tip")} value={fInt(S.p12bad)} of={t("sc.b.p12bad_of", { n: fInt(S.p12), p: shareOf(S.p12bad, S.p12) })}
+            sub={t("sc.b.p12bad_sub", { m: fInt(S.p12bad_meas) })} onClick={() => setSc("p12bad")} active={sc === "p12bad"} />
+          <Tile label={t("sc.dbl")} tip={t("sc.dbl_tip")} tone="crit" value={fInt(S.dbl)} of={t("sc.dbl_of", { n: fInt(S.p12_no), p: shareOf(S.dbl, S.p12_no, 0) })}
+            sub={t("sc.dbl_sub", { m: fInt(S.dbl_meas) })} onClick={() => setSc("dbl")} active={sc === "dbl"} />
+          <Tile label={t("sc.b.follow")} tip={t("sc.b.follow_tip")} value={fInt(S.bbs_p1)} of={t("sc.b.follow_of", { n: fInt(S.bbs_any) })}
+            sub={t("sc.b.follow_sub", { r: fInt(S.replace), u: fInt(S.upgrade), d: fInt(S.data) })} onClick={() => ctx.navigate({ view: "bbs.actions" })} />
+        </div>
+        {S.hot.length > 0 && <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[12px] text-slate">
+          <span className="font-semibold"><InfoTip text={t("sc.b.hot_tip")} label={t(`sc.b.hot_${S.hot_by}`)} /></span>
+          {S.hot.map((h) => S.hot_by === "nop" ? <button key={h.g} onClick={() => ctx.setNop(h.g)} className="hover:underline tabular" title={t("sc.b.hot_click")}>
+            <b className="text-ink">{String(h.g).replace(/^NOP /, "")}</b> {t("sc.b.hot_v", { a: fInt(h.act), n: fInt(h.n), p: fPct(100 * h.share, 0) })}</button>
+            : <span key={h.g} className="tabular"><b className="text-ink">{h.g}</b> {t("sc.b.hot_v", { a: fInt(h.act), n: fInt(h.n), p: fPct(100 * h.share, 0) })}</span>)}
+        </div>}
       </section>
       <Workspace ctx={ctx} rows={rows} modes={["bbsgroup"]} defaultMode="bbsgroup" columns={cols} showMbpLayers={false}
         title={t("risk.title")} sub={t("risk.sub")} filename="pba_battery_condition.csv" initialSort={{ key: "bbt_status", dir: 1 }}
