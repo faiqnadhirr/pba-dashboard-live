@@ -20,6 +20,9 @@ const COLORS = {
   dq: { no_ran: "#7a1414", no_bbt: "#d03b3b", no_pln: "#ec835a", no_hist: "#fab219", complete: "#0ca30c" },
 };
 COLORS.bbsstatus = COLORS.design;
+COLORS.reach3 = { ok: "#0ca30c", no: "#d03b3b", unv: "#C4CAD4" };
+COLORS.reachwhy = { too_far: "#d03b3b", battery_short: "#eb6834", beyond: "#7a1414", island: "#334155", unv: "#C4CAD4", ok: "#0ca30c" };
+COLORS.bbsgroup = { act: "#d03b3b", warn: "#eda100", ok: "#0ca30c", unk: "#C9CFD9" };
 
 export function keyLabel(mode, k) {
   switch (mode) {
@@ -29,11 +32,14 @@ export function keyLabel(mode, k) {
     case "gap": return t(`map.gap.${k}`);
     case "cause": return k === "none" ? t("map.none_down") : tv("cause", k);
     case "resp": return k === "none" ? t("map.none_power") : tv("resp", k);
-    case "batch": return k === "none" ? t("map.batch.none") : `${LEVEL_KIND.BBS[k]?.i || ""} BBS-${k}`;
+    case "batch": return k === "none" ? t("map.batch.none") : `BBS-${k}`;
     case "trend": return tv("trend", k);
     case "dq": return t(`map.dq.${k}`);
     case "bbtgap": return t(`map.gap2.${k}`);
     case "actiontype": return t(`atype.${k}`);
+    case "reach3": return t(`rt.${k}`);
+    case "reachwhy": return ["ok", "unv"].includes(k) ? t(`rt.${k}`) : t(`rw.${k}`);
+    case "bbsgroup": return t(`sg.${k}`);
     default: return k;
   }
 }
@@ -60,6 +66,8 @@ export function siteWhy(mode, s) {
       : t("map.why.gap", { a: fMin(s.battery?.display?.value), d: fMin(s.bbt_design_min), p: fPct(100 * s.bbt_gap_ratio, 0), b: s.battery_banks ?? "—", l: s.load_a ?? "—" });
     case "actiontype": return k === "NONE" ? `${t("atype.NONE")} · ${tv("status", s.bbt_status)}` : `${t(`atype.${k}`)}: ${tv("action", s.recommended_action)} — ${te(s.rule, "rule")} · BBT ${bbtTxt(s)}`;
     case "dq": return k === "complete" ? t("map.dq.complete") : t("map.why.dq", { f: t(`map.dq.${k}`) });
+    case "reach3": case "reachwhy": return `${keyLabel(mode, k)} · ${t("map.why.eta", { e: fMin(s.eta_min ?? s.dist_eta_min), b: fMin(s.bbt_effective_min), m: s.dist_mbp || "—" })}`;
+    case "bbsgroup": return `${t(`sg.${k}`)} · ${tv("status", s.bbt_status)} · BBT ${bbtTxt(s)}`;
     default: return "";
   }
 }

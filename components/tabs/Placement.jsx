@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from "recharts";
 import { Card, Kpi, Note, Method, DataTable, Select, Slider, EvTag, fInt, fH, fPct, fPP, fNum, fCoord } from "@/components/ui";
-import { placementPlan, basecampGravity, sizingStop } from "@/lib/logic";
+import { placementPlan, sizingStop, bbtUnknown, isNum } from "@/lib/logic";
 import { t } from "@/lib/i18n";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
@@ -19,7 +19,7 @@ function Seg({ label, value, onChange, options }) {
 }
 
 // vNext — additional-unit sizing for the planning NOP (baseline strip): baseline → target → next unit → marginal benefit → stop condition.
-export default function Placement({ model, data, cfg, nop, setNop, setPick, setRadius, full, allNops, K }) {
+export default function Placement({ model, data, cfg, nop, setNop, setPick, setRadius, full, allNops, K, openInSandbox, navigate: ctxNav }) {
   const nops = allNops;
   const [target, setTarget] = useState(Math.round((cfg.placement?.target_share ?? 0.9) * 100));
   // v3.6 — response target: "bbt" (arrive before battery runs out) or minutes (ops standard, ETA incl. mobilisation); scope P1/P2 or all active
@@ -42,12 +42,6 @@ export default function Placement({ model, data, cfg, nop, setNop, setPick, setR
       conc_p95: p95, conc_max: c?.max ?? null, ideal: reach == null ? null : Math.max(reach, p95 || 0), ideal_driver: reach == null ? null : (p95 || 0) > reach ? "concurrency" : "reach" }; }),
   [nops, model, data.mbps, cfg, opt, conc]);
   const C = conc.get(nop), idealNop = plan.needed == null ? null : Math.max(plan.current + plan.needed, C ? Math.ceil(C.p95) : 0);
-  // v3.6 — centre of gravity per base camp → kecamatan, scored at the response target (30 min when "before BBT" is selected)
-  const gDl = deadline ?? RT;
-  const grav = useMemo(() => basecampGravity(model, data.mbps, cfg, { deadline: gDl }), [model, data.mbps, cfg, gDl]);
-  const gN = useMemo(() => grav.filter((g) => g.nop === nop), [grav, nop]);
-  const gSum = (L, k) => L.reduce((a, g) => a + g[k], 0);
-  const gExtra = gN.filter((g) => g.verdict !== "stay").map((g) => ({ mbp_id: `★ ${g.rec_kecamatan} (${g.mbp_id})`, lat: g.rec_lat, lon: g.rec_lon, nop, is_new: true }));
   const tgtLabel = deadline == null ? t("place.resp.bbt_short") : t("place.resp.min_short", { m: deadline });
   const extra = plan.added.map((a) => ({ mbp_id: `NEW-${a.n} @ ${a.anchor_site}`, lat: a.lat, lon: a.lon, nop, is_new: true }));
   const T = plan.targets || 1;
@@ -56,33 +50,41 @@ export default function Placement({ model, data, cfg, nop, setNop, setPick, setR
   // stop condition of the greedy sizing (placementPlan): target met · simulation limit reached · no candidate adds reach
   const stop = sizingStop(plan, maxNew);
 
+  // Bucket 3 — the units question: two inputs (target share, max additional), one sentence, the curve with the knee marked,
+  // exclusions next to the result, "Open in sandbox" (the proposed units handed to the shared sandbox). Everything else → Detail & assumptions.
+  // presentation only: how many of the "battery shorter than mobilisation" exclusions have an UNKNOWN BBT (placementPlan treats the
+  // effective BBT as given; an unknown BBT is not a measured short battery). Same filter as placementPlan › battery.
+  const batUnk = inNop.filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected && (scopeMode === "all" || s.mbp_priority_level === "P1" || s.mbp_priority_level === "P2")
+    && s.access_class !== "island" && isNum(s.lat) && (deadline == null ? s.bbt_effective_min : deadline) <= cfg.travel.mobilization_minutes && bbtUnknown(s)).length;
+  const nSand = plan.needed == null ? plan.added.length : plan.needed;
+  const toSandbox = () => openInSandbox?.({ kind: "add", nop, adds: plan.added.slice(0, nSand).map((a) => ({ lat: a.lat, lon: a.lon, label: a.kecamatan || a.anchor_site })) });
+  const sentence = plan.needed == null ? t("place.one.not_met", { p: fPct(target, 0), x: tgtLabel, m: fInt(maxNew), r: fPct(100 * (plan.reachable_max || 0), 0), nop })
+    : plan.needed === 0 ? t("place.one.met_now", { p: fPct(target, 0), x: tgtLabel, now: fPct((100 * plan.reachedNow) / T, 0), r: fInt(plan.reachedNow), n: fInt(plan.targets), nop })
+    : t("place.one.need", { n: fInt(plan.needed), p: fPct(target, 0), x: tgtLabel, u: fInt(plan.current), f: fInt(plan.current + plan.needed), now: fPct((100 * plan.reachedNow) / T, 0), r: fInt(plan.reachedNow), t: fInt(plan.targets), nop });
   return (
     <div className="space-y-4">
-      <Method tone="warn" title={t("place.note.title")}>{t("place.note.body", { r: cfg.mbp.max_radius_km, rf: fNum(cfg.travel.road_factor, 2), mob: cfg.travel.mobilization_minutes })} {t("place.note.v36", { mob: cfg.travel.mobilization_minutes })}</Method>
       <div className="flex flex-wrap items-end gap-4">
-        <Seg label={t("place.resp.label")} value={resp} onChange={setResp} options={[["bbt", t("place.resp.bbt")], [30, t("place.resp.min", { m: 30 })], [60, t("place.resp.min", { m: 60 })], [120, t("place.resp.min", { m: 120 })]]} />
-        <Seg label={t("place.scope.label")} value={scopeMode} onChange={setScopeMode} options={[["p12", t("place.scope.p12")], ["all", t("place.scope.all")]]} />
-        <div className="w-56"><Slider label={t("place.target2", { x: tgtLabel })} value={target} onChange={setTarget} min={50} max={100} step={5} fmt={(v) => fPct(v, 0)} /></div>
-        <div className="w-48"><Slider label={t("place.max_new")} value={maxNew} onChange={setMaxNew} min={1} max={maxCap} /></div>
+        <div className="w-60"><Slider label={t("place.target2", { x: tgtLabel })} value={target} onChange={setTarget} min={50} max={100} step={5} fmt={(v) => fPct(v, 0)} /></div>
+        <div className="w-52"><Slider label={t("place.max_new")} value={maxNew} onChange={setMaxNew} min={1} max={maxCap} /></div>
+        <details className="text-[12px]"><summary className="cursor-pointer text-slate font-semibold">{t("place.advanced", { x: tgtLabel, s: t(`place.scope.${scopeMode}`) })}</summary>
+          <div className="flex flex-wrap items-end gap-4 mt-2">
+            <Seg label={t("place.resp.label")} value={resp} onChange={setResp} options={[["bbt", t("place.resp.bbt")], [30, t("place.resp.min", { m: 30 })], [60, t("place.resp.min", { m: 60 })], [120, t("place.resp.min", { m: 120 })]]} />
+            <Seg label={t("place.scope.label")} value={scopeMode} onChange={setScopeMode} options={[["p12", t("place.scope.p12")], ["all", t("place.scope.all")]]} />
+          </div></details>
       </div>
-      {/* vNext — the sizing as a sequence: baseline → target → result → why it stopped */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
-        {[
-          [t("place.seq.base"), plan.targets ? `${fPct((100 * plan.reachedNow) / T, 0)}` : "—", t("place.seq.base_sub", { r: fInt(plan.reachedNow), n: fInt(plan.targets), u: fInt(plan.current), i: fInt(plan.island), b: fInt(plan.battery) })],
-          [t("place.seq.target"), fPct(target, 0), t("place.seq.target_sub", { x: tgtLabel, n: fInt(Math.ceil((target / 100) * plan.targets)) })],
-          [t("place.seq.result"), plan.needed == null ? t("place.seq.not_met") : plan.needed === 0 ? t("place.seq.met_now") : `+${fInt(plan.needed)}`,
-            plan.needed == null ? t("place.seq.result_nm", { m: fInt(maxNew), p: fPct(100 * (plan.reachable_max || 0), 0) }) : t("place.seq.result_sub", { f: fInt(plan.current + plan.needed), u: fInt(plan.current) })],
-          [t("place.seq.stop"), t(`place.stop.${stop}`), t(`place.stop.${stop}_sub`, { m: fInt(maxNew), k: fInt(plan.steps.length - 1) })],
-        ].map(([l, v, sub], i) => <div key={l} className={`border rounded-md px-3 py-2 bg-white ${i === 2 && plan.needed == null ? "border-warn" : "border-line"}`}>
-          <div className="text-[10.5px] uppercase tracking-wide font-semibold text-slate"><span className="text-white bg-slate rounded px-1 mr-1">{i + 1}</span>{l}</div>
-          <div className="text-[19px] font-bold text-ink tabular leading-tight">{v}</div><div className="text-[11.5px] text-slate leading-snug">{sub}</div></div>)}
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi label={t("place.kpi.knee")} value={`+${fInt(plan.knee)}`} sub={t("place.kpi.knee_sub", { s: Math.round(100 * plan.knee_share), c: plan.knee && plan.steps[plan.knee]?.cost_per_dark_h ? fRp(plan.steps[plan.knee].cost_per_dark_h) : "—" })} tone="good" help={t("place.kpi.knee_help")} />
-        <Kpi label={t("place.kpi.ideal")} value={idealNop == null ? `> ${fInt(Math.max(plan.current + maxNew, C ? Math.ceil(C.p95) : 0))}` : fInt(idealNop)} help={t("place.kpi.ideal_help")}
-          sub={C ? t("place.kpi.ideal_sub", { p: fInt(Math.ceil(C.p95)), m: fInt(C.max) }) : t("place.kpi.ideal_noconc")} tone={idealNop != null && idealNop > plan.current ? "warn" : "good"} />
-        <Kpi label={t("place.kpi.reloc")} value={fInt(plan.relocation.length)} sub={t("place.kpi.reloc_sub", { n: maxR, pp: fNum(lim, 1) })} />
-        <Kpi label={t("place.kpi.cost")} value={plan.unit_cost ? fRp(plan.unit_cost) : t("common.na")} sub={t("place.kpi.cost_sub")} tone="slate" help={t("place.cost_note", { c: fRp(plan.unit_cost || 0) })} />
+      <div className={`bg-white border rounded-lg px-4 py-3 ${plan.needed == null ? "border-warn" : "border-line"}`} role="status">
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="text-[19px] font-bold text-ink tabular leading-tight">{plan.needed == null ? `> +${fInt(maxNew)}` : plan.needed === 0 ? "+0" : `+${fInt(plan.needed)}`}</div>
+          <div className="flex-1 min-w-[240px] text-[13px] text-ink">{sentence}
+            {plan.knee > 0 && <span className="text-slate"> {t("place.one.knee", { k: fInt(plan.knee), s: fPct(100 * plan.knee_share, 0) })}</span>}</div>
+          {openInSandbox && plan.added.length > 0 && <button onClick={toSandbox} className="px-3 py-1.5 rounded bg-s7 text-white text-[12.5px] whitespace-nowrap" title={t("place.to_sandbox_tip")}>{t("place.to_sandbox", { n: fInt(nSand) })}</button>}
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate" aria-label={t("place.excl")}>
+          <span className="font-semibold">{t("place.excl")}:</span>
+          <span><b className="tabular text-ink">{fInt(plan.island)}</b> {t("place.excl.island")}</span>
+          <span><b className="tabular text-ink">{fInt(plan.battery)}</b> {t("place.excl.battery", { mob: cfg.travel.mobilization_minutes })}{batUnk > 0 && <span className="text-[#8a5a00]" title={t("place.excl.battery_unk_tip")}> {t("place.excl.battery_unk", { n: fInt(batUnk) })}</span>}</span>
+          <span className="text-mut">{t("place.excl.why")}</span>
+        </div>
       </div>
       <div className="grid xl:grid-cols-[minmax(0,1fr)_420px] gap-4">
         <Card title={t("place.map.title")} sub={t("place.map.sub")}>
@@ -97,6 +99,7 @@ export default function Placement({ model, data, cfg, nop, setNop, setPick, setR
               <YAxis domain={[0, 100]} tickFormatter={(v) => fPct(v, 0)} tick={{ fontSize: 11, fill: "#6B7588" }} width={40} />
               <Tooltip formatter={(v) => fPct(Number(v), 0)} />
               <ReferenceLine y={target} stroke="#d03b3b" strokeDasharray="4 3" label={{ value: t("place.target_line", { p: fPct(target, 0) }), fontSize: 10, position: "insideBottomRight" }} />
+              {plan.knee > 0 && <ReferenceLine x={`+${plan.knee}`} stroke="#0ca30c" strokeDasharray="3 3" label={{ value: t("place.knee_mark", { k: plan.knee }), fontSize: 10, position: "insideTopLeft", fill: "#0a7a0a" }} />}
               <Line dataKey="pct" name={t("place.reached")} stroke="#2b2370" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -116,36 +119,29 @@ export default function Placement({ model, data, cfg, nop, setNop, setPick, setR
           { key: "new_sites_reached", label: "col.new_reached", num: true }, { key: "dark_h_avoided", label: "col.dark_avoided", num: true, render: (r) => fH(r.dark_h_avoided), csv: (r) => r.dark_h_avoided.toFixed(1) },
         ]} />
       </Card>
-      {full && <Card title={t("place.cog.title")} sub={t("place.cog.sub", { m: gDl, w1: cfg.gravity?.w_pln ?? 0.35, w2: cfg.gravity?.w_bbt ?? 0.25, w3: cfg.gravity?.w_class ?? 0.15, w4: cfg.gravity?.w_repeat ?? 0.25 })}>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-          <Kpi label={t("place.cog.k_move", { nop })} value={`${fInt(gN.filter((g) => g.verdict === "move").length)} / ${fInt(gN.length)}`} sub={t("place.cog.k_move_sub", { f: fInt(gN.filter((g) => g.verdict === "fine_tune").length), s: fInt(gN.filter((g) => g.verdict === "stay").length) })} />
-          <Kpi label={t("place.cog.k_reach", { m: gDl })} value={`${fInt(gSum(gN, "reach_now"))} → ${fInt(gSum(gN.map((g) => (g.verdict === "stay" ? { ...g, reach_rec: g.reach_now } : g)), "reach_rec"))}`} sub={t("place.cog.k_reach_sub", { n: fInt(gSum(gN, "sites")) })} tone={gN.some((g) => g.verdict !== "stay" && g.reach_rec > g.reach_now) ? "good" : "slate"} />
-          <Kpi label={t("place.cog.k_area", { m: gDl })} value={`${fInt(gSum(grav, "reach_now"))} → ${fInt(gSum(grav.map((g) => (g.verdict === "stay" ? { ...g, reach_rec: g.reach_now } : g)), "reach_rec"))}`} sub={t("place.cog.k_area_sub", { n: fInt(grav.length), s: fInt(gSum(grav, "sites")) })} />
-          <Kpi label={t("place.cog.k_shift")} value={gN.length ? `${fNum(gN.filter((g) => g.verdict !== "stay").reduce((a, g, _, L) => a + g.shift_km / L.length, 0), 1)} km` : "—"} sub={t("place.cog.k_shift_sub")} />
-        </div>
-        <div className="grid xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-4">
-          <MapView sites={inNop.filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected)} mbps={data.mbps.filter((m) => m.nop === nop)} extraMbps={gExtra} cfg={cfg}
-            onRadius={setRadius} onPickSite={setPick} fitKey={nop + "cog"} defaultMode="survival" height={400} />
-          <DataTable rows={gN} pageSize={12} filename="pba_basecamp_gravity_kecamatan.csv" initialSort={{ key: "gain", dir: -1 }}
-            onRowClick={(r) => setPick(model.find((s) => s.site_id === r.rec_site))}
-            expand={(r) => <div className="text-[12px] text-slate">{t("place.cog.why", { c: `${fCoord(r.cog_lat, 4)}, ${fCoord(r.cog_lon, 4)}`, k: fNum(r.cog_km, 1), e1: fNum(r.eta_w_now, 0), e2: fNum(r.eta_w_rec, 0) })}
-              {r.alternatives.length > 0 && <> · <b>{t("place.cog.alt")}:</b> {r.alternatives.map((a) => `${a.kecamatan} (${a.site}, ${fInt(a.reach)} site, ${fNum(a.km, 1)} km)`).join(" · ")}</>}</div>}
-            columns={[
-              { key: "mbp_id", label: "col.basecamp" }, { key: "kec_now", label: "col.kec_now", render: (r) => r.kec_now || "—" },
-              { key: "verdict", label: "col.verdict", render: (r) => t(`place.cog.v.${r.verdict}`), csv: (r) => r.verdict },
-              { key: "rec_kecamatan", label: "col.kec_rec", render: (r) => (r.verdict === "stay" ? <span className="text-mut">—</span> : <span>★ {r.rec_kecamatan}<span className="text-mut"> · {r.rec_city || ""}</span>{" "}{r.city_change && <span className="ml-1 text-[10.5px] text-[#8a5a00] bg-warn/15 rounded px-1" title={t("place.cog.city_change_tip")}>{t("place.cog.city_change")}</span>}</span>), csv: (r) => (r.verdict === "stay" ? "" : r.rec_kecamatan) },
-              { key: "rec_site", label: "col.anchor_site", render: (r) => (r.verdict === "stay" ? "—" : r.rec_site), csv: (r) => (r.verdict === "stay" ? "" : r.rec_site) },
-              { key: "rec_latlon", label: "col.latlon", render: (r) => `${fCoord(r.rec_lat, r.rec_decimals)}, ${fCoord(r.rec_lon, r.rec_decimals)}`, csv: (r) => `${fCoord(r.rec_lat, r.rec_decimals)} ${fCoord(r.rec_lon, r.rec_decimals)}` },
-              { key: "shift_km", label: "col.shift_km", num: true, sortVal: (r) => (r.verdict === "stay" ? 0 : r.shift_km), render: (r) => (r.verdict === "stay" ? "—" : fNum(r.shift_km, 1)), csv: (r) => (r.verdict === "stay" ? "" : r.shift_km.toFixed(2)) },
-              { key: "sites", label: "col.sites_assigned", num: true },
-              { key: "reach_now", label: "col.reach_now_t", num: true, render: (r) => `${fInt(r.reach_now)} (${fPct(100 * r.wreach_now, 0)})`, csv: (r) => r.reach_now },
-              { key: "reach_rec", label: "col.reach_rec_t", num: true, render: (r) => (r.verdict === "stay" ? "—" : `${fInt(r.reach_rec)} (${fPct(100 * r.wreach_rec, 0)})`), csv: (r) => (r.verdict === "stay" ? "" : r.reach_rec) },
-              { key: "gain", label: "col.gain", num: true, sortVal: (r) => (r.verdict === "stay" ? -999 : r.reach_rec - r.reach_now), render: (r) => (r.verdict === "stay" ? "—" : r.reach_rec - r.reach_now > 0 ? `+${fInt(r.reach_rec - r.reach_now)}` : fInt(r.reach_rec - r.reach_now)), csv: (r) => (r.verdict === "stay" ? 0 : r.reach_rec - r.reach_now) },
-              { key: "alts", label: "col.alternatives", render: (r) => r.alternatives.map((a) => a.kecamatan).join(" · ") || "—", csv: (r) => r.alternatives.map((a) => `${a.kecamatan} (${a.site})`).join("; ") },
-            ]} />
-        </div>
-        <div className="mt-1 text-[11px] text-mut inline-flex items-center gap-1">{t("place.cog.foot")} <EvTag v="ESTIMATED" /></div>
-      </Card>}
+      <details className="bg-white border border-line rounded-lg px-4 py-2">
+        <summary className="cursor-pointer text-[13px] font-semibold text-navy">{t("place.detail")}</summary>
+        <div className="space-y-4 mt-3">
+      <Method tone="warn" title={t("place.note.title")}>{t("place.note.body", { r: cfg.mbp.max_radius_km, rf: fNum(cfg.travel.road_factor, 2), mob: cfg.travel.mobilization_minutes })} {t("place.note.v36", { mob: cfg.travel.mobilization_minutes })}</Method>
+      {/* vNext — the sizing as a sequence: baseline → target → result → why it stopped */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+        {[
+          [t("place.seq.base"), plan.targets ? `${fPct((100 * plan.reachedNow) / T, 0)}` : "—", t("place.seq.base_sub", { r: fInt(plan.reachedNow), n: fInt(plan.targets), u: fInt(plan.current), i: fInt(plan.island), b: fInt(plan.battery) })],
+          [t("place.seq.target"), fPct(target, 0), t("place.seq.target_sub", { x: tgtLabel, n: fInt(Math.ceil((target / 100) * plan.targets)) })],
+          [t("place.seq.result"), plan.needed == null ? t("place.seq.not_met") : plan.needed === 0 ? t("place.seq.met_now") : `+${fInt(plan.needed)}`,
+            plan.needed == null ? t("place.seq.result_nm", { m: fInt(maxNew), p: fPct(100 * (plan.reachable_max || 0), 0) }) : t("place.seq.result_sub", { f: fInt(plan.current + plan.needed), u: fInt(plan.current) })],
+          [t("place.seq.stop"), t(`place.stop.${stop}`), t(`place.stop.${stop}_sub`, { m: fInt(maxNew), k: fInt(plan.steps.length - 1) })],
+        ].map(([l, v, sub], i) => <div key={l} className={`border rounded-md px-3 py-2 bg-white ${i === 2 && plan.needed == null ? "border-warn" : "border-line"}`}>
+          <div className="text-[10.5px] uppercase tracking-wide font-semibold text-slate"><span className="text-white bg-slate rounded px-1 mr-1">{i + 1}</span>{l}</div>
+          <div className="text-[19px] font-bold text-ink tabular leading-tight">{v}</div><div className="text-[11.5px] text-slate leading-snug">{sub}</div></div>)}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Kpi label={t("place.kpi.knee")} value={`+${fInt(plan.knee)}`} sub={t("place.kpi.knee_sub", { s: Math.round(100 * plan.knee_share), c: plan.knee && plan.steps[plan.knee]?.cost_per_dark_h ? fRp(plan.steps[plan.knee].cost_per_dark_h) : "—" })} tone="good" help={t("place.kpi.knee_help")} />
+        <Kpi label={t("place.kpi.ideal")} value={idealNop == null ? `> ${fInt(Math.max(plan.current + maxNew, C ? Math.ceil(C.p95) : 0))}` : fInt(idealNop)} help={t("place.kpi.ideal_help")}
+          sub={C ? t("place.kpi.ideal_sub", { p: fInt(Math.ceil(C.p95)), m: fInt(C.max) }) : t("place.kpi.ideal_noconc")} tone={idealNop != null && idealNop > plan.current ? "warn" : "good"} />
+        <Kpi label={t("place.kpi.reloc")} value={fInt(plan.relocation.length)} sub={t("place.kpi.reloc_sub", { n: maxR, pp: fNum(lim, 1) })} />
+        <Kpi label={t("place.kpi.cost")} value={plan.unit_cost ? fRp(plan.unit_cost) : t("common.na")} sub={t("place.kpi.cost_sub")} tone="slate" help={t("place.cost_note", { c: fRp(plan.unit_cost || 0) })} />
+      </div>
       <div className="grid gap-4">
         <Card title={t("place.reloc.title")} sub={t("place.reloc.sub", { n: maxR, pp: fNum(lim, 1) })}>
           <div className="mb-2"><Note tone="crit">{t("place.reloc.warn")}</Note></div>
@@ -170,6 +166,8 @@ export default function Placement({ model, data, cfg, nop, setNop, setPick, setR
           ]} />
         </Card>
       </div>
+        </div>
+      </details>
     </div>
   );
 }

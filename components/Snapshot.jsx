@@ -7,7 +7,7 @@
 // Missing data is N/A (never 0 %). Unverified BBT is a separate grey segment, not a failure.
 import React from "react";
 import { Meter, InfoTip, fInt, fPct, SEM } from "@/components/ui";
-import { PERF_KEYS, PERF_COLOR } from "@/components/perfUi";
+import { OP_KEYS, OP_COLOR } from "@/lib/opstatus";
 import { t } from "@/lib/i18n";
 import { reachSplit } from "@/lib/kpi";
 
@@ -47,14 +47,15 @@ export function ReachBlock({ k, partial, onReach, active = [] }) {
   );
 }
 
-export function FleetSnapshot({ k, C, hasJobs, partial, onStatus, active = [], onReach, onOntime }) {
+// Bucket 1 — C = opCounts() (lib/opstatus.js): { check, movable, ok, unrated, clean, total }
+export function FleetSnapshot({ k, C, hasJobs, partial, onOp, active = [], onReach, onOntime }) {
   if (!k) return null;
-  const st = PERF_KEYS.map((x) => ({ k: x, label: t(`perf.key.${x}`), v: C.by[x] || 0, c: PERF_COLOR[x] === "#ffffff" ? "#F1F3F6" : PERF_COLOR[x] }));
+  const st = OP_KEYS.map((x) => ({ k: x, label: t(`op.${x}`), v: C[x] || 0, c: OP_COLOR[x] }));
   return (
     <section className="bg-white border border-line rounded-lg px-4 py-3" aria-label={t("snap.fleet.title")}>
       <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[13px] text-slate mb-3">
         <h2 className="text-[15px] font-semibold text-navy mr-1">{t("snap.fleet.title")}</h2>
-        <span><b className="text-ink tabular">{fInt(C.total)}</b> {t("ov.units")}{C.by.noloc ? <span className="text-mut"> · {fInt(C.by.noloc)} {t("ov.noloc")}</span> : null}</span>
+        <span><b className="text-ink tabular">{fInt(C.total)}</b> {t("ov.units")}</span>
         <span><b className="text-ink tabular">{fInt(k.sites)}</b> {t("ov.sites")}</span>
         <span><b className="text-ink tabular">{fInt(k.p12_eval || k.p12)}</b> {t("snap.p12")}</span>
         {partial && <span className="text-[11.5px] text-[#8a5a00] cursor-help" title={t("a4.note")}>{t("snap.partial_chip")} ⓘ</span>}
@@ -68,17 +69,15 @@ export function FleetSnapshot({ k, C, hasJobs, partial, onStatus, active = [], o
             <Meter showLegend={false} height={8} total={k.jobs_judged} parts={[{ k: "ok", label: t("snap.ontime.ok"), v: k.jobs_ontime, c: SEM.good }, { k: "late", label: t("snap.ontime.late"), v: Math.max(0, k.jobs_judged - k.jobs_ontime), c: SEM.crit }]} />
           </> : <><div className="text-[22px] font-bold text-mut">{t("common.na")}</div><div className="text-[12px] text-slate">{t("snap.no_jobs")}</div></>}
         </Block>
-        <Block title={t("snap.status.title")} tip={t("snap.status.tip")} className="lg:border-l lg:border-line lg:pl-5">
-          {hasJobs ? <>
-            <div className="flex flex-wrap gap-x-4 gap-y-0.5 mb-1.5 text-[13px]">
-              {["under", "high", "low"].map((x) => <button key={x} onClick={() => onStatus?.(x)} aria-pressed={active.includes(x)}
-                className={`inline-flex items-baseline gap-1 rounded px-1 -mx-1 ${active.includes(x) ? "bg-navy/10 ring-1 ring-navy/40" : "hover:bg-surface"}`}>
-                <span className="w-2.5 h-2.5 rounded-sm inline-block self-center" style={{ background: PERF_COLOR[x] }} />
-                <b className="text-[20px] tabular text-ink leading-none">{fInt(C.by[x] || 0)}</b> <span className="text-slate">{t(`ov.st.${x}`)}</span></button>)}
-            </div>
-            <Meter parts={st} total={C.total} onSeg={onStatus} active={active} height={10} showLegend={false} />
-            <div className="text-[11px] text-mut mt-1">{t("snap.status.line", { n: fInt(C.total) })}</div>
-          </> : <><div className="text-[22px] font-bold text-mut">{t("common.na")}</div><div className="text-[12px] text-slate">{t("snap.no_jobs")}</div></>}
+        <Block title={t("snap.op.title")} tip={t("snap.op.tip")} className="lg:border-l lg:border-line lg:pl-5">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mb-1.5 text-[13px]">
+            {OP_KEYS.map((x) => <button key={x} onClick={() => onOp?.(x)} aria-pressed={active.includes(x)} title={t(`op.tip.${x}`)}
+              className={`inline-flex items-baseline gap-1.5 rounded px-1 -mx-1 text-left ${active.includes(x) ? "bg-navy/10 ring-1 ring-navy/40" : "hover:bg-surface"}`}>
+              <span className="w-2.5 h-2.5 rounded-full inline-block self-center shrink-0" style={{ background: OP_COLOR[x] }} />
+              <b className="text-[19px] tabular text-ink leading-none">{fInt(C[x] || 0)}</b> <span className="text-slate">{t(`op.${x}`)}</span></button>)}
+          </div>
+          <Meter parts={st} total={C.total} onSeg={onOp} active={active} height={10} showLegend={false} />
+          <div className="text-[11px] text-mut mt-1">{t("snap.op.line", { n: fInt(C.total), c: fInt(C.clean) })}</div>
         </Block>
       </div>
     </section>

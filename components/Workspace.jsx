@@ -12,7 +12,7 @@ import { t } from "@/lib/i18n";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false, loading: () => <div className="h-[560px] rounded-md border border-line bg-surface animate-pulse" /> });
 
 export default function Workspace({ ctx, rows, modes, defaultMode, columns, filename, initialSort, expand, extraCsv, detail, title, sub, toolbar, height = 600,
-  mbps, mbpKeyOf, mbpLegend, mbpLegendTitle, mbpCountsOverride, mbpLabel, campFilter = true, pageSize = 50, showMbpLayers = true, tableTitle, tableSub, below, legendCmd }) {
+  mbps, mbpKeyOf, mbpLegend, mbpLegendTitle, mbpCountsOverride, mbpLabel, campFilter = true, pageSize = 50, showMbpLayers = true, tableTitle, tableSub, below, legendCmd, mapProps = {}, aboveTable = null, tableKeyFn }) {
   const { cfg, setRadius, nop, mbpStats, perf, openMbp, focus, setFocus } = ctx;
   // vNext.2 — a hero segment (here or on another page) can open this workspace with a legend filter: { mode, show: [keys] }.
   // Cross-page hand-off via window.__pbaLeg (read once), same-page via the legendCmd prop ({ mode, show, n }).
@@ -53,7 +53,7 @@ export default function Workspace({ ctx, rows, modes, defaultMode, columns, file
             mode={mode} onMode={setMode} modes={modes} hidden={hidden} onHidden={setHidden} showMbpLayers={showMbpLayers}
             selectedSiteId={focus.site} onSelectSite={selectSite} selectedMbpId={focus.mbp} onSelectMbp={selectMbp} showCard={!detail} campSiteIds={campIds}
             mbpKeyOf={mbpKeyOf} mbpLegend={mbpLegend} mbpLegendTitle={mbpLegendTitle} mbpPerf={perf} onOpenMbp={openMbp} mbpLabel={mbpLabel} mbpCountsOverride={mbpCountsOverride}
-            onPickSite={ctx.setPick} />
+            onPickSite={ctx.setPick} {...mapProps} />
           {detail && <Panel className="max-h-[720px] overflow-y-auto" title={selSite ? selSite.site_id : null} sub={selSite ? `${selSite.site_name} · ${selSite.site_class} · ${selSite.nop}` : null} onClose={() => selectSite(null)}
             empty={<>{t("ws.pick_hint")}<div className="mt-2 text-[11.5px]">{t(`map.mode.${mode}`)}: {MAP_MODES[mode]?.keys?.length ? t("ws.legend_hint") : ""}</div></>}>
             {selSite && <>
@@ -63,6 +63,7 @@ export default function Workspace({ ctx, rows, modes, defaultMode, columns, file
         </div>
       </Card></div>
       <Card title={tableTitle || t("ws.table", { n: fInt(shown.length) })} sub={tableSub}>
+        {aboveTable}
         {!shown.length ? <div className="py-8 text-center text-mut text-[13px]">{t("ws.empty")}</div> :
           <DataTable rows={shown} columns={columns} filename={filename} initialSort={initialSort} pageSize={pageSize} expand={expand} extraCsv={extraCsv}
             selectedKey={focus.site} onSelect={(r) => { const off = focus.site === r.site_id && !expand; selectSite(off ? null : r); if (!off) setTimeout(showMap, 0); }} maxH={560} />}

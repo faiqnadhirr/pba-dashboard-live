@@ -56,7 +56,7 @@ const VIEW_OF = Object.fromEntries(GROUPS.flatMap(([, tabs]) => tabs.map(([k, v]
 const TAB_OF = Object.fromEntries(Object.entries(VIEW_OF).map(([k, v]) => [v, k]));
 // v5.0 — links from earlier versions keep working: old view → new page (+ Resource Planning step)
 const LEGACY = { "mbp.overview": ["fleet"], "mbp.performance": ["fleet"], "mbp.productivity": ["fleet"], "mbp.sitelist": ["explorer"],
-  "mbp.simmap": ["plan", "scenario"], "mbp.placement": ["plan", "units"], "mbp.backtest": ["plan", "backtest"], "mbp.simulation": ["plan", "outage"] };
+  "mbp.simmap": ["plan", "sandbox"], "mbp.placement": ["plan", "units"], "mbp.backtest": ["plan", "move"], "mbp.simulation": ["plan", "outage"] };
 const resolveView = (v) => { if (TAB_OF[v]) return TAB_OF[v]; const L = LEGACY[v]; if (!L) return null; if (L[1]) try { window.__pbaPlan = L[1]; } catch {} return L[0]; };
 const groupOf = (tab) => GROUPS.find(([, tabs]) => tabs.some(([k]) => k === tab))[0];
 const DEFAULT_TAB = "fleet";
@@ -254,7 +254,7 @@ export default function Page() {
           <nav className="max-w-[1560px] mx-auto px-3 flex overflow-x-auto" aria-label={t(`nav.${activeGroup}`)}>
             {visibleTabs(activeGroup).map(([k, v], i, L) => (
               <React.Fragment key={k}>
-                {SECONDARY.has(k) && !SECONDARY.has(L[i - 1]?.[0]) && <span className="self-center ml-3 mr-1 pl-3 border-l border-white/30 text-[10.5px] uppercase tracking-wide text-white/45 whitespace-nowrap">{t("nav.supporting")}</span>}
+                {SECONDARY.has(k) && !SECONDARY.has(L[i - 1]?.[0]) && <span className="self-center ml-3 mr-1 pl-3 border-l border-white/30 text-[10.5px] uppercase tracking-wide text-white/45 whitespace-nowrap">{t(activeGroup === "bbs" ? "nav.for_analyst" : "nav.supporting")}</span>}
                 <button onClick={() => setTab(k)} aria-current={tab === k ? "page" : undefined} title={SECONDARY.has(k) ? t("nav.secondary_tip") : undefined}
                   className={`px-3 py-1.5 whitespace-nowrap border-b-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn ${SECONDARY.has(k) ? "text-[11.5px]" : "text-[13px] font-semibold"} ${tab === k ? "border-warn text-white" : SECONDARY.has(k) ? "border-transparent text-white/55 hover:text-white" : "border-transparent text-white/80 hover:text-white"}`}>{t(`nav.${v}`)}</button>
               </React.Fragment>

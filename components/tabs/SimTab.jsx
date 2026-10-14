@@ -5,7 +5,7 @@ import { Card, Note, Method, DataTable, Select, Slider, Toggle, LevelTag, EvTag,
 import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { simulate, kmeans } from "@/lib/logic";
-import { simOutcomeView, simCounts } from "@/lib/dispatch";
+import { simOutcomeView, simCounts, SIM_GROUPS, simGroup, simGroupCounts } from "@/lib/dispatch";
 import { campCode } from "@/lib/mbpperf";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
@@ -36,7 +36,8 @@ export default function SimTab({ model: scored, data, cfg, nop, setPick, setRadi
   const [moveOn, setMoveOn] = useState(false);
   const [moveMbp, setMoveMbp] = useState("");
   const [moveTo, setMoveTo] = useState("");
-  const [addN, setAddN] = useState(2);
+  const [addN, setAddN] = useState(0);   // Bucket 3 — alternative scenarios B/C/D are off by default (advanced)
+  const [altOn, setAltOn] = useState(false), [grp, setGrp] = useState(null);
   const [altH, setAltH] = useState(8);
   const [res, setRes] = useState(null);
   const [show, setShow] = useState(null);
@@ -68,8 +69,8 @@ export default function SimTab({ model: scored, data, cfg, nop, setPick, setRadi
       const extra = uniq.map((c, i) => ({ mbp_id: `NEW-MBP-${i + 1}`, lat: c.lat, lon: c.lon, nop, is_new: true, mbp_tickets_h1: 0 }));
       if (extra.length) out[t("sim.sc.c", { n: extra.length })] = { ...simulate(scored, affected, hours, data.mbps, ctx, cfg, { departHour: hour, busy: b, extra }), extra };
     }
-    out[t("sim.sc.d", { h: fNum(altH, 1) })] = simulate(scored, affected, altH, data.mbps, ctx, cfg, { departHour: hour, busy: b });
-    setRes(out); setShow(A);
+    if (altOn) out[t("sim.sc.d", { h: fNum(altH, 1) })] = simulate(scored, affected, altH, data.mbps, ctx, cfg, { departHour: hour, busy: b });
+    setRes(out); setShow(A); setGrp(null);
   };
 
   // C5 — pre-run the default scenario (top-20 PLN-frequency sites, 4 h outage) whenever the NOP changes, so the page is never empty
@@ -89,29 +90,36 @@ export default function SimTab({ model: scored, data, cfg, nop, setPick, setRadi
       <div className="grid xl:grid-cols-[360px_minmax(0,1fr)] gap-4">
         <Card title={t("sim.inputs")}>
           <div className="space-y-3">
+            <div className="text-[11px] uppercase tracking-wide font-semibold text-slate">{t("sim.in.which")}</div>
             <Select label={t("sim.affected")} value={mode} onChange={setMode} options={[{ value: "top", label: t("sim.mode.top") }, { value: "cluster", label: t("sim.mode.cluster") }, { value: "pick", label: t("sim.mode.pick") }]} />
+            <div className="text-[11px] uppercase tracking-wide font-semibold text-slate pt-1">{t("sim.in.howmany")}</div>
             {mode === "top" && <Slider label={t("sim.n_sites")} value={n} onChange={setN} min={1} max={100} />}
             {mode === "cluster" && <><Select label={t("sim.cluster")} value={cl || ""} onChange={setCluster} options={clusters} /><Slider label={t("sim.share")} value={share} onChange={setShare} min={5} max={100} step={5} fmt={(v) => fPct(v, 0)} /></>}
             {mode === "pick" && <label className="flex flex-col gap-1 text-[12px] text-mut">{t("sim.ids")}<textarea value={picked} onChange={(e) => setPicked(e.target.value)} rows={3} className="border border-line rounded-md p-2 text-[12.5px] text-ink" placeholder="PBI027, SKY047" /></label>}
             <div className="text-[12px] text-slate">{t("sim.n_affected", { n: fInt(affected.length) })}</div>
+            <div className="text-[11px] uppercase tracking-wide font-semibold text-slate pt-1">{t("sim.in.howlong")}</div>
             <Slider label={t("sim.duration")} value={hours} onChange={setHours} min={0.5} max={24} step={0.5} fmt={(v) => fH(v)} />
-            <Slider label={t("sim.depart")} value={hour} onChange={setHour} min={0} max={23} fmt={(v) => `${String(v).padStart(2, "0")}:00`} />
-            <details className="text-[12px]">
-              <summary className="cursor-pointer text-slate">{t("sim.busy", { n: busy.length })}</summary>
-              <div className="max-h-40 overflow-y-auto border border-line rounded-md mt-1 p-1.5 space-y-0.5">
-                {mbpsNop.map((m) => <Toggle key={m.mbp_id} label={`${m.mbp_id}${m.lat == null ? ` (${t("sim.no_location")})` : ""}`} checked={busy.includes(m.mbp_id)} onChange={(c) => setBusy(c ? [...busy, m.mbp_id] : busy.filter((x) => x !== m.mbp_id))} />)}
+            <details className="text-[12px] border-t border-line pt-2">
+              <summary className="cursor-pointer text-slate font-semibold">{t("sim.advanced", { n: busy.length + (moveOn ? 1 : 0) + (addN > 0 ? 1 : 0) + (altOn ? 1 : 0) })}</summary>
+              <div className="space-y-3 mt-2">
+                <Slider label={t("sim.depart")} value={hour} onChange={setHour} min={0} max={23} fmt={(v) => `${String(v).padStart(2, "0")}:00`} />
+                <details className="text-[12px]">
+                  <summary className="cursor-pointer text-slate">{t("sim.busy", { n: busy.length })}</summary>
+                  <div className="max-h-40 overflow-y-auto border border-line rounded-md mt-1 p-1.5 space-y-0.5">
+                    {mbpsNop.map((m) => <Toggle key={m.mbp_id} label={`${m.mbp_id}${m.lat == null ? ` (${t("sim.no_location")})` : ""}`} checked={busy.includes(m.mbp_id)} onChange={(c) => setBusy(c ? [...busy, m.mbp_id] : busy.filter((x) => x !== m.mbp_id))} />)}
+                  </div>
+                </details>
+                <div className="text-[12px] font-semibold text-navy">{t("sim.alt")}</div>
+                <Toggle label={t("sim.b")} checked={moveOn} onChange={setMoveOn} />
+                {moveOn && <>
+                  <Select label={t("sim.b_mbp")} value={moveMbp} onChange={setMoveMbp} options={[{ value: "", label: t("common.choose") }, ...mbpsNop.filter((m) => m.lat != null).map((m) => m.mbp_id)]} />
+                  <Select label={t("sim.b_to")} value={moveTo} onChange={setMoveTo} options={[{ value: "", label: t("common.choose") }, ...[...inNop].sort((a, b) => b.mbp_priority_score - a.mbp_priority_score).slice(0, 300).map((s) => ({ value: s.site_id, label: `${s.site_id} · ${s.site_name} (MBP-${s.mbp_priority_level})` }))]} />
+                </>}
+                <Slider label={t("sim.c")} value={addN} onChange={setAddN} min={0} max={10} />
+                <Toggle label={t("sim.d_on")} checked={altOn} onChange={setAltOn} />
+                {altOn && <Slider label={t("sim.d")} value={altH} onChange={setAltH} min={0.5} max={24} step={0.5} fmt={(v) => fH(v)} />}
               </div>
             </details>
-            <div className="border-t border-line pt-3 space-y-3">
-              <div className="text-[12px] font-semibold text-navy">{t("sim.alt")}</div>
-              <Toggle label={t("sim.b")} checked={moveOn} onChange={setMoveOn} />
-              {moveOn && <>
-                <Select label={t("sim.b_mbp")} value={moveMbp} onChange={setMoveMbp} options={[{ value: "", label: t("common.choose") }, ...mbpsNop.filter((m) => m.lat != null).map((m) => m.mbp_id)]} />
-                <Select label={t("sim.b_to")} value={moveTo} onChange={setMoveTo} options={[{ value: "", label: t("common.choose") }, ...[...inNop].sort((a, b) => b.mbp_priority_score - a.mbp_priority_score).slice(0, 300).map((s) => ({ value: s.site_id, label: `${s.site_id} · ${s.site_name} (MBP-${s.mbp_priority_level})` }))]} />
-              </>}
-              <Slider label={t("sim.c")} value={addN} onChange={setAddN} min={0} max={10} />
-              <Slider label={t("sim.d")} value={altH} onChange={setAltH} min={0.5} max={24} step={0.5} fmt={(v) => fH(v)} />
-            </div>
             <button onClick={run} disabled={!affected.length} className="w-full bg-navy text-white rounded-md py-2 text-[13px] font-semibold disabled:opacity-40">{t("sim.run")}</button>
           </div>
         </Card>
@@ -127,7 +135,19 @@ export default function SimTab({ model: scored, data, cfg, nop, setPick, setRadi
               </div>
               <div className="text-[11.5px] text-mut mt-1">{t("sim.sum.rules")}</div>
             </div>
-            <Card title={t("sim.cmp.title")} sub={t("sim.cmp.sub")}>
+            {/* Bucket 3 — five outcome boxes (display outcomes, lib/dispatch.js › simGroup); a click filters the map and the worklist below */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2" role="group" aria-label={t("sim.box.title")}>
+              {SIM_GROUPS.map((g) => { const c = cur ? simGroupCounts(cur.rows) : {}; const col = g === "unserved" ? OUT.unserved_busy : OUT[g];
+                return <button key={g} onClick={() => setGrp(grp === g ? null : g)} aria-pressed={grp === g} title={t(`sim.box.${g}_tip`)}
+                  className={`text-left rounded-md border px-3 py-2 bg-white ${grp === g ? "border-navy ring-2 ring-navy/30" : "border-line hover:border-slate"}`}>
+                  <div className="flex items-center gap-1.5 text-[11.5px] text-slate"><span className="w-2.5 h-2.5 rounded-full inline-block border border-navy/30" style={{ background: col }} />{t(`sim.box.${g}`)}</div>
+                  <div className="text-[20px] font-bold tabular text-ink leading-tight">{fInt(c[g] || 0)}</div>
+                  {g === "unserved" && <div className="text-[10.5px] text-mut">{t("sim.box.unserved_sub", { b: fInt(simCounts(cur.rows).unserved_busy), c: fInt(simCounts(cur.rows).unserved_no_coverage), i: fInt(simCounts(cur.rows).unserved_island) })}</div>}
+                </button>; })}
+            </div>
+            {kRows.length > 1 && <details open className="group">
+              <summary className="cursor-pointer text-[12.5px] text-navy font-semibold mb-1">{t("sim.cmp.toggle", { n: kRows.length })}</summary>
+              <Card title={t("sim.cmp.title")} sub={t("sim.cmp.sub")}>
               <div className="overflow-x-auto">
                 <table className="w-full text-[12.5px] tabular">
                   <thead><tr className="text-slate">{["scenario", "affected", "need", "saved", "late", "no_feasible", "busy", "no_cov", "island", "not_eval", "avg_eta", "max_eta", "exp_down", "pw_cov"].map((k) => t(`sim.cmp.${k}`)).map((h) => <th key={h} className="px-2 py-1.5 border-b border-line text-right first:text-left whitespace-nowrap">{h}</th>)}</tr></thead>
@@ -142,11 +162,12 @@ export default function SimTab({ model: scored, data, cfg, nop, setPick, setRadi
               </div>
               {kRows[0]?.unserved_island > 0 && <div className="mt-2"><Note tone="warn">{t("sim.island_note", { n: kRows[0].unserved_island })}</Note></div>}
             </Card>
+            </details>}
             <Card title={t("sim.alloc", { s: show })} right={<Select value={show} onChange={setShow} options={Object.keys(res)} />}>
               <div className="grid xl:grid-cols-[minmax(0,1fr)_300px] gap-3">
               <MapView fitKey={show} onPickSite={setPick} cfg={cfg} onRadius={setRadius} compact selectedSiteId={selId} onSelectSite={(x) => setSelId(x ? x.site_id : null)} showCard={false}
                 selectedMbpId={selMbp} onSelectMbp={(m) => setSelMbp(m && selMbp !== m.mbp_id ? m.mbp_id : null)}
-                sites={cur.rows.map((r) => ({ ...siteMap.get(r.site_id), _o: simOutcomeView(r) }))}
+                sites={cur.rows.filter((r) => !grp || simGroup(r) === grp).map((r) => ({ ...siteMap.get(r.site_id), _o: simOutcomeView(r) }))}
                 colorOverride={(s) => OUT[s._o]} keyOverride={(s) => s._o} hollowOverride={(s) => s._o === "not_evaluable"}
                 mbps={data.mbps.filter((m) => cur.rows.some((r) => r.mbp === m.mbp_id))} extraMbps={cur.extra || []}
                 legendOverride={Object.entries(OUT).map(([k, c]) => ({ k, label: t(`sim.out.${k}`), c }))} height={380} />
@@ -164,7 +185,7 @@ export default function SimTab({ model: scored, data, cfg, nop, setPick, setRadi
                 {selMbp && <div className="mb-2 text-[12.5px]" role="status"><span className="inline-flex items-center gap-1.5 bg-warn/15 border border-warn/50 rounded-full pl-3 pr-1 py-0.5">
                   🚚 <b>{names ? selMbp : campCode(selMbp)}</b> · {t("sim.mbp_rows", { n: fInt(cur.rows.filter((r) => r.mbp === selMbp).length) })}
                   <button onClick={() => setSelMbp(null)} aria-label={t("ws.clear")} className="w-5 h-5 rounded-full hover:bg-warn/30 leading-none">×</button></span></div>}
-                <DataTable rows={selMbp ? cur.rows.filter((r) => r.mbp === selMbp) : cur.rows} filename={`pba_simulation_${show}.csv`.replace(/[^\w.]+/g, "_")} selectedKey={selId} onSelect={(r) => setSelId(selId === r.site_id ? null : r.site_id)} maxH={480} columns={[
+                <DataTable rows={cur.rows.filter((r) => (!selMbp || r.mbp === selMbp) && (!grp || simGroup(r) === grp))} filename={`pba_simulation_${show}.csv`.replace(/[^\w.]+/g, "_")} selectedKey={selId} onSelect={(r) => setSelId(selId === r.site_id ? null : r.site_id)} maxH={480} columns={[
                   { key: "priority", label: "col.mbp_priority", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center"><LevelTag kind="MBP" v={r.priority_level} />{f3(r.priority)}</span>, csv: (r) => `MBP-${r.priority_level} ${r.priority.toFixed(3)}` },
                   { key: "site_id", label: "col.site_id" }, { key: "site_name", label: "col.site_name" }, { key: "site_class", label: "col.class" },
                   { key: "bbt_min", label: "col.bbt", num: true, render: (r) => <span className="inline-flex gap-1.5 items-center">{r.bbt_text ? <span className="text-slate">{t("bbt.no_battery_ticket")}</span> : fMin(r.bbt_shown)}<EvTag v={String(r.bbt_evidence).split(" ")[0]} />{unknownBbt(r) && <span className="text-[10.5px] text-[#8a5a00]" title={t("sim.sum.unk_tip")}>{t("sim.unk_short")}</span>}</span>, csv: (r) => r.bbt_text || `${isNum(r.bbt_shown) ? Math.round(r.bbt_shown) : ""} ${r.bbt_evidence}` },

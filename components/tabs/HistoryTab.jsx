@@ -55,7 +55,7 @@ export default function HistoryTab(ctx) {
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-2">
           <h2 className="text-[15px] font-semibold text-navy">{t("hist.title")}</h2>
           <span className="text-[11px] uppercase tracking-wide font-semibold text-[#8a5a00] bg-warn/15 border border-warn/50 rounded px-1.5" title={t("hist.hist_tip")}>{t("hist.hist_badge")}</span>
-          <Seg value={view} onChange={setView} label={t("hist.view")} options={[["history", t("hist.v.history")], ["cog", t("hist.v.cog")]]} />
+          <button onClick={() => { try { window.__pbaPlan = "move"; } catch {} ctx.navigate({ view: "mbp.plan" }); }} className="text-s1 underline text-[12px]" title={t("hist.cog_moved_tip")}>{t("hist.cog_moved")}</button>
           {filtered ? <button onClick={reset} className="text-s1 underline text-[12px]">{t("cond.reset")}</button> : null}
         </div>
         {view === "history" && <div className="flex flex-wrap items-end gap-4 text-[12px]">
@@ -131,7 +131,7 @@ export default function HistoryTab(ctx) {
 }
 
 /** demand centre vs recommended location — feasibility explicit; baseline comparison per base camp */
-function CogView({ ctx }) {
+export function CogView({ ctx }) {
   const { scope, cfg, mbpsScope, nop, names, setPick, focus, setFocus, active } = ctx;
   const RT = cfg.mbp.response_target_min ?? 30;
   const G = cfg.gravity || {};

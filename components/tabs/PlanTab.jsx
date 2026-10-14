@@ -1,15 +1,12 @@
 "use client";
 // v5.0 — MBP › Resource Planning: one workflow for placement questions, reusing the existing engines unchanged.
-// vNext — transparent planning workflow:
-//   1 choose the planning question (four cards, one purpose each)
-//   2 confirm the baseline (NOP, snapshot period, units, current reach, historical on time, model validation, availability assumption)
-//   3–6 the chosen tool: scenario inputs → result vs baseline → affected sites / units → CSV export (inside each tool)
-// Tools (engines unchanged):
-//   scenario  — manual sandbox (lib/mbpperf.js › reachOf + replayDelta): move / add / remove base camps
-//   units     — additional-unit sizing (lib/logic.js › placementPlan): greedy next unit, marginal benefit, stop condition
-//   backtest  — relocation analysis (lib/mbpperf.js › backtestMove): ranked candidate moves; "Open in sandbox" hands one move to the
-//               sandbox above (same scenario engine — no second move calculation); nothing is executed or approved
-//   outage    — outage dispatch scenario (lib/logic.js › simulate): every simulated site gets an outcome
+// Bucket 3 (2026-10-14) — three questions + ONE shared sandbox (engines unchanged):
+//   units    "Butuh berapa unit tambahan?"            lib/logic.js › placementPlan (greedy next unit, knee, stop condition)
+//   move     "Base camp mana yang lebih baik dipindah?" one candidate list (MoveCandidates.jsx): backtestMove (idle camps, gated by the
+//            model validation) + basecampGravity (demand centre, moved here from MBP › History) + placementPlan › relocation (units that can be freed)
+//   outage   "Kalau banyak site padam bersamaan?"     lib/logic.js › simulate (every simulated site gets an outcome; 5 outcome boxes)
+//   sandbox  lib/mbpperf.js › reachOf + replayDelta — every question's proposal ("Uji" / "Open in sandbox") lands here; before → after
+//            P1/P2 reach and replayed on-time (numerator / denominator). Nothing is executed or approved.
 // Every result is a planning estimate (straight-line × road factor, assumed speeds, mobilisation) — not an approved deployment,
 // and MBP availability is not known in real time.
 import React, { useState } from "react";
@@ -24,10 +21,16 @@ const SimMap = dynamic(() => import("@/components/tabs/SimMap"), { ssr: false })
 const Placement = dynamic(() => import("@/components/tabs/Placement"), { ssr: false });
 const Backtest = dynamic(() => import("@/components/tabs/Backtest"), { ssr: false });
 const SimTab = dynamic(() => import("@/components/tabs/SimTab"), { ssr: false });
+const MoveCandidates = dynamic(() => import("@/components/tabs/MoveCandidates"), { ssr: false });
+const CogView = dynamic(() => import("@/components/tabs/HistoryTab").then((m) => m.CogView), { ssr: false });
 
-export const PLAN_SUBS = ["scenario", "units", "backtest", "outage"];
-const pc = (v, d = 0) => (v == null ? t("common.na") : fPct(100 * v, d));
+// Bucket 3 (2026-10-14) — three planning questions + ONE shared sandbox. Old sub keys still resolve (scenario → sandbox, backtest → move).
+export const PLAN_QS = ["units", "move", "outage"];
+export const PLAN_SUBS = [...PLAN_QS, "sandbox"];
+const ALIAS = { scenario: "sandbox", backtest: "move" };
+export const planSub = (v) => (PLAN_SUBS.includes(ALIAS[v] || v) ? ALIAS[v] || v : "units");
 
+// baseline strip: 4 items that are NOT sandbox measures (P1/P2 reach and replayed on-time are shown before → after in the sandbox)
 function Baseline({ ctx }) {
   const { nop, K, bcScope, hasJobs, data } = ctx;
   const k = kpiFor(K, nop), r = K?.byNop.get(nop), C = basecampCounts(bcScope);
@@ -37,18 +40,14 @@ function Baseline({ ctx }) {
   return (
     <section className="bg-white border border-line rounded-lg px-4 py-2.5" aria-label={t("plan.base.title")}>
       <div className="flex flex-wrap items-center gap-2 mb-1.5">
-        <span className="text-[11px] font-semibold text-white bg-navy rounded px-1.5">2</span>
         <h2 className="text-[13.5px] font-semibold text-navy">{t("plan.base.title")}</h2>
-        <b className="text-ink text-[13.5px]">{nop}</b>
-        <button onClick={() => ctx.setNop("All NOPs")} className="text-s1 underline text-[12px]">{t("sim2.change_nop")}</button>
-        <CalibBadge calib={r?.calib || null} hasJobs={hasJobs} />
+        <span className="text-[11.5px] text-mut" title={t("plan.base.period_tip")}>{`${snap.period_start || "2026-01-01"} → ${snap.period_end || "2026-06-30"}`}</span>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        <Item label={t("plan.base.period")} value={`${snap.period_start || "2026-01-01"} → ${snap.period_end || "2026-06-30"}`} tip={t("plan.base.period_tip")} />
-        <Item label={t("plan.base.units")} value={`${fInt(C.total)}${C.by.noloc ? ` · ${fInt(C.by.noloc)} ${t("ov.noloc")}` : ""}`} go={() => ctx.navigate({ view: "mbp.fleet" })} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Item label={t("plan.base.nop_units")} value={<span>{nop} · {fInt(C.total)} {t("plan.base.units_u")}{C.by.noloc ? <span className="text-mut font-normal"> · {fInt(C.by.noloc)} {t("ov.noloc")}</span> : ""}</span>} go={() => ctx.navigate({ view: "mbp.fleet" })} />
         <Item label={t("plan.base.sites")} value={k ? `${fInt(k.sites)} · ${fInt(k.p12_eval)} P1/P2` : t("common.na")} />
-        <Item label={t("plan.base.reach")} value={k?.p12_eval ? `${fInt(k.p12_reach)}/${fInt(k.p12_eval)} · ${pc(k.p12_reach_pct)}` : t("common.na")} tip={t("snap.reach.tip")} go={k?.p12_eval ? () => ctx.navigate({ view: "mbp.explorer", sel: "reach_p12~ok+no+unv" }) : null} />
-        <Item label={t("plan.base.ontime")} value={hasJobs && k?.jobs_ontime_pct != null ? `${pc(k.jobs_ontime_pct)} · n ${fInt(k.jobs_judged)}` : t("common.na")} tip={t("snap.ontime.tip")} go={hasJobs ? () => ctx.navigate({ view: "mbp.history" }) : null} />
+        <div className="min-w-0"><div className="text-[10.5px] uppercase tracking-wide text-slate font-semibold"><InfoTip text={t("plan.base.valid_tip")} label={t("plan.base.valid")} /></div>
+          <div className="mt-0.5"><CalibBadge calib={r?.calib || null} hasJobs={hasJobs} /></div></div>
         <Item label={t("plan.base.avail")} value={t("plan.base.avail_v")} tip={t("plan.base.avail_tip")} />
       </div>
     </section>
@@ -56,34 +55,43 @@ function Baseline({ ctx }) {
 }
 
 export default function PlanTab(ctx) {
-  const [sub, setSubS] = useState(() => { try { const v = window.__pbaPlan; if (v) { window.__pbaPlan = null; return v; } } catch {} return "scenario"; });
-  const setSub = (v) => { setSubS(v); try { const q = new URLSearchParams(window.location.search); q.set("plan", v); window.history.replaceState({}, "", `?${q}`); } catch {} };
-  // relocation analysis → sandbox hand-off (one scenario engine): { nop, mbp_id, lat, lon, label }
+  const [sub, setSubS] = useState(() => { try { const v = window.__pbaPlan; if (v) { window.__pbaPlan = null; return planSub(v); } } catch {} return "units"; });
+  const setSub = (v) => { v = planSub(v); setSubS(v); try { const q = new URLSearchParams(window.location.search); q.set("plan", v); window.history.replaceState({}, "", `?${q}`); } catch {} };
+  // every question hands its proposal to the ONE sandbox: { kind: move | remove | add, nop, … }
   const [pending, setPending] = useState(null);
-  const openInSandbox = (mv) => { if (mv.nop && mv.nop !== ctx.nop) ctx.setNop(mv.nop); setPending({ ...mv, at: Date.now() }); setSub("scenario"); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const openInSandbox = (mv) => { if (mv.nop && mv.nop !== ctx.nop) ctx.setNop(mv.nop); setPending({ ...mv, at: Date.now() }); setSub("sandbox"); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const c2 = { ...ctx, openInSandbox, pending, clearPending: () => setPending(null) };
+  const Q = ({ k, n }) => <button role="tab" aria-selected={sub === k} onClick={() => setSub(k)}
+    className={`text-left rounded-md border px-3 py-2 ${sub === k ? "border-navy bg-navy text-white" : "border-line bg-white hover:border-slate"}`}>
+    <div className={`text-[13px] font-semibold ${sub === k ? "text-white" : "text-navy"}`}>{n ? <span className={`mr-1 ${sub === k ? "text-white/70" : "text-mut"}`}>{n}</span> : null}{t(`plan.q.${k}`)}</div>
+    <div className={`text-[11.5px] leading-snug ${sub === k ? "text-white/80" : "text-slate"}`}>{t(`plan.q.${k}_sub`)}</div></button>;
   return (
     <div className="space-y-3">
       <section aria-label={t("plan.q.title")}>
-        <div className="flex items-center gap-2 mb-1.5"><span className="text-[11px] font-semibold text-white bg-navy rounded px-1.5">1</span>
+        <div className="flex items-center gap-2 mb-1.5">
           <h2 className="text-[13.5px] font-semibold text-navy">{t("plan.q.title")}</h2>
           <span className="text-[11.5px] text-[#8a5a00] ml-auto">{t("plan.disclaimer_short")} <InfoTip text={t("plan.disclaimer", { rf: ctx.cfg.travel.road_factor, mob: ctx.cfg.travel.mobilization_minutes })} label="" /></span></div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2" role="tablist" aria-label={t("plan.steps")}>
-          {PLAN_SUBS.map((k) => <button key={k} role="tab" aria-selected={sub === k} onClick={() => setSub(k)}
-            className={`text-left rounded-md border px-3 py-2 ${sub === k ? "border-navy bg-navy text-white" : "border-line bg-white hover:border-slate"}`}>
-            <div className={`text-[13px] font-semibold ${sub === k ? "text-white" : "text-navy"}`}>{t(`plan.q.${k}`)}</div>
-            <div className={`text-[11.5px] leading-snug ${sub === k ? "text-white/80" : "text-slate"}`}>{t(`plan.q.${k}_sub`)}</div>
-            <div className={`text-[10.5px] uppercase tracking-wide mt-1 ${sub === k ? "text-white/60" : "text-mut"}`}>{t(`plan.sub.${k}`)}</div>
-          </button>)}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_0.9fr] gap-2" role="tablist" aria-label={t("plan.steps")}>
+          {PLAN_QS.map((k, i) => <Q key={k} k={k} n={i + 1} />)}
+          <div className="xl:border-l xl:border-dashed xl:border-line xl:pl-2"><Q k="sandbox" /></div>
         </div>
       </section>
       {ctx.nop === "All NOPs" ? <NopPicker K={ctx.K} allNops={ctx.allNops} setNop={ctx.setNop} title={t("plan.pick")} sub={t("plan.pick_sub")} /> : <>
         <Baseline ctx={ctx} />
-        <div className="flex items-center gap-2"><span className="text-[11px] font-semibold text-white bg-navy rounded px-1.5">3</span>
-          <h2 className="text-[13.5px] font-semibold text-navy">{t(`plan.q.${sub}`)}</h2><span className="text-[12px] text-slate">{t(`plan.steps_hint.${sub}`)}</span></div>
-        {sub === "scenario" && <SimMap {...c2} />}
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-[13.5px] font-semibold text-navy">{t(`plan.q.${sub}`)}</h2><span className="text-[12px] text-slate">{t(`plan.steps_hint.${sub}`)}</span>
+          <button onClick={() => ctx.setNop("All NOPs")} className="ml-auto text-s1 underline text-[12px]">{t("sim2.change_nop")}</button></div>
+        {sub === "sandbox" && <SimMap {...c2} />}
         {sub === "units" && <Placement {...c2} />}
-        {sub === "backtest" && <Backtest {...c2} />}
+        {sub === "move" && <div className="space-y-3">
+          <MoveCandidates {...c2} />
+          <details className="bg-white border border-line rounded-lg px-4 py-2" open={!!ctx.sel && ctx.data.mbps.some((m) => m.mbp_id === ctx.sel)}>
+            <summary className="cursor-pointer text-[13px] font-semibold text-navy">{t("plan.move.bt_detail")}</summary>
+            <div className="mt-3"><Backtest {...c2} /></div></details>
+          <details className="bg-white border border-line rounded-lg px-4 py-2">
+            <summary className="cursor-pointer text-[13px] font-semibold text-navy">{t("plan.move.cog_detail")}</summary>
+            <div className="mt-3"><CogView ctx={c2} /></div></details>
+        </div>}
         {sub === "outage" && <SimTab {...c2} />}
       </>}
     </div>

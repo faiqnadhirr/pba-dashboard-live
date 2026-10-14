@@ -6,7 +6,12 @@ import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { coverageGap } from "@/lib/view";
 import Workspace from "@/components/Workspace";
+import ShapeIcon from "@/components/ShapeIcon";
 import { SiteBriefBbs } from "@/components/SiteBrief";
+import { STATUS_GROUPS, STATUS_GROUP_COLOR, statusGroup, EV_GROUPS, evGroup, evLabel } from "@/lib/bbsgroups";
+
+// Bucket 4 (2026-10-14) — ONE map mode: colour = BBS priority (batch palette), marker shape = recommended action type.
+export const ACTION_SHAPE = { REPLACE: "square", UPGRADE: "triangle", SETTING: "diamond", TEST: "cross", DATA: "ring", MONITOR: "circle", NONE: "circle" };
 
 const LV = ["P1", "P2", "P3", "P4"];
 const PROB = ["Dead", "Critical", "Degraded"];
@@ -20,17 +25,20 @@ export default function BbsActions(props) {
   const { scope: scopeAll, cfg, setPick, openDrill, period } = props;
   const scope = scopeAll;
   const fx = !!period && period.gran !== "h1";
-  const [lv, setLv] = useState([]), [st, setSt] = useState([]), [ev, setEv] = useState([]), [ac, setAc] = useState([]), [at, setAt] = useState([]);
+  const [lv, setLv] = useState([]), [st, setSt] = useState([]), [ev, setEv] = useState([]), [ac, setAc] = useState([]);
+  // a site handed over from Battery Condition ("See follow-up") that only has a "collect data" action needs the DATA type to be listed
+  const [at, setAt] = useState(() => { const f = props.focus?.site && scopeAll.find((s) => s.site_id === props.focus.site); return f && !f.bbs_priority_level && f.action_type === "DATA" ? ["DATA"] : []; });
   // v3.7 — "collect data" sites (no BBT evidence) have no BBS priority; they join the list only when that action type is picked (field worklist)
   const all = useMemo(() => scope.filter((s) => s.bbs_priority_level || (at.includes("DATA") && s.action_type === "DATA"))
     .sort((a, b) => (b.bbs_priority_score ?? -1) - (a.bbs_priority_score ?? -1)), [scope, at]);
   const actions = useMemo(() => [...new Set(all.map((s) => s.recommended_action))].sort(), [all]);
-  const rows = all.filter((s) => (!lv.length || lv.includes(s.bbs_priority_level)) && (!st.length || st.includes(s.bbt_status))
-    && (!ev.length || ev.includes(s.battery.source)) && (!ac.length || ac.includes(s.recommended_action)) && (!at.length || at.includes(s.action_type)));
+  // condition / evidence filters use the four display groups (lib/bbsgroups.js), same as Battery Condition
+  const rows = all.filter((s) => (!lv.length || lv.includes(s.bbs_priority_level)) && (!st.length || st.includes(statusGroup(s)))
+    && (!ev.length || ev.includes(evGroup(s))) && (!ac.length || ac.includes(s.recommended_action)) && (!at.length || at.includes(s.action_type)));
   const typeCount = useMemo(() => Object.fromEntries(ACTION_TYPES.map((k) => [k, scopeAll.filter((s) => s.action_type === k).length])), [scopeAll]);
   const pickType = (k) => { setAt(at.length === 1 && at[0] === k ? [] : [k]); setLv([]); setSt([]); setEv([]); setAc([]); };
   const c = (f) => rows.filter(f).length;
-  const b = cfg.bbt;
+  const b = cfg.bbt, P = (v) => fPct(v * 100, 0);
   const EXPAND = (r) => (
               <div className="space-y-2">
                 {r.battery.conflict && <Note tone="warn"><b>{t("bbs.conflict")}:</b> {te(r.battery.conflict, "conflict")}</Note>}
@@ -48,7 +56,7 @@ export default function BbsActions(props) {
               { key: "bbs_priority_score", label: "col.bbs_priority", num: true, render: (r) => <span title={t("bbs.cutoffs", { p1: cfg.bbs_priority_levels.P1, p2: cfg.bbs_priority_levels.P2, p3: cfg.bbs_priority_levels.P3, s: r.bbs_priority_score?.toFixed(3) })}><LevelTag kind="BBS" v={r.bbs_priority_level} /></span>, csv: (r) => (r.bbs_priority_level ? `BBS-${r.bbs_priority_level} ${r.bbs_priority_score?.toFixed(3)}` : "") },
               { key: "site_id", label: "col.site", render: (r) => <span className="inline-block max-w-[210px] truncate align-bottom" title={`${r.site_name} · ${r.nop}`}><span className="font-semibold text-navy">{r.site_id}</span> <span className="text-slate">{r.site_name}</span></span>, csv: (r) => r.site_id },
               { key: "bbt_status", label: "fa.col.condition", sortVal: (r) => STATUS_ORDER.indexOf(r.bbt_status), render: (r) => <BbtCell r={r} statusFirst noEv />, csv: (r) => `${r.bbt_status} ${bbtCsv(r)}` },
-              { key: "evidence", label: "fa.col.evidence", sortVal: (r) => r.battery?.display?.evidence || "UNAVAILABLE", render: (r) => <EvTag v={r.battery?.display?.evidence || "UNAVAILABLE"} />, csv: (r) => r.battery?.display?.evidence || "UNAVAILABLE" },
+              { key: "evidence", label: "fa.col.evidence", sortVal: (r) => EV_GROUPS.indexOf(evGroup(r)), render: (r) => <span className="inline-flex items-center gap-1 whitespace-nowrap">{t(`eg.${evGroup(r)}`)} <EvTag v={evLabel(r)} /></span>, csv: (r) => evLabel(r) },
               { key: "pln_total_h", label: "fa.col.pln", num: true, plain: true, sortVal: (r) => (r.pln_known ? r.pln_total_h : null), render: (r) => (r.pln_known ? <span className="tabular">{fInt(r.pln_freq)}× · {fH(r.pln_total_h)}</span> : <span className="text-mut">{t("common.na")}</span>), csv: (r) => (r.pln_known ? `${r.pln_freq} / ${r.pln_total_h?.toFixed(1)} h` : "") },
               { key: "recommended_action", label: "fa.col.action", wrap: true, render: (r) => <span className="font-medium"><ActionLabel r={r} />{r.mbp_standby_flag ? <> <Tag tone="warn">{t("bbs.standby")}</Tag></> : null}</span>, csv: (r) => r.recommended_action },
               { key: "reason", label: "fa.col.reason", tdClass: "whitespace-normal", render: (r) => <span className="block line-clamp-2 min-w-[180px] max-w-[320px] text-[12px] text-slate">{te(r.rule, "rule") || "—"}</span>, csv: (r) => r.reason },
@@ -61,24 +69,6 @@ export default function BbsActions(props) {
               { key: "reason", label: "Why" }, { key: "pln_freq", label: "PLN outages", csv: (r) => (r.pln_known ? r.pln_freq : "") }, { key: "dependency_children", label: "Dependency (PROXY)" },
               { key: "eta_min", label: "MBP ETA (min)", csv: (r) => (isNum(r.eta_min) ? Math.round(r.eta_min) : "") }, { key: "can_arrive_before_bbt", label: "MBP arrives before BBT" }, { key: "coverage_gap", label: "coverage_gap", csv: (r) => String(coverageGap(r)) },
             ];
-  // battery vs design distribution (all sites in scope, measured vs estimated kept apart)
-  const dist = useMemo(() => STATUS_ORDER.map((k) => ({
-    k, measured: scope.filter((s) => s.bbt_status === k && s.battery.measured).length,
-    estimated: scope.filter((s) => s.bbt_status === k && !s.battery.measured && s.battery.source === "ESTIMATED").length,
-    ticket: scope.filter((s) => s.bbt_status === k && s.battery.source === "TICKET").length,
-    unverified: scope.filter((s) => s.bbt_status === k && s.battery.unverified && s.battery.source !== "TICKET").length,
-    none: scope.filter((s) => s.bbt_status === k && !s.battery.measured && !s.battery.unverified && !["ESTIMATED", "TICKET"].includes(s.battery.source)).length,
-  })), [scope]);
-  const sources = [...new Set(all.map((s) => s.battery.source))].sort();
-  const P = (v) => fPct(v * 100, 0);
-  // v3.6 — BBT gap: actual (measured) vs design from load × batteries
-  const gap = useMemo(() => { const r = scope.map((s) => s.bbt_gap_ratio).filter((v) => v != null).sort((a, b) => a - b);
-    return { n: r.length, med: r.length ? r[Math.floor(r.length / 2)] : null, lt50: r.filter((v) => v < 0.5).length }; }, [scope]);
-  // 2b: a row / segment of "Battery vs design" sets the Status + Status-basis chips of the action list below
-  const EV_OF = { measured: ["ACTUAL", "DERIVED"], ticket: ["TICKET"], unverified: ["DERIVED-UNVERIFIED"], estimated: ["ESTIMATED"], none: ["UNAVAILABLE"] };
-  const pickDist = (k, part) => { setSt([k]); setEv(part ? EV_OF[part] : []); setLv([]); setAc([]);
-    setTimeout(() => document.getElementById("bbs-action-list")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0); };
-
   return (
     <div className="space-y-4">
       <Method title={t("fa.method")}>
@@ -110,7 +100,7 @@ export default function BbsActions(props) {
               {ACTION_TYPES.filter((k) => k !== "NONE").map((k) => { const on = at.length === 1 && at[0] === k; return (
                 <button key={k} onClick={() => pickType(k)} aria-pressed={on} title={t(`atype.${k}_sub`)}
                   className={`flex items-center gap-2 text-left border rounded-md px-2 py-1.5 bg-white ${on ? "border-navy ring-1 ring-navy/40" : at.length ? "border-line opacity-60" : "border-line hover:border-slate"}`}>
-                  <span className="w-2.5 h-2.5 rounded-sm inline-block shrink-0" style={{ background: { REPLACE: "#b42318", UPGRADE: "#eb6834", SETTING: "#6b4bd8", TEST: "#2a78d6", DATA: "#1F2A44", MONITOR: "#9DB7DE" }[k] }} />
+                  <ShapeIcon shape={ACTION_SHAPE[k]} c="#1F2A44" />
                   <span className="flex-1 min-w-0 text-[12px] text-ink leading-tight">{t(`atype.${k}`)}</span><b className="tabular text-[14px]">{fInt(typeCount[k])}</b></button>); })}
             </div>
             <div className="text-[11px] text-mut mt-1">{t("fa.types_note")}</div>
@@ -118,27 +108,15 @@ export default function BbsActions(props) {
         </div>
       </section>
       <div className="flex flex-wrap gap-4 bg-white border border-line rounded-md px-3 py-2">
-        <Chips label={t("fa.col.condition")} options={[...new Set([...PROB, ...st])]} value={st} onChange={setSt} fmt={(o) => tv("status", o)} />
-        <Chips label={t("fa.col.evidence")} options={[...new Set([...sources, ...ev])]} value={ev} onChange={setEv} />
+        <Chips label={t("fa.col.condition")} options={STATUS_GROUPS} value={st} onChange={setSt} fmt={(o) => t(`sg.${o}`).split(" (")[0]} />
+        <Chips label={t("fa.col.evidence")} options={EV_GROUPS} value={ev} onChange={setEv} fmt={(o) => t(`eg.${o}`)} />
+        {ac.length ? <button onClick={() => setAc([])} className="text-s1 underline text-[12px]">{t("fa.clear_action", { n: ac.length })}</button> : null}
       </div>
-      <details className="-mt-2"><summary className="cursor-pointer text-[12px] text-slate">{t("fa.more_filters")}{ac.length ? ` (${ac.length})` : ""}</summary>
-        <div className="mt-1 bg-white border border-line rounded-md px-3 py-2"><Chips label={t("col.action")} options={actions} value={ac} onChange={setAc} fmt={(o) => tv("action", o)} /></div></details>
       <div id="bbs-action-list" className="scroll-mt-28">{!rows.length ? <Note>{t("bbs.list.none")}</Note> : (
-        <Workspace ctx={props} rows={rows} modes={["batch", "actiontype", "bbsstatus", "bbtgap"]} defaultMode="batch" showMbpLayers={false}
+        <Workspace ctx={props} rows={rows} modes={["batch"]} defaultMode="batch" showMbpLayers={false}
+          mapProps={{ shapeOf: (s) => ACTION_SHAPE[s.action_type] || "circle", shapeLegend: ACTION_TYPES.filter((k) => k !== "NONE").map((k) => ({ k, shape: ACTION_SHAPE[k], label: t(`atype.${k}`) })) }}
           title={t("hero.bbs.title")} sub={t("hero.bbs.sub2")} tableTitle={t("fa.list.title", { n: fInt(rows.length) })} tableSub={t("fa.list.sub")} filename="pba_bbs_action_list.csv" initialSort={{ key: "bbs_priority_score", dir: -1 }}
           detail={(s) => <SiteBriefBbs s={s} ctx={props} />} expand={EXPAND} columns={COLS} extraCsv={XCSV} />)}</div>
-      <details><summary className="cursor-pointer text-[13px] font-semibold text-navy py-1">{t("bbs.dist.title")}</summary>
-      <Card title={t("bbs.dist.title")} sub={t("bbs.dist.sub")}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-[12.5px] tabular min-w-[620px]">
-            <thead><tr className="text-slate text-left">{["status", "measured", "ticket", "unverified", "estimated", "none", "distribution"].map((h) => <th key={h} className="py-1 pr-2 border-b border-line">{t(`bbs.dist.${h}`)}</th>)}</tr></thead>
-            <tbody>{dist.map((d) => { const tot = d.measured + d.ticket + d.unverified + d.estimated + d.none; return (
-              <tr key={d.k} className="border-b border-line/60 cursor-pointer hover:bg-s1/5" title={t("chart.click_sites")} onClick={() => pickDist(d.k)}><td className="py-1 pr-2"><StatusTag v={d.k} /></td><td>{fInt(d.measured)}</td><td>{fInt(d.ticket)}</td><td>{fInt(d.unverified)}</td><td>{fInt(d.estimated)}</td><td>{fInt(d.none)}</td>
-                <td className="w-[40%] py-1">{tot > 0 && <Bar100 height={10} legend={false} onSeg={(p) => pickDist(d.k, p.k)} parts={[["measured", "#2a78d6", d.measured], ["ticket", "#55627A", d.ticket], ["unverified", "#f3c3a5", d.unverified], ["estimated", "#eb6834", d.estimated], ["none", "#C9CFD9", d.none]].filter((p) => p[2]).map(([k, col, v]) => ({ k, label: t(`bbs.dist.${k}`).toLowerCase(), c: col, v, txt: fInt(v) }))} />}</td></tr>); })}</tbody>
-          </table>
-        </div>
-      </Card>
-      </details>
 
 
     </div>

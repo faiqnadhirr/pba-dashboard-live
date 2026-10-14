@@ -1018,3 +1018,56 @@ test("VN-8 click-through filters: hero reach segments and data-quality rows open
   const mv = fs.readFileSync("components/MapView.jsx", "utf8");
   assert.ok(mv.includes("const ICONS = new Map()") && /icon=\{\(zoom >= 8 \|\| draggableMbps \? TRUCK : CAMP_DOT\)/.test(mv));
 });
+
+/* ---------- Simplification brief 2026-10-14 (buckets 1–4): display groups are partitions of the unchanged engine states ---------- */
+test("SB-1 Fleet: one operational status per base camp, mapped only from basecamp_final; Σ = all camps; movable ⇒ idle ∧ selectable", { skip: !V42 }, async () => {
+  const { opStatus, opCounts, OP_KEYS } = await import("../lib/opstatus.js");
+  const { BC, D } = V42, c = D.meta.config, C = opCounts(BC, c), by = basecampCounts(BC).by;
+  assert.equal(OP_KEYS.reduce((a, k) => a + C[k], 0), BC.length);
+  assert.equal(C.check, (by.low || 0) + (by.high || 0));
+  assert.equal(C.ok, (by.watch || 0) + (by.good || 0));
+  assert.equal(C.movable, BC.filter((b) => b.status === "under" && b.selectable !== false).length);
+  assert.equal(C.clean, BC.filter((b) => b.selectable === false).length);
+  for (const b of BC) { const o = opStatus(b, c); if (o.op === "movable") assert.ok(b.status === "under" && b.selectable !== false); }
+  assert.equal(opStatus({ status: "low", busy: 0.5 }, c).also[0], "busy", "often late keeps busy as second reason");
+});
+
+test("SB-2 Coverage: Keburu / Tidak keburu / Belum bisa dinilai = KPI reach split; every not-reached P1/P2 has exactly one display reason", async () => {
+  const { reachBreakdown, reachReasons, reachTab, etaGap, REASONS } = await import("../lib/coverage.js");
+  const { computeKpis, kpiFor, reachSplit } = await import("../lib/kpi.js");
+  const A = M.filter((s) => s.site_active === 1 && !s.offair && !s.genset_protected);
+  const sp = reachSplit(kpiFor(computeKpis(A, mbps, [], [], cfg), "All NOPs")), R = reachBreakdown(A, cfg);
+  assert.deepEqual([R.tab.ok, R.tab.no, R.tab.unv], [sp.ok, sp.no, sp.unv]);
+  assert.equal(REASONS.reduce((a, k) => a + R.reason[k], 0), R.tab.no);
+  for (const s of A.filter((x) => reachTab(x) === "no")) { const r = reachReasons(s, cfg); assert.ok(r.length >= 1 && r.every((k) => REASONS.includes(k))); if (s.access_class === "island") assert.equal(r[0], "island"); }
+  for (const s of A.filter((x) => reachTab(x) === "unv")) assert.equal(etaGap(s), null, "no ETA − BBT gap is invented for an unverifiable BBT");
+});
+
+test("SB-3 Planning: outage boxes partition the simulated sites; the sandbox accepts every hand-over kind; old plan links resolve", () => {
+  const top = active.filter((s) => s.nop === active[0].nop).sort((a, b) => (b.pln_freq || 0) - (a.pln_freq || 0)).slice(0, 30).map((s) => s.site_id);
+  const r = simulate(M, top, 4, mbps, { fam }, cfg, {});
+  return import("../lib/dispatch.js").then(({ simGroupCounts, simCounts, SIM_GROUPS }) => {
+    const g = simGroupCounts(r.rows), c = simCounts(r.rows);
+    assert.equal(SIM_GROUPS.reduce((a, k) => a + g[k], 0), r.rows.length);
+    assert.equal(g.unserved, c.unserved_busy + c.unserved_no_coverage + c.unserved_island);
+    const sm = fs.readFileSync("components/tabs/SimMap.jsx", "utf8"), pt = fs.readFileSync("components/tabs/PlanTab.jsx", "utf8"), pg = fs.readFileSync("app/page.jsx", "utf8");
+    for (const k of ['k === "move"', 'k === "remove"', 'k === "add"']) assert.ok(sm.includes(k), k);
+    assert.ok(pt.includes('const ALIAS = { scenario: "sandbox", backtest: "move" }') && pg.includes('"mbp.backtest": ["plan", "move"]') && pg.includes('"mbp.simmap": ["plan", "sandbox"]'));
+    assert.ok(fs.readFileSync("components/tabs/Placement.jsx", "utf8").includes('kind: "add"') && fs.readFileSync("components/tabs/MoveCandidates.jsx", "utf8").includes('kind: "remove"'));
+  });
+});
+
+test("SB-4 BBS: 4 condition groups and 4 evidence groups partition the sites; every detailed status / evidence maps to one group", async () => {
+  const { groupCounts, STATUS_GROUP_OF, EV_GROUP_OF, STATUS_GROUPS, EV_GROUPS } = await import("../lib/bbsgroups.js");
+  const { STATUS_ORDER } = await import("../lib/logic.js");
+  const A = M.filter((s) => s.site_active === 1 && !s.offair), G = groupCounts(A);
+  assert.equal(STATUS_GROUPS.reduce((a, k) => a + G.st[k], 0), A.length); assert.equal(EV_GROUPS.reduce((a, k) => a + G.ev[k], 0), A.length);
+  for (const k of STATUS_ORDER) assert.ok(STATUS_GROUP_OF[k], k);
+  const n = (f) => A.filter(f).length;
+  assert.equal(G.st.act, n((s) => ["Dead", "Critical", "Degraded"].includes(s.bbt_status)));
+  assert.equal(G.ev.measured, n((s) => ["ACTUAL", "DERIVED"].includes(s.battery?.display?.evidence)));
+  for (const s of A) assert.ok(EV_GROUP_OF[s.battery?.display?.evidence || "UNAVAILABLE"], s.battery?.display?.evidence);
+  // cross-page hand-offs exist (Coverage → Planning / BBS, Condition → Field Actions)
+  const ex = fs.readFileSync("components/tabs/Explorer.jsx", "utf8"), br = fs.readFileSync("components/tabs/BatteryRisk.jsx", "utf8");
+  assert.ok(ex.includes('view: "mbp.plan"') && ex.includes('"bbs.actions" : "bbs.risk"') && br.includes('view: "bbs.actions"'));
+});

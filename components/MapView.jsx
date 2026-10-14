@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import ShapeIcon from "@/components/ShapeIcon";
 import L from "leaflet";
 import { MapContainer, TileLayer, CircleMarker, Circle, Marker, Polyline, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -94,7 +95,23 @@ const PRIO_Z = { P4: 0, P3: 1, P2: 2, P1: 3 };
  * All sites are drawn on ONE canvas layer (no clustering, no "zoom in to click"): ~20k points stay fast, and a 7-px click
  * tolerance makes every dot clickable at AREA zoom. Dot size grows with power downtime (site went dark on power).
  */
-function SiteLayer({ sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, onPick, zoom, ttLine }) {
+/** bucket 4 — canvas marker with a SHAPE (colour = one dimension, shape = another, e.g. BBS priority × action type).
+ *  Hit-testing stays the circle of `radius` (Leaflet's own), so clicks behave exactly like the round dots. */
+export const SHAPES = ["circle", "square", "triangle", "diamond", "cross", "ring"];
+const ShapeMarker = L.CircleMarker.extend({
+  _updatePath() {
+    const r = this._renderer; if (!r._drawing || this._empty()) return;
+    const sh = this.options.shape || "circle"; if (sh === "circle" || sh === "ring") return r._updateCircle(this);
+    const p = this._point, ctx = r._ctx, s = Math.max(this._radius, 2.5) * 1.15;
+    ctx.beginPath();
+    if (sh === "square") ctx.rect(p.x - s, p.y - s, 2 * s, 2 * s);
+    else if (sh === "triangle") { ctx.moveTo(p.x, p.y - s * 1.2); ctx.lineTo(p.x + s * 1.1, p.y + s * 0.9); ctx.lineTo(p.x - s * 1.1, p.y + s * 0.9); ctx.closePath(); }
+    else if (sh === "diamond") { ctx.moveTo(p.x, p.y - s * 1.25); ctx.lineTo(p.x + s * 1.1, p.y); ctx.lineTo(p.x, p.y + s * 1.25); ctx.lineTo(p.x - s * 1.1, p.y); ctx.closePath(); }
+    else if (sh === "cross") { const w = s * 0.45; ctx.rect(p.x - s, p.y - w, 2 * s, 2 * w); ctx.rect(p.x - w, p.y - s, 2 * w, 2 * s); }
+    r._fillStroke(ctx, this);
+  },
+});
+function SiteLayer({ sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, onPick, zoom, ttLine, shapeOf }) {
   const map = useMap();
   const layer = useRef(null);
   const renderer = useMemo(() => L.canvas({ tolerance: 7, padding: 0.3 }), []);
@@ -105,8 +122,10 @@ function SiteLayer({ sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, onPick, zo
     const order = [...sites].sort((a, b) => (PRIO_Z[a.mbp_priority_level] ?? 0) - (PRIO_Z[b.mbp_priority_level] ?? 0));
     for (const s of order) {
       const c = colorOf(s) || "#55627A", cov = !hollowOf(s), dim = inRadiusOfSel && !inRadiusOfSel.has(s.site_id);
-      const m = L.circleMarker([s.lat, s.lon], { renderer, radius: base + sizeOf(s) * (zoom <= 7 ? 3 : 4), color: cov ? "#ffffff" : c, weight: cov ? 0.6 : 1.8,
-        fillColor: cov ? c : "#ffffff", fillOpacity: dim ? 0.12 : 0.9, opacity: dim ? 0.25 : 1, bubblingMouseEvents: false });
+      const sh = shapeOf ? shapeOf(s) : null, ring = sh === "ring";
+      const opt = { renderer, radius: base + sizeOf(s) * (zoom <= 7 ? 3 : 4), color: cov && !ring ? "#ffffff" : c, weight: ring ? 2.4 : cov ? 0.6 : 1.8,
+        fillColor: cov && !ring ? c : "#ffffff", fillOpacity: dim ? 0.12 : 0.9, opacity: dim ? 0.25 : 1, bubblingMouseEvents: false, shape: sh };
+      const m = sh ? new ShapeMarker([s.lat, s.lon], opt) : L.circleMarker([s.lat, s.lon], opt);
       m.on("click", () => onPick(s));
       m.on("mouseover", () => {
         if (!m.getTooltip()) m.bindTooltip(`<b>${s.site_id}</b> · ${s.site_name || ""}<br/>${ttLine(s)}<br/><span style="color:#55627A">${t("map.tt_click")}</span>`, { direction: "top", offset: [0, -4] });
@@ -116,13 +135,15 @@ function SiteLayer({ sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, onPick, zo
     }
     g.addTo(map); layer.current = g;
     return () => { g.remove(); };
-  }, [sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, zoom, map, renderer]); // eslint-disable-line
+  }, [sites, colorOf, sizeOf, hollowOf, inRadiusOfSel, zoom, map, renderer, shapeOf]); // eslint-disable-line
   return null;
 }
 
+export { ShapeIcon };
+
 export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSite, mbpStats, fitKey = "", height = 520, colorOverride, legendOverride, keyOverride,
   defaultMode = "priority", extraMbps = [], compact = false, mode: modeProp, onMode, hidden: hiddenProp, onHidden, modes = ["priority", "design", "survival"],
-  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true, mbpKeyOf, mbpLegend, mbpPerf, onOpenMbp, mbpLabel, hollowOverride, ttOverride, cardRows, hollowLabel, mbpLegendTitle, draggableMbps = false, onMbpDrag, onMapClick, mbpCardExtra, fitOnce = false, mbpCountsOverride = null, hideMbpLegend = false, selectedSiteId, onSelectSite, selectedMbpId, onSelectMbp, showCard = true, campSiteIds = null }) {
+  defaultLevel = "site", onFilterNop, periodText, showMbpLayers = true, mbpKeyOf, mbpLegend, mbpPerf, onOpenMbp, mbpLabel, hollowOverride, ttOverride, cardRows, hollowLabel, mbpLegendTitle, draggableMbps = false, onMbpDrag, onMapClick, mbpCardExtra, fitOnce = false, mbpCountsOverride = null, hideMbpLegend = false, selectedSiteId, onSelectSite, selectedMbpId, onSelectMbp, showCard = true, campSiteIds = null, showRadius = true, shapeOf = null, shapeLegend = null }) {
   const [mbpHidden, setMbpHidden] = useState([]);
   const [tileFail, setTileFail] = useState(0), [tileOk, setTileOk] = useState(0);
   const [showSites, setShowSites] = useState(true), [showMbps, setShowMbps] = useState(true), [coverage, setCoverage] = useState(false);
@@ -186,9 +207,9 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             <label className="inline-flex items-center gap-1"><input type="checkbox" checked={showSites} onChange={(e) => setShowSites(e.target.checked)} className="accent-navy" />{t("map.sites")}</label>
             {showMbpLayers && <>
             <label className="inline-flex items-center gap-1"><input type="checkbox" checked={showMbps} onChange={(e) => setShowMbps(e.target.checked)} className="accent-navy" />{t("map.basecamps")}</label>
-            <label className="inline-flex items-center gap-1" title={t("map.cov_note", { r: R })}><input type="checkbox" checked={coverage} onChange={(e) => setCoverage(e.target.checked)} className="accent-navy" />{t("map.cov_toggle")}</label></>}
+            {showRadius && <label className="inline-flex items-center gap-1" title={t("map.cov_note", { r: R })}><input type="checkbox" checked={coverage} onChange={(e) => setCoverage(e.target.checked)} className="accent-navy" />{t("map.cov_toggle")}</label>}</>}
           </div>
-          {showMbpLayers && onRadius && <div className="border-l border-line pl-3" title={t("map.cov_note", { r: R })}><RadiusControl value={R} onChange={onRadius} def={nav.radiusDefault} presets={cfg.mbp.radius_presets || undefined} max={cfg.mbp.radius_max_km ?? 100} /></div>}
+          {showMbpLayers && onRadius && showRadius && <div className="border-l border-line pl-3" title={t("map.cov_note", { r: R })}><RadiusControl value={R} onChange={onRadius} def={nav.radiusDefault} presets={cfg.mbp.radius_presets || undefined} max={cfg.mbp.radius_max_km ?? 100} /></div>}
           {canRoll && <div className="flex items-center gap-1.5 border-l border-line pl-3 ml-auto"><span className="text-mut">{t("map.level")}</span>
             <Seg value={level} onChange={(lv) => { setLevel(lv); setUnit(null); }} label={t("map.level")} options={["site", "cluster", "nop"].map((lv) => [lv, t(`map.level.${lv}`), t(`map.level_tip.${lv}`)])} /></div>}
         </div>
@@ -204,7 +225,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             <FlyTo pt={selSite && isNum(selSite.lat) ? [selSite.lat, selSite.lon] : selMbp && isNum(selMbp.lat) ? [selMbp.lat, selMbp.lon] : null} sig={(selSite?.site_id || "") + "|" + (selMbp?.mbp_id || "")} />
             {onMapClick && <ClickWatch onClick={onMapClick} />}
             <ZoomWatch onZoom={setZoom} />
-            {showMbpLayers && coverage && showMbps && mbpsLoc.map((m) => (
+            {showMbpLayers && showRadius && coverage && showMbps && mbpsLoc.map((m) => (
               <Circle key={"r" + m.mbp_id} center={[m.lat, m.lon]} radius={R * 1000} interactive={false}
                 pathOptions={{ color: "#2a78d6", weight: 0.8, opacity: 0.5, fillColor: "#2a78d6", fillOpacity: 0.025 }} />
             ))}
@@ -212,7 +233,7 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
             {selMbp && mbpSites.slice(0, 400).map((s) => (
               <Polyline key={"l" + s.site_id} positions={[[selMbp.lat, selMbp.lon], [s.lat, s.lon]]} pathOptions={{ color: "#eda100", weight: 1, opacity: 0.6 }} interactive={false} />
             ))}
-            {showSites && (level === "site" || !canRoll) && <SiteLayer sites={shown} colorOf={colorOf} sizeOf={sizeOf} hollowOf={hollowOf} inRadiusOfSel={inRadiusOfSel} onPick={pick} zoom={Math.round(zoom)} ttLine={ttLine} />}
+            {showSites && (level === "site" || !canRoll) && <SiteLayer sites={shown} colorOf={colorOf} sizeOf={sizeOf} hollowOf={hollowOf} inRadiusOfSel={inRadiusOfSel} onPick={pick} zoom={Math.round(zoom)} ttLine={ttLine} shapeOf={shapeOf} />}
             {showSites && canRoll && level !== "site" && units.map((u) => (
               <Marker key={"u" + u.id} position={[u.lat, u.lon]} icon={PIE(u, MM.keys, (k) => keyColor(mode, k), level === "nop" || zoom >= 7.5 ? String(u.id).replace(/^(NOP|TO) /, "") : "",
                 mode === "trend" ? ({ Deteriorating: "▼", Mixed: "◆", Improving: "▲", Stable: "=" })[MM.keys.find((k) => u.counts[k])] || "?" : `${Math.round(100 * u.badShare)}%`)} keyboard
@@ -309,6 +330,9 @@ export default function MapView({ sites = [], mbps = [], cfg, onRadius, onPickSi
         {selMbp && showMbpLayers && <span className="inline-flex items-center gap-1 text-ink"><span className="w-3 h-3 rounded-full inline-block border-2 border-dashed border-[#eda100]" />{t("map.radius_sel", { r: R })}</span>}
         {offline && <span className="text-[#8a5a00]">{t("map.offline")}</span>}
       </div>
+      {shapeLegend && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11.5px] text-slate" role="group" aria-label={t("map.shape_legend")}>
+        <span className="text-ink font-medium">{t("map.shape_legend")}:</span>
+        {shapeLegend.map((l) => <span key={l.k} className="inline-flex items-center gap-1"><ShapeIcon shape={l.shape} />{l.label}</span>)}</div>}
       {canRoll && <RollupPanel unit={unit} sites={visAll} mode={mode} onOpen={setUnit} onClose={() => setUnit(null)} periodText={periodText}
         onPickSite={(s) => { setUnit(null); onPickSite?.(s); }} onFilterNop={onFilterNop} />}
     </div>
