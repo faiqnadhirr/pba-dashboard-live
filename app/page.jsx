@@ -254,7 +254,7 @@ export default function Page() {
           <nav className="max-w-[1560px] mx-auto px-3 flex overflow-x-auto" aria-label={t(`nav.${activeGroup}`)}>
             {visibleTabs(activeGroup).map(([k, v], i, L) => (
               <React.Fragment key={k}>
-                {SECONDARY.has(k) && !SECONDARY.has(L[i - 1]?.[0]) && <span className="self-center ml-3 mr-1 pl-3 border-l border-white/30 text-[10.5px] uppercase tracking-wide text-white/45 whitespace-nowrap">{t(activeGroup === "bbs" ? "nav.for_analyst" : "nav.supporting")}</span>}
+                {SECONDARY.has(k) && !SECONDARY.has(L[i - 1]?.[0]) && <span className="self-center ml-3 mr-1 pl-3 border-l border-white/30 text-[10.5px] uppercase tracking-wide text-white/45 whitespace-nowrap">{t("nav.for_analyst")}</span>}
                 <button onClick={() => setTab(k)} aria-current={tab === k ? "page" : undefined} title={SECONDARY.has(k) ? t("nav.secondary_tip") : undefined}
                   className={`px-3 py-1.5 whitespace-nowrap border-b-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warn ${SECONDARY.has(k) ? "text-[11.5px]" : "text-[13px] font-semibold"} ${tab === k ? "border-warn text-white" : SECONDARY.has(k) ? "border-transparent text-white/55 hover:text-white" : "border-transparent text-white/80 hover:text-white"}`}>{t(`nav.${v}`)}</button>
               </React.Fragment>

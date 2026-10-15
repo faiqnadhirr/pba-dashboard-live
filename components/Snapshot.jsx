@@ -55,7 +55,7 @@ export function FleetSnapshot({ k, C, S, hasJobs, partial, onOp, active = [], on
   if (!k) return null;
   const st = OP_KEYS.map((x) => ({ k: x, label: t(`op.${x}`), v: C[x] || 0, c: OP_COLOR[x] }));
   const R = reachSplit(k), late = Math.max(0, (k.jobs_judged || 0) - (k.jobs_ontime || 0)), jobsOk = hasJobs && k.jobs_judged > 0;
-  const fact = t("sc.f.fact", { a: fInt(R.ok), b: fInt(R.total), c: jobsOk ? fInt(k.jobs_ontime) : "—", d: jobsOk ? fInt(k.jobs_judged) : "—", e: fInt(S?.dbl ?? 0) });
+  const fact = !R.total && !jobsOk ? t("sc.f.fact_partial", { e: fInt(S?.dbl ?? 0) }) : t("sc.f.fact", { a: fInt(R.ok), b: fInt(R.total), c: jobsOk ? fInt(k.jobs_ontime) : "—", d: jobsOk ? fInt(k.jobs_judged) : "—", e: fInt(S?.dbl ?? 0) });
   return (
     <section className="bg-white border border-line rounded-lg px-4 py-3" aria-label={t("snap.fleet.title")}>
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-1">
@@ -93,7 +93,7 @@ export function FleetSnapshot({ k, C, S, hasJobs, partial, onOp, active = [], on
         </Tile>
         <Tile label={t("sc.dbl")} tip={t("sc.dbl_tip")} tone="crit" na={!S || !S.p12_no && !S.dbl} value={fInt(S?.dbl ?? 0)}
           of={t("sc.dbl_of", { n: fInt(S?.p12_no ?? 0), p: shareOf(S?.dbl ?? 0, S?.p12_no ?? 0, 0) })} sub={t("sc.dbl_sub", { m: fInt(S?.dbl_meas ?? 0) })}
-          onClick={onDbl} active={dblActive} />
+          onClick={onDbl} active={dblActive}>{!R.total && (S?.p12_no || 0) > 0 && <div className="text-[11px] text-[#8a5a00] mt-0.5">{t("sc.dbl_partial")}</div>}</Tile>
       </div>
     </section>
   );

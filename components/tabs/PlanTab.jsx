@@ -15,13 +15,18 @@ import { fInt, fPct, InfoTip } from "@/components/ui";
 import { kpiFor } from "@/lib/kpi";
 import { basecampCounts } from "@/lib/basecamp";
 import NopPicker from "@/components/NopPicker";
-import { CalibBadge } from "@/components/tabs/SimMap";
+import { CalibBadge, emptySandbox } from "@/components/tabs/SimMap";
+import { ModeBadge } from "@/components/kit";
+const EMPTY_SB = emptySandbox();
+const Loading = () => <div role="status" className="h-40 rounded-lg border border-line bg-surface animate-pulse text-[12px] text-mut p-3">{t("common.loading")}</div>;
+// what kind of numbers each question shows (labels only; components/kit.jsx › ModeBadge)
+const MODES = { units: ["model"], move: ["replay", "model"], outage: ["scenario"], sandbox: ["model", "replay"] };
 import { t } from "@/lib/i18n";
-const SimMap = dynamic(() => import("@/components/tabs/SimMap"), { ssr: false });
-const Placement = dynamic(() => import("@/components/tabs/Placement"), { ssr: false });
-const Backtest = dynamic(() => import("@/components/tabs/Backtest"), { ssr: false });
-const SimTab = dynamic(() => import("@/components/tabs/SimTab"), { ssr: false });
-const MoveCandidates = dynamic(() => import("@/components/tabs/MoveCandidates"), { ssr: false });
+const SimMap = dynamic(() => import("@/components/tabs/SimMap"), { ssr: false, loading: () => <Loading /> });
+const Placement = dynamic(() => import("@/components/tabs/Placement"), { ssr: false, loading: () => <Loading /> });
+const Backtest = dynamic(() => import("@/components/tabs/Backtest"), { ssr: false, loading: () => <Loading /> });
+const SimTab = dynamic(() => import("@/components/tabs/SimTab"), { ssr: false, loading: () => <Loading /> });
+const MoveCandidates = dynamic(() => import("@/components/tabs/MoveCandidates"), { ssr: false, loading: () => <Loading /> });
 const CogView = dynamic(() => import("@/components/tabs/HistoryTab").then((m) => m.CogView), { ssr: false });
 
 // Bucket 3 (2026-10-14) — three planning questions + ONE shared sandbox. Old sub keys still resolve (scenario → sandbox, backtest → move).
@@ -60,11 +65,16 @@ export default function PlanTab(ctx) {
   // every question hands its proposal to the ONE sandbox: { kind: move | remove | add, nop, … }
   const [pending, setPending] = useState(null);
   const openInSandbox = (mv) => { if (mv.nop && mv.nop !== ctx.nop) ctx.setNop(mv.nop); setPending({ ...mv, at: Date.now() }); setSub("sandbox"); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const c2 = { ...ctx, openInSandbox, pending, clearPending: () => setPending(null) };
+  // one scenario per NOP, kept while the user moves between questions / NOPs (only Reset or an explicit "replace" clears it)
+  const [sbAll, setSbAll] = useState({});
+  const sandbox = { get: (n) => sbAll[n] || EMPTY_SB, patch: (n, f) => setSbAll((A) => ({ ...A, [n]: f(A[n] || emptySandbox()) })) };
+  const sbN = (() => { const x = sbAll[ctx.nop]; return x ? x.moves.size + x.added.length + x.removed.size : 0; })();
+  const c2 = { ...ctx, openInSandbox, pending, clearPending: () => setPending(null), sandbox };
   const Q = ({ k, n }) => <button role="tab" aria-selected={sub === k} onClick={() => setSub(k)}
     className={`text-left rounded-md border px-3 py-2 ${sub === k ? "border-navy bg-navy text-white" : "border-line bg-white hover:border-slate"}`}>
     <div className={`text-[13px] font-semibold ${sub === k ? "text-white" : "text-navy"}`}>{n ? <span className={`mr-1 ${sub === k ? "text-white/70" : "text-mut"}`}>{n}</span> : null}{t(`plan.q.${k}`)}</div>
-    <div className={`text-[11.5px] leading-snug ${sub === k ? "text-white/80" : "text-slate"}`}>{t(`plan.q.${k}_sub`)}</div></button>;
+    <div className={`text-[11.5px] leading-snug ${sub === k ? "text-white/80" : "text-slate"}`}>{t(`plan.q.${k}_sub`)}</div>
+    {k === "sandbox" && sbN > 0 && <div className={`mt-1 text-[11px] font-semibold ${sub === k ? "text-white" : "text-[#4a3aa7]"}`}>{t("plan.sb_changes", { n: sbN })}</div>}</button>;
   return (
     <div className="space-y-3">
       <section aria-label={t("plan.q.title")}>
@@ -79,7 +89,7 @@ export default function PlanTab(ctx) {
       {ctx.nop === "All NOPs" ? <NopPicker K={ctx.K} allNops={ctx.allNops} setNop={ctx.setNop} title={t("plan.pick")} sub={t("plan.pick_sub")} /> : <>
         <Baseline ctx={ctx} />
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[13.5px] font-semibold text-navy">{t(`plan.q.${sub}`)}</h2><span className="text-[12px] text-slate">{t(`plan.steps_hint.${sub}`)}</span>
+          <h2 className="text-[13.5px] font-semibold text-navy">{t(`plan.q.${sub}`)}</h2>{MODES[sub].map((m) => <ModeBadge key={m} kind={m} />)}<span className="text-[12px] text-slate">{t(`plan.steps_hint.${sub}`)}</span>
           <button onClick={() => ctx.setNop("All NOPs")} className="ml-auto text-s1 underline text-[12px]">{t("sim2.change_nop")}</button></div>
         {sub === "sandbox" && <SimMap {...c2} />}
         {sub === "units" && <Placement {...c2} />}

@@ -6,10 +6,8 @@ import { fInt, fPct, fNum } from "@/components/ui";
 import { t } from "@/lib/i18n";
 
 export const opLegend = () => OP_KEYS.map((k) => ({ k, c: OP_COLOR[k], label: t(`op.${k}`), tip: t(`op.tip.${k}`) }));
-export const OpTag = ({ op }) => (
-  <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-white px-2 py-[1px] text-[11.5px]" title={t(`op.tip.${op}`)}>
-    <span className="w-2.5 h-2.5 rounded-full inline-block border border-navy/30" style={{ background: OP_COLOR[op] }} />{t(`op.${op}`)}</span>
-);
+// OpTag = the kit badge (symbol + text + colour), kept under its old name for existing callers
+export { OpBadge as OpTag } from "@/components/kit";
 /** one sentence: why this base camp has its operational status (existing fields + Config thresholds only) */
 export function opReason(b, cfg) {
   if (!b) return "";

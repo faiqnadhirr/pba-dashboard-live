@@ -6,6 +6,7 @@ import { t, tv } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
 import { coverageGap } from "@/lib/view";
 import Workspace from "@/components/Workspace";
+import { CondBadge, EvBadge } from "@/components/kit";
 import ShapeIcon from "@/components/ShapeIcon";
 import { SiteBriefBbs } from "@/components/SiteBrief";
 import { STATUS_GROUPS, STATUS_GROUP_COLOR, statusGroup, EV_GROUPS, evGroup, evLabel } from "@/lib/bbsgroups";
@@ -55,8 +56,8 @@ export default function BbsActions(props) {
   const COLS = [
               { key: "bbs_priority_score", label: "col.bbs_priority", num: true, render: (r) => <span title={t("bbs.cutoffs", { p1: cfg.bbs_priority_levels.P1, p2: cfg.bbs_priority_levels.P2, p3: cfg.bbs_priority_levels.P3, s: r.bbs_priority_score?.toFixed(3) })}><LevelTag kind="BBS" v={r.bbs_priority_level} /></span>, csv: (r) => (r.bbs_priority_level ? `BBS-${r.bbs_priority_level} ${r.bbs_priority_score?.toFixed(3)}` : "") },
               { key: "site_id", label: "col.site", render: (r) => <span className="inline-block max-w-[210px] truncate align-bottom" title={`${r.site_name} · ${r.nop}`}><span className="font-semibold text-navy">{r.site_id}</span> <span className="text-slate">{r.site_name}</span></span>, csv: (r) => r.site_id },
-              { key: "bbt_status", label: "fa.col.condition", sortVal: (r) => STATUS_ORDER.indexOf(r.bbt_status), render: (r) => <BbtCell r={r} statusFirst noEv />, csv: (r) => `${r.bbt_status} ${bbtCsv(r)}` },
-              { key: "evidence", label: "fa.col.evidence", sortVal: (r) => EV_GROUPS.indexOf(evGroup(r)), render: (r) => <span className="inline-flex items-center gap-1 whitespace-nowrap">{t(`eg.${evGroup(r)}`)} <EvTag v={evLabel(r)} /></span>, csv: (r) => evLabel(r) },
+              { key: "bbt_status", label: "fa.col.condition", sortVal: (r) => STATUS_ORDER.indexOf(r.bbt_status), render: (r) => <span className="inline-flex flex-nowrap items-center gap-1.5 whitespace-nowrap"><CondBadge s={r} /><BbtCell r={r} noEv /></span>, csv: (r) => `${r.bbt_status} ${bbtCsv(r)}` },
+              { key: "evidence", label: "fa.col.evidence", sortVal: (r) => EV_GROUPS.indexOf(evGroup(r)), render: (r) => <EvBadge s={r} raw={false} />, csv: (r) => evLabel(r) },
               { key: "pln_total_h", label: "fa.col.pln", num: true, plain: true, sortVal: (r) => (r.pln_known ? r.pln_total_h : null), render: (r) => (r.pln_known ? <span className="tabular">{fInt(r.pln_freq)}× · {fH(r.pln_total_h)}</span> : <span className="text-mut">{t("common.na")}</span>), csv: (r) => (r.pln_known ? `${r.pln_freq} / ${r.pln_total_h?.toFixed(1)} h` : "") },
               { key: "recommended_action", label: "fa.col.action", wrap: true, render: (r) => <span className="font-medium"><ActionLabel r={r} />{r.mbp_standby_flag ? <> <Tag tone="warn">{t("bbs.standby")}</Tag></> : null}</span>, csv: (r) => r.recommended_action },
               { key: "reason", label: "fa.col.reason", tdClass: "whitespace-normal", render: (r) => <span className="block line-clamp-2 min-w-[180px] max-w-[320px] text-[12px] text-slate">{te(r.rule, "rule") || "—"}</span>, csv: (r) => r.reason },
@@ -116,7 +117,7 @@ export default function BbsActions(props) {
         <Workspace ctx={props} rows={rows} modes={["batch"]} defaultMode="batch" showMbpLayers={false}
           mapProps={{ shapeOf: (s) => ACTION_SHAPE[s.action_type] || "circle", shapeLegend: ACTION_TYPES.filter((k) => k !== "NONE").map((k) => ({ k, shape: ACTION_SHAPE[k], label: t(`atype.${k}`) })) }}
           title={t("hero.bbs.title")} sub={t("hero.bbs.sub2")} tableTitle={t("fa.list.title", { n: fInt(rows.length) })} tableSub={t("fa.list.sub")} filename="pba_bbs_action_list.csv" initialSort={{ key: "bbs_priority_score", dir: -1 }}
-          detail={(s) => <SiteBriefBbs s={s} ctx={props} />} expand={EXPAND} columns={COLS} extraCsv={XCSV} />)}</div>
+          detail={(s) => <SiteBriefBbs s={s} ctx={props} page="actions" />} expand={EXPAND} columns={COLS} extraCsv={XCSV} />)}</div>
 
 
     </div>

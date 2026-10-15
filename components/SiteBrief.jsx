@@ -7,6 +7,8 @@ import { dispatchFor } from "@/lib/dispatch";
 import { campCode } from "@/lib/mbpperf";
 import { t } from "@/lib/i18n";
 import { te } from "@/lib/i18n-engine";
+import { reachTab } from "@/lib/coverage";
+import { CondBadge, EvBadge, PanelHead, PanelLabel, Facts, NextActions, More } from "@/components/kit";
 
 const NA = () => <span className="text-mut">{t("common.na")}</span>;
 const Row = ({ k, v }) => <div className="flex justify-between gap-2 py-[2px] border-b border-line/50"><span className="text-mut">{k}</span><span className="text-right font-medium">{v}</span></div>;
@@ -81,15 +83,42 @@ export function DispatchPanel({ s, ctx }) {
 export function SiteBriefMbp({ s, ctx }) {
   return <div><PriorityBlock s={s} /><CoverageBlock s={s} names={ctx.names} /><DispatchPanel s={s} ctx={ctx} /><BatteryBlock s={s} cfg={ctx.cfg} /><ExposureBlock s={s} /></div>;
 }
-/** BBS view of a site: battery → action + reason → exposure → priority */
-export function SiteBriefBbs({ s, ctx }) {
+/** BBS view of a site (kit › entity panel): condition + evidence + priority → one sentence (the rule that chose the action) →
+ *  BBT and design → PLN exposure → next actions. page = "cond" (Battery Condition) | "actions" (Field Actions). Four concepts stay apart:
+ *  condition (where), evidence (how sure), priority (how urgent), action (what to do). */
+export function SiteBriefBbs({ s, ctx, page = "actions" }) {
+  const b = ctx.cfg.bbt, D = b.design_minutes;
+  const hasFollow = !!s.bbs_priority_level || s.action_type === "DATA";
+  const p12 = s.mbp_priority_level === "P1" || s.mbp_priority_level === "P2";
+  const why = s.rule && s.rule !== "R0" ? te(s.rule, "rule") : null;
   return <div>
-    <BatteryBlock s={s} cfg={ctx.cfg} />
-    <H>{t("brief.action")}</H>
-    <div className="font-semibold text-navy"><ActionLabel r={s} /></div>
-    <div className="flex items-center gap-2 mt-0.5"><LevelTag kind="BBS" v={s.bbs_priority_level} /><span className="text-[11.5px] text-slate">{te(s.bbs_priority_drivers, "drivers") || ""}</span></div>
-    {s.rule && s.rule !== "R0" && <div className="text-[11.5px] text-slate mt-0.5">{t("brief.reason")}: {te(s.rule, "rule")}</div>}
-    <div className="text-[11px] text-mut mt-0.5">{t("bbs.basis")}: {te(s.battery?.precedence, "prec")}</div>
-    <ExposureBlock s={s} /><PriorityBlock s={s} />
+    <PanelHead badges={<><CondBadge s={s} /><EvBadge s={s} raw={false} />{s.bbs_priority_level && <LevelTag kind="BBS" v={s.bbs_priority_level} />}</>}
+      why={<><span className="font-semibold text-navy"><ActionLabel r={s} /></span>{why ? <span className="text-slate"> — {why}</span> : null}</>} />
+    <PanelLabel>{t("brief.battery")}</PanelLabel>
+    <Facts rows={[["BBT", <BbtCell key="b" r={s} />], [t("brief.status"), <StatusTag key="s" v={s.bbt_status} />],
+      [t("brief.design_std"), <span key="d">{fMin(D)} <span className="text-mut">({t("brief.mgmt_assumption")})</span></span>],
+      [t("bbs.basis"), <span key="p" className="text-[11.5px]">{te(s.battery?.precedence, "prec") || "—"}</span>]]} />
+    {s.battery?.conflict && <div className="text-[11px] text-[#8a5a00] bg-warn/10 rounded px-1.5 py-1 mt-1">{te(s.battery.conflict, "conflict")}</div>}
+    <PanelLabel>{t("brief.pln")}</PanelLabel>
+    <Facts rows={[[t("panel.pln_n"), s.pln_known ? fInt(s.pln_freq) : <NA key="n" />], [t("panel.pln_h"), s.pln_known ? fH(s.pln_total_h) : <NA key="n" />],
+      [t("col.power_downtime"), isNum(s.ran_power_down_h) ? fH(s.ran_power_down_h) : <NA key="n" />]]} />
+    <div className="text-[11px] text-mut">{t("panel.pln_note")}</div>
+    <More>
+      <BatteryDesignRows s={s} cfg={ctx.cfg} />
+      <ExposureBlock s={s} /><PriorityBlock s={s} />
+      {s.bbs_priority_level && <div className="text-[11.5px] text-slate mt-1">{t("brief.bbs_drivers")}: {te(s.bbs_priority_drivers, "drivers") || "—"}</div>}
+    </More>
+    <NextActions items={[
+      page === "cond" && { label: t("cond.follow"), primary: true, disabled: !hasFollow, title: hasFollow ? t("cond.follow_tip") : t("cond.follow_none"), onClick: () => ctx.navigate({ view: "bbs.actions" }) },
+      p12 && { label: t("brief.to_cov"), title: t("brief.to_cov_tip"), onClick: () => ctx.navigate({ view: "mbp.explorer", sel: `reach_p12~${reachTab(s)}` }) },
+    ]} />
   </div>;
+}
+/** site-specific design and thresholds (secondary detail) */
+function BatteryDesignRows({ s, cfg }) {
+  const b = cfg.bbt, D = b.design_minutes;
+  return <>
+    <Row k={t("brief.design_site")} v={<span>{fMin(s.bbt_design_min)} <EvTag v={s.bbt_design_evidence} /></span>} />
+    <div className="text-[11px] text-mut mt-0.5">{t("brief.thresholds", { d: D, a: Math.round(D * b.ok_pct), c: Math.round(D * b.degraded_pct), z: b.dead_max_minutes })}</div>
+  </>;
 }

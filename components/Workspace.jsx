@@ -58,7 +58,7 @@ export default function Workspace({ ctx, rows, modes, defaultMode, columns, file
             empty={<>{t("ws.pick_hint")}<div className="mt-2 text-[11.5px]">{t(`map.mode.${mode}`)}: {MAP_MODES[mode]?.keys?.length ? t("ws.legend_hint") : ""}</div></>}>
             {selSite && <>
               <div>{detail(selSite)}</div>
-              <button onClick={() => ctx.setPick(selSite)} className="mt-3 w-full bg-navy text-white rounded py-1.5 text-[12.5px]">{t("ws.full_detail")}</button></>}
+              <button onClick={() => ctx.setPick(selSite)} className="mt-3 w-full text-left text-s1 underline text-[12px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1">{t("ws.full_detail")} ›</button></>}
           </Panel>}
         </div>
       </Card></div>

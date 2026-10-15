@@ -7,6 +7,7 @@ import { te } from "@/lib/i18n-engine";
 import { simulate, kmeans } from "@/lib/logic";
 import { simOutcomeView, simCounts, SIM_GROUPS, simGroup, simGroupCounts } from "@/lib/dispatch";
 import { campCode } from "@/lib/mbpperf";
+import { Tile } from "@/components/Scorecards";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
 // vNext — island no longer purple (purple = proposed / new unit across planning)
@@ -137,13 +138,11 @@ export default function SimTab({ model: scored, data, cfg, nop, setPick, setRadi
             </div>
             {/* Bucket 3 — five outcome boxes (display outcomes, lib/dispatch.js › simGroup); a click filters the map and the worklist below */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2" role="group" aria-label={t("sim.box.title")}>
-              {SIM_GROUPS.map((g) => { const c = cur ? simGroupCounts(cur.rows) : {}; const col = g === "unserved" ? OUT.unserved_busy : OUT[g];
-                return <button key={g} onClick={() => setGrp(grp === g ? null : g)} aria-pressed={grp === g} title={t(`sim.box.${g}_tip`)}
-                  className={`text-left rounded-md border px-3 py-2 bg-white ${grp === g ? "border-navy ring-2 ring-navy/30" : "border-line hover:border-slate"}`}>
-                  <div className="flex items-center gap-1.5 text-[11.5px] text-slate"><span className="w-2.5 h-2.5 rounded-full inline-block border border-navy/30" style={{ background: col }} />{t(`sim.box.${g}`)}</div>
-                  <div className="text-[20px] font-bold tabular text-ink leading-tight">{fInt(c[g] || 0)}</div>
-                  {g === "unserved" && <div className="text-[10.5px] text-mut">{t("sim.box.unserved_sub", { b: fInt(simCounts(cur.rows).unserved_busy), c: fInt(simCounts(cur.rows).unserved_no_coverage), i: fInt(simCounts(cur.rows).unserved_island) })}</div>}
-                </button>; })}
+              {SIM_GROUPS.map((g) => { const c = cur ? simGroupCounts(cur.rows) : {}, N = cur ? cur.rows.length : 0, sym = { saved: "✔", late: "!", unserved: "✖", not_evaluable: "?", no_need: "–" }[g];
+                return <Tile key={g} onClick={() => setGrp(grp === g ? null : g)} active={grp === g} tip={t(`sim.box.${g}_tip`)}
+                  label={<span className="inline-flex items-center gap-1"><span aria-hidden className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[9px] text-white font-bold" style={{ background: g === "unserved" ? OUT.unserved_busy : OUT[g] }}>{sym}</span>{t(`sim.box.${g}`)}</span>}
+                  value={fInt(c[g] || 0)} of={t("sim.box.of", { n: fInt(N), p: N ? fPct((100 * (c[g] || 0)) / N, 0) : "—" })}
+                  sub={g === "unserved" ? t("sim.box.unserved_sub", { b: fInt(simCounts(cur.rows).unserved_busy), c: fInt(simCounts(cur.rows).unserved_no_coverage), i: fInt(simCounts(cur.rows).unserved_island) }) : null} />; })}
             </div>
             {kRows.length > 1 && <details open className="group">
               <summary className="cursor-pointer text-[12.5px] text-navy font-semibold mb-1">{t("sim.cmp.toggle", { n: kRows.length })}</summary>

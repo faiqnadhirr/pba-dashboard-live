@@ -16,6 +16,7 @@ import Performance from "@/components/tabs/Performance";
 import { PerfTag, DupBadge } from "@/components/perfUi";
 import { OP_KEYS, OP_COLOR, opStatus, opCounts, needsClean } from "@/lib/opstatus";
 import { OpTag, opReason, opLegend } from "@/components/opUi";
+import { PanelHead, PanelLabel, Facts, NextActions, More } from "@/components/kit";
 import { isP12 } from "@/lib/coverage";
 import { enrichTickets, capability, CATEGORIES } from "@/lib/history";
 import { t } from "@/lib/i18n";
@@ -58,7 +59,7 @@ export default function FleetTab(ctx) {
   const minN = cfg.mbp_perf?.min_jobs ?? 10;
   const cols = [
     { key: "code", label: "col.basecamp", sortVal: (r) => nm(r), render: (r) => <span>{nm(r)}<DupBadge p={r} /></span>, csv: (r) => r.mbp_id },
-    { key: "_op", label: "op.col.status", sortVal: (r) => OP_KEYS.indexOf(r._op), render: (r) => <OpTag op={r._op} />, csv: (r) => r._op },
+    { key: "_op", label: "op.col.status", sortVal: (r) => OP_KEYS.indexOf(r._op), render: (r) => <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><OpTag op={r._op} /><span className="text-[11px] text-slate">{t(`op.why_short.${r._reason}`)}</span></span>, csv: (r) => r._op },
     { key: "_reason", label: "op.col.reason", tdClass: "whitespace-normal", sortVal: (r) => r._reason, render: (r) => <span className="block min-w-[200px] max-w-[340px] text-[12px] text-slate">{tab === "clean" ? `${t("fl.not_usable")}: ${(r.clean_reasons || []).map((x) => t(`clean.${x}`)).join(" · ")}` : opReason(r, cfg)}</span>, csv: (r) => r._reason },
     { key: "jobs", label: "perf.col.jobs", num: true, render: (r) => (hasJobs ? fInt(r.jobs) : t("common.na")) },
     { key: "ontime_rate", label: "op.col.ontime", num: true, sortVal: (r) => r.ontime_rate ?? -1, render: (r) => (r.ontime_rate == null ? <span className="text-mut">{r.judged ? `n ${fInt(r.judged)} < ${minN}` : t("common.na")}</span> : `${fPct(100 * r.ontime_rate, 0)} · n ${fInt(r.judged)}`), csv: (r) => (r.ontime_rate == null ? "" : (100 * r.ontime_rate).toFixed(1)) },
@@ -102,30 +103,26 @@ export default function FleetTab(ctx) {
               mbpLabel={(m) => nm(rows.find((x) => x.mbp_id === m.mbp_id) || { mbp_id: m.mbp_id, code: m.mbp_id })} onPickSite={ctx.setPick} />}
           <Panel title={sel ? <>🚚 {nm(sel)}<DupBadge p={sel} /></> : null} sub={sel ? `${sel.nop || "—"} · ${sel.area}` : null} onClose={() => selectCamp(null)} empty={t("fl.pick_hint")}>
             {sel && <>
-              <div><OpTag op={sel._op} /></div>
-              <div className="mt-1.5 text-[12.5px] text-ink leading-snug">{opReason(sel, cfg)}</div>
-              {sel.nobat_flag && <div className="mt-1 text-[11.5px] text-[#8a5a00] bg-warn/15 rounded px-1.5 py-0.5">⚑ {t("perf.nobat_flag", { n: fInt(sel.nobat), p: fPct(100 * (sel.nobat_share || 0), 0) })}</div>}
-              {sel._clean && <div className="mt-1 text-[11.5px] text-[#8a5a00]">{t("fl.not_usable")}: {(sel.clean_reasons || []).map((x) => t(`clean.${x}`)).join(" · ")}</div>}
-              <table className="w-full mt-2"><tbody>
-                {[[t("fl.sites"), fInt(sel.sites_assigned)], [t("perf.col.jobs"), hasJobs ? `${fInt(sel.jobs)} (${fNum((sel.jobs || 0) / 6, 1)}/${t("perf.month_short")})` : t("common.na")],
-                  [t("op.col.ontime"), sel.ontime_rate == null ? (sel.judged ? `n ${fInt(sel.judged)} < ${minN}` : t("common.na")) : `${fPct(100 * sel.ontime_rate, 0)} · n ${fInt(sel.judged)}`],
-                  [t("perf.col.busy"), hasJobs && sel.jobs ? fPct(100 * (sel.busy || 0), 1) : t("common.na")],
-                  [t("op.col.pon"), !capSel ? t("common.na") : capSel.power_on_rate == null ? t("hist.few", { n: fInt(capSel.outcome_known) }) : `${fPct(100 * capSel.power_on_rate, 0)} · n ${fInt(capSel.outcome_known)}`]]
-                  .map(([a, v]) => <tr key={a} className="border-b border-line/50"><td className="text-mut py-[2px]">{a}</td><td className="text-right font-medium">{v}</td></tr>)}
-              </tbody></table>
-              <details className="mt-1.5 text-[12px]"><summary className="cursor-pointer text-slate">{t("fl.more_detail")}</summary>
-                <table className="w-full mt-1"><tbody>
-                  {[[t("fl.detailed_status"), <PerfTag key="p" k={sel.status ?? sel.key} />], [t("perf.col.arr_median"), fMin(sel.arr_median)],
-                    [t("col.need_cov"), sel.resp == null ? t("common.na") : `${fPct(100 * sel.resp, 0)} · ${fInt(sel.need_served)}/${fInt(sel.need)}`],
-                    [t("hist.col.nock"), capSel ? fInt(capSel.no_checkin) : t("common.na")], [t("perf.col.nobat"), fInt(sel.nobat || 0)],
-                    [t("hist.col.cats"), capSel ? CATEGORIES.map((c) => `${t(`hist.cat_s.${c}`)} ${fInt(capSel[`rc_${c}`] || 0)}`).join(" · ") : t("common.na")]]
-                    .map(([a, v]) => <tr key={a} className="border-b border-line/50"><td className="text-mut py-[2px]">{a}</td><td className="text-right font-medium">{v}</td></tr>)}
-                </tbody></table>
-                <div className="text-[11px] text-mut mt-1">{t("fl.defs")} {t("fl.defs_pon")}</div></details>
-              <div className="flex gap-2 mt-2">
-                <button onClick={() => ctx.navigate({ view: "mbp.explorer" })} className="flex-1 border border-navy text-navy rounded py-1 text-[12px]">{t("fl.to_sites")}</button>
-                <button onClick={() => ctx.navigate({ view: "mbp.history" })} className="flex-1 border border-navy text-navy rounded py-1 text-[12px]">{t("fl.to_history2")}</button></div>
-              <button onClick={() => openMbp(ctx.data.mbps.find((m) => m.mbp_id === sel.mbp_id))} className="mt-1.5 w-full bg-navy text-white rounded py-1 text-[12px]">{t("perf.card.open")}</button>
+              <PanelHead badges={<><OpTag op={sel._op} />{sel._op === "check" && <span className="text-[11.5px] text-slate">{t(`op.why_short.${sel._reason}`)}</span>}</>} why={opReason(sel, cfg)}>
+                {sel.nobat_flag && <div className="text-[11.5px] text-[#8a5a00] bg-warn/15 rounded px-1.5 py-0.5">⚑ {t("perf.nobat_flag", { n: fInt(sel.nobat), p: fPct(100 * (sel.nobat_share || 0), 0) })}</div>}
+                {sel._clean && <div className="text-[11.5px] text-[#8a5a00]">{t("fl.not_usable")}: {(sel.clean_reasons || []).map((x) => t(`clean.${x}`)).join(" · ")}</div>}
+              </PanelHead>
+              <PanelLabel>{t("fl.panel.facts")}</PanelLabel>
+              <Facts rows={[[t("fl.sites"), fInt(sel.sites_assigned)], [t("perf.col.jobs"), hasJobs ? `${fInt(sel.jobs)} (${fNum((sel.jobs || 0) / 6, 1)}/${t("perf.month_short")})` : t("common.na")],
+                [t("op.col.ontime"), sel.ontime_rate == null ? (sel.judged ? `n ${fInt(sel.judged)} < ${minN}` : t("common.na")) : `${fPct(100 * sel.ontime_rate, 0)} · n ${fInt(sel.judged)}`],
+                [t("perf.col.busy"), hasJobs && sel.jobs ? fPct(100 * (sel.busy || 0), 1) : t("common.na")],
+                [t("op.col.pon"), !capSel ? t("common.na") : capSel.power_on_rate == null ? t("hist.few", { n: fInt(capSel.outcome_known) }) : `${fPct(100 * capSel.power_on_rate, 0)} · n ${fInt(capSel.outcome_known)}`]]} />
+              <More title={t("fl.more_detail")}>
+                <Facts rows={[[t("fl.detailed_status"), <PerfTag key="p" k={sel.status ?? sel.key} />], [t("perf.col.arr_median"), fMin(sel.arr_median)],
+                  [t("col.need_cov"), sel.resp == null ? t("common.na") : `${fPct(100 * sel.resp, 0)} · ${fInt(sel.need_served)}/${fInt(sel.need)}`],
+                  [t("hist.col.nock"), capSel ? fInt(capSel.no_checkin) : t("common.na")], [t("perf.col.nobat"), fInt(sel.nobat || 0)],
+                  [t("hist.col.cats"), capSel ? CATEGORIES.map((c) => `${t(`hist.cat_s.${c}`)} ${fInt(capSel[`rc_${c}`] || 0)}`).join(" · ") : t("common.na")]]} />
+                <div className="text-[11px] text-mut mt-1">{t("fl.defs")} {t("fl.defs_pon")}</div></More>
+              <NextActions items={[
+                mode === "camp" && { label: t("fl.act.sites"), title: t("fl.act.sites_tip"), onClick: () => setMode("site") },
+                (sel._op === "movable" || sel._op === "check") && sel.nop && !sel._clean && { label: t("fl.act.plan"), title: t("fl.act.plan_tip"), onClick: () => { try { window.__pbaPlan = "move"; } catch {} ctx.navigate({ view: "mbp.plan", nop: sel.nop }); } },
+                hasJobs && { label: t("fl.to_history2"), title: t("fl.act.hist_tip"), onClick: () => ctx.navigate({ view: "mbp.history" }) },
+                { label: t("perf.card.open"), onClick: () => openMbp(ctx.data.mbps.find((m) => m.mbp_id === sel.mbp_id)) }]} />
             </>}
           </Panel>
         </div>

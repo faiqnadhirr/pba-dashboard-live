@@ -1050,7 +1050,7 @@ test("SB-3 Planning: outage boxes partition the simulated sites; the sandbox acc
     const g = simGroupCounts(r.rows), c = simCounts(r.rows);
     assert.equal(SIM_GROUPS.reduce((a, k) => a + g[k], 0), r.rows.length);
     assert.equal(g.unserved, c.unserved_busy + c.unserved_no_coverage + c.unserved_island);
-    const sm = fs.readFileSync("components/tabs/SimMap.jsx", "utf8"), pt = fs.readFileSync("components/tabs/PlanTab.jsx", "utf8"), pg = fs.readFileSync("app/page.jsx", "utf8");
+    const sm = fs.readFileSync("lib/sandbox.js", "utf8"), pt = fs.readFileSync("components/tabs/PlanTab.jsx", "utf8"), pg = fs.readFileSync("app/page.jsx", "utf8");
     for (const k of ['k === "move"', 'k === "remove"', 'k === "add"']) assert.ok(sm.includes(k), k);
     assert.ok(pt.includes('const ALIAS = { scenario: "sandbox", backtest: "move" }') && pg.includes('"mbp.backtest": ["plan", "move"]') && pg.includes('"mbp.simmap": ["plan", "sandbox"]'));
     assert.ok(fs.readFileSync("components/tabs/Placement.jsx", "utf8").includes('kind: "add"') && fs.readFileSync("components/tabs/MoveCandidates.jsx", "utf8").includes('kind: "remove"'));
@@ -1088,4 +1088,39 @@ test("SC-1 scorecards: every site tile = exact click-through count; late-job med
   assert.ok(S.dbl <= S.p12_no && S.dbl <= S.p12bad && S.p12bad <= S.p12);
   assert.equal(S.st.act + S.st.warn + S.st.ok + S.st.unk, S.n);
   for (const s of A1.filter(SC.expo)) assert.ok(avgOutageMin(s) > s.bbt_effective_min);
+});
+
+/* ---------- Functional & UX brief 2026-10-15 ---------- */
+test("UX-1 sandbox hand-over: replace = only the proposal; merge keeps the user's changes; ids never collide", async () => {
+  const { emptySandbox, applyProposal, sandboxChanges } = await import("../lib/sandbox.js");
+  let o = applyProposal(emptySandbox(), { kind: "move", mbp_id: "A", lat: 1, lon: 2, label: "K" }, "replace", "N");
+  o = applyProposal(o, { kind: "add", adds: [{ lat: 1, lon: 1 }, { lat: 2, lon: 2 }] }, "merge", "N");
+  assert.equal(sandboxChanges(o), 3); assert.deepEqual(o.added.map((a) => a.mbp_id), ["NEW-1", "NEW-2"]);
+  o = applyProposal(o, { kind: "add", adds: [{ lat: 3, lon: 3 }] }, "merge", "N");
+  assert.equal(new Set(o.added.map((a) => a.mbp_id)).size, 3, "added ids are unique after a merge");
+  o = applyProposal(o, { kind: "remove", mbp_id: "A" }, "merge", "N");
+  assert.ok(!o.moves.has("A") && o.removed.has("A") && o.fromModel.has("A"), "removing a moved camp drops its move");
+  const r = applyProposal(o, { kind: "remove", mbp_id: "B" }, "replace", "N");
+  assert.equal(sandboxChanges(r), 1); assert.ok(r.removed.has("B"));
+  assert.equal(sandboxChanges(o) > 0 && o.moves instanceof Map, true, "input state is not mutated"); 
+});
+
+test("UX-2 one visual language: every status / reach / condition / evidence badge has a symbol; panels share the kit", () => {
+  const kit = fs.readFileSync("components/kit.jsx", "utf8");
+  for (const k of ["check", "movable", "ok", "unrated"]) assert.ok(new RegExp(`${k}: "[^"]+"`).test(kit.split("OP_SYM")[1].split("\n")[0]), k);
+  for (const [name, keys] of [["REACH_SYM", ["ok", "no", "unv"]], ["COND_SYM", ["act", "warn", "ok", "unk"]], ["EV_SYM", ["measured", "estimated", "unverified", "none"]]]) {
+    const line = kit.split(`export const ${name} = `)[1].split("\n")[0]; for (const k of keys) assert.ok(line.includes(`${k}: "`), `${name}.${k}`); }
+  for (const f of ["components/tabs/FleetTab.jsx", "components/tabs/Explorer.jsx", "components/SiteBrief.jsx"]) {
+    const src = fs.readFileSync(f, "utf8"); assert.ok(src.includes("PanelHead") && src.includes("NextActions"), `${f} uses the entity panel`); }
+  // an estimate is never shown as a measurement: BbtCell prefixes "≈" for ESTIMATED / DERIVED-UNVERIFIED
+  assert.ok(fs.readFileSync("components/ui.jsx", "utf8").includes('d.evidence === "ESTIMATED" || d.evidence === "DERIVED-UNVERIFIED"'));
+});
+
+test("UX-3 operational pages expose no developer paths in their texts", () => {
+  const id = JSON.parse(fs.readFileSync("i18n/id.json", "utf8")), en = JSON.parse(fs.readFileSync("i18n/en.json", "utf8"));
+  const files = ["FleetTab", "Explorer", "PlanTab", "Placement", "MoveCandidates", "SimTab", "SimMap", "BatteryRisk", "BbsActions"].map((n) => `components/tabs/${n}.jsx`)
+    .concat(["components/SiteBrief.jsx", "components/Snapshot.jsx", "components/kit.jsx"]);
+  const keys = new Set(); for (const f of files) for (const m of fs.readFileSync(f, "utf8").matchAll(/\bt\("([a-zA-Z0-9_.]+)"/g)) keys.add(m[1]);
+  const bad = [...keys].filter((k) => [id[k], en[k]].some((v) => v && /(engine\/|\.ya?ml|\.py\b|lib\/|Config › [a-z_]+\.[a-z_]+)/.test(v)));
+  assert.deepEqual(bad, []);
 });

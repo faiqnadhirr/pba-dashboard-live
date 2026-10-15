@@ -5,6 +5,7 @@
 // not feed the estimator (Kaplan-Meier on comparable sites, see BBS › BBT estimate).
 import React, { useMemo, useState } from "react";
 import Workspace from "@/components/Workspace";
+import { CondBadge, EvBadge } from "@/components/kit";
 import { SiteBriefBbs } from "@/components/SiteBrief";
 import { BbtCell, bbtCsv, EvTag, Meter, InfoTip, fInt, fH, fPct } from "@/components/ui";
 import { siteScore, SC } from "@/lib/scorecards";
@@ -40,10 +41,9 @@ export default function BatteryRisk(ctx) {
   const inGroup = (g) => STATUS_ORDER.filter((k) => (STATUS_GROUP_OF[k] || "unk") === g);
   const cols = [
     { key: "site_id", label: "col.site", render: (r) => <span className="inline-block max-w-[220px] truncate align-bottom" title={`${r.site_name} · ${r.nop}`}><b className="text-navy">{r.site_id}</b> <span className="text-slate">{r.site_name}</span></span>, csv: (r) => r.site_id },
-    { key: "bbt_status", label: "cond.col.condition", sortVal: (r) => STATUS_ORDER.indexOf(r.bbt_status), render: (r) => <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title={tv("status", r.bbt_status)}>
-      <span className="w-2.5 h-2.5 rounded-sm inline-block border border-navy/20" style={{ background: STATUS_GROUP_COLOR[statusGroup(r)] }} />{t(`sg.${statusGroup(r)}`).split(" (")[0]}<span className="text-mut text-[11px]">· {tv("status", r.bbt_status)}</span></span>, csv: (r) => r.bbt_status },
+    { key: "bbt_status", label: "cond.col.condition", sortVal: (r) => STATUS_ORDER.indexOf(r.bbt_status), render: (r) => <CondBadge s={r} />, csv: (r) => r.bbt_status },
     { key: "bbt", label: "col.bbt", num: true, sortVal: (r) => r.battery?.display?.value ?? null, render: (r) => <BbtCell r={r} noEv />, csv: (r) => bbtCsv(r) },
-    { key: "evidence", label: "cond.col.evidence", sortVal: (r) => EV_GROUPS.indexOf(evGroup(r)), render: (r) => <span className="inline-flex items-center gap-1 whitespace-nowrap" title={t(`cond.evl.${evLabel(r)}`)}>{t(`eg.${evGroup(r)}`)} <EvTag v={evLabel(r)} /></span>, csv: (r) => evLabel(r) },
+    { key: "evidence", label: "cond.col.evidence", sortVal: (r) => EV_GROUPS.indexOf(evGroup(r)), render: (r) => <EvBadge s={r} />, csv: (r) => evLabel(r) },
     { key: "pln_total_h", label: "fa.col.pln", num: true, plain: true, sortVal: (r) => (r.pln_known ? r.pln_total_h : null), render: (r) => (r.pln_known ? <span className="tabular">{fInt(r.pln_freq)}× · {fH(r.pln_total_h)}</span> : <span className="text-mut">{t("common.na")}</span>), csv: (r) => (r.pln_known ? r.pln_total_h?.toFixed(1) : "") },
   ];
   const XCSV = [{ key: "site_name", label: "Site name" }, { key: "nop", label: "NOP" }, { key: "site_class", label: "Class" },
@@ -53,8 +53,6 @@ export default function BatteryRisk(ctx) {
     { key: "pln_freq", label: "PLN outages", csv: (r) => (r.pln_known ? r.pln_freq : "") },
     { key: "bbs_priority_level", label: "BBS priority", csv: (r) => (r.bbs_priority_level ? `BBS-${r.bbs_priority_level}` : "") }, { key: "recommended_action", label: "Recommended action" },
     { key: "rule", label: "Rule" }, { key: "reason", label: "Why" }];
-  const hasFollow = (s) => !!s.bbs_priority_level || s.action_type === "DATA";
-  const follow = (s) => { ctx.setFocus?.({ ...ctx.focus, site: s.site_id }); ctx.navigate({ view: "bbs.actions" }); };
   return (
     <div className="space-y-3">
       <section className="bg-white border border-line rounded-lg px-4 py-3" aria-label={t("cond.title")}>
@@ -112,9 +110,7 @@ export default function BatteryRisk(ctx) {
       </section>
       <Workspace ctx={ctx} rows={rows} modes={["bbsgroup"]} defaultMode="bbsgroup" columns={cols} showMbpLayers={false}
         title={t("risk.title")} sub={t("risk.sub")} filename="pba_battery_condition.csv" initialSort={{ key: "bbt_status", dir: 1 }}
-        detail={(s) => <div className="space-y-2"><SiteBriefBbs s={s} ctx={ctx} />
-          <button onClick={() => follow(s)} disabled={!hasFollow(s)} title={hasFollow(s) ? t("cond.follow_tip") : t("cond.follow_none")}
-            className="w-full bg-navy text-white rounded py-1.5 text-[12.5px] disabled:opacity-40">{t("cond.follow")}</button></div>}
+        detail={(s) => <SiteBriefBbs s={s} ctx={ctx} page="cond" />}
         tableTitle={t("cond.table.title", { n: fInt(rows.length) })} tableSub={t("cond.table_sub")} extraCsv={XCSV} />
     </div>
   );

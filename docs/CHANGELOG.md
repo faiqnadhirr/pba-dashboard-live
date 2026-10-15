@@ -2,6 +2,13 @@
 
 Each version lists the main changes (EN) and a short Indonesian summary (ID).
 
+## vUX — functional & UX improvement (2026-10-15)
+- Shared UI kit `components/kit.jsx`: status / reach / reason / condition / evidence / mode badges (symbol + text + colour), entity panel parts, ETA-vs-BBT bar. Estimated BBT shown with "≈". Tile used for sandbox measures and outage outcomes.
+- Planning: sandbox kept per NOP across questions; hand-over asks replace / add / cancel when the sandbox has changes (`lib/sandbox.js`); mode badges (model / replay / scenario); loading placeholders.
+- Fleet, Explorer, BBS panels on one structure (status → sentence → facts → detail → next steps); new real actions (show camp's sites, evaluate a move, check MBP reach from BBS).
+- Island gaps marked and sorted after road sites; partial-data areas labelled indicative; "Untuk analis" divider in MBP and BBS; developer paths removed from operational tooltips; Space selects table rows.
+- No formula, threshold, weight or KPI definition changed (hero numbers identical before / after). Tests 85 → 88 (UX-1…UX-3). Details: docs/UX_2026-10-15.md.
+
 ## vScorecards — headline scorecards (2026-10-14)
 - **MBP › Fleet Performance**: snapshot = 8 tiles, each "X dari Y (Z%)": base camps (located / not), P1/P2 sites, P1/P2 reached before BBT, jobs on time, **how late late jobs are** (median MBP arrival − BBT over the same 19,166 late jobs as the KPI: 101 min), unit working time (median 10.2 % of 327 camps; ≈ 23 jobs/unit/month), base-camp status, **double risk** (495 of 873 P1/P2 not reached with battery needing action). One factual sentence above the tiles.
 - **BBS › Battery Condition**: existing 4 + 4 groups kept; 6 new tiles: measured BBT vs design (median 88 vs 120 min, n 9,685), measured below design 6,697 / 9,685 (< 30 min 1,453), **PLN outage longer than BBT** 2,106 / 9,685 measured (all evidence 3,168 / 14,602; 3,805 without PLN data not counted), P1/P2 battery needing action 681 / 2,666, double risk 495 / 873, BBS-P1 136 / 4,034 (+ replace / upgrade / collect data); hotspot line (top-3 NOP / cluster share, ≥ 30 sites). A tile click shows exactly its counted sites (card filter chip).

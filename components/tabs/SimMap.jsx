@@ -11,6 +11,9 @@ import { Card, Kpi, Note, Method, DataTable, Tag, fInt, fPct, fKm, fMin, isNum, 
 import { reachOf, replayDelta, campCode } from "@/lib/mbpperf";
 import { haversineKm, bbtUnknown, REACH_EVIDENCE } from "@/lib/logic";
 import NopPicker from "@/components/NopPicker";
+import { Tile } from "@/components/Scorecards";
+import { emptySandbox, applyProposal } from "@/lib/sandbox";
+import { ModeBadge } from "@/components/kit";
 import { t } from "@/lib/i18n";
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
@@ -20,27 +23,28 @@ const COL = { gain: SCN.gain, ok: SCN.same_ok, lost: SCN.lost, no: SCN.same_no, 
 const pp = (a, b) => (isNum(a) && isNum(b) ? 100 * (a - b) : null);
 const sign = (v, d = 0, u = "") => (!isNum(v) ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : "±"}${Math.abs(v).toFixed(d)}${u}`);
 
-export default function SimMap({ data, cfg, model, active, nop, setNop, allNops, perf, K, tickets, setPick, openMbp, names, focus, setFocus, pending, clearPending }) {
+export { emptySandbox };
+
+export default function SimMap({ data, cfg, model, active, nop, setNop, allNops, perf, K, tickets, setPick, openMbp, names, focus, setFocus, pending, clearPending, sandbox }) {
   const sitesN = useMemo(() => active.filter((s) => s.nop === nop), [active, nop]);
   const mbpsN = useMemo(() => data.mbps.filter((m) => m.nop === nop && isNum(m.lat)), [data.mbps, nop]);
   const allN = useMemo(() => model.filter((s) => s.nop === nop), [model, nop]);
   const byId = useMemo(() => new Map(allN.map((s) => [s.site_id, s])), [allN]);
   const ticketsN = useMemo(() => tickets.filter((k) => byId.has(k.site)), [tickets, byId]);
-  const [moves, setMoves] = useState(new Map()), [added, setAdded] = useState([]), [removed, setRemoved] = useState(new Set());
-  const [adding, setAdding] = useState(false), [tab, setTab] = useState("sites");
-  const reset = () => { setMoves(new Map()); setAdded([]); setRemoved(new Set()); setFromModel(new Set()); };
-  // a move handed over from the relocation analysis is applied here as a MODEL suggestion (not executed, not approved)
-  React.useEffect(reset, [nop]); // eslint-disable-line
-  // Bucket 3 — every planning question hands its proposal to THIS sandbox (one scenario engine): kind move | remove | add.
-  // A handed-over change is marked "model proposal" (never executed, never approved); the user can drag / undo / remove it.
-  const [fromModel, setFromModel] = useState(new Set());
+  // 2026-10-15 — the scenario lives in PlanTab, one per NOP (sandbox.get / sandbox.patch): switching to another planning question or
+  // another NOP and back keeps the user's changes. Only "Reset" (or the user's choice on a hand-over) clears them.
+  const SB = sandbox.get(nop), { moves, added, removed, fromModel } = SB;
+  const upd = (k) => (v) => sandbox.patch(nop, (o) => ({ ...o, [k]: typeof v === "function" ? v(o[k]) : v }));
+  const setMoves = upd("moves"), setAdded = upd("added"), setRemoved = upd("removed");
+  const [adding, setAdding] = useState(false), [tab, setTab] = useState("sites"), [ask, setAsk] = useState(null);
+  const reset = () => { sandbox.patch(nop, () => emptySandbox()); setAsk(null); };
+  // every planning question hands its proposal to THIS sandbox (kind move | remove | add), marked "model proposal" (never executed).
+  // Empty sandbox → applied at once; sandbox with the user's own changes → the user chooses: replace, add to it, or cancel.
+  const apply = (p, how) => sandbox.patch(nop, (o) => applyProposal(o, p, how, nop));   // lib/sandbox.js
+  const valid = (p) => (p.kind === "add" ? !!p.adds?.length : mbpsN.some((m) => m.mbp_id === p.mbp_id));
   React.useEffect(() => {
     if (!pending || pending.nop !== nop) return;
-    const k = pending.kind || "move", has = mbpsN.some((m) => m.mbp_id === pending.mbp_id);
-    if (k === "move" && has) { setMoves(new Map([[pending.mbp_id, { lat: pending.lat, lon: pending.lon, origin: "model", label: pending.label }]])); setAdded([]); setRemoved(new Set()); setFromModel(new Set()); }
-    else if (k === "remove" && has) { setMoves(new Map()); setAdded([]); setRemoved(new Set([pending.mbp_id])); setFromModel(new Set([pending.mbp_id])); }
-    else if (k === "add" && pending.adds?.length) { const A = pending.adds.map((a, i) => ({ mbp_id: `NEW-${i + 1}`, lat: a.lat, lon: a.lon, nop, label: a.label })); setMoves(new Map()); setRemoved(new Set()); setAdded(A); setFromModel(new Set(A.map((a) => a.mbp_id))); }
-    else return;
+    if (valid(pending)) { if (moves.size + added.length + removed.size > 0) setAsk(pending); else apply(pending, "replace"); }
     clearPending?.();
   }, [nop, pending]); // eslint-disable-line
   const calib = K?.byNop.get(nop)?.calib || null;
@@ -58,6 +62,7 @@ export default function SimMap({ data, cfg, model, active, nop, setNop, allNops,
   const rb = useMemo(() => (hasJobs ? replayDelta(byId, mbpsN, ticketsN, cfg) : null), [hasJobs, byId, mbpsN, ticketsN, cfg]);
   const rs = useMemo(() => (hasJobs ? replayDelta(byId, mbpsN, ticketsN, cfg, { moves, added, removed }) : null), [hasJobs, byId, mbpsN, ticketsN, cfg, moves, added, removed]);
   const changed = moves.size + added.length + removed.size;
+  const focusSite = focus?.site ? sitesN.find((x) => x.site_id === focus.site) || null : null;   // selection carried over from another page
 
   function keyOfS(s) { return bbtUnknown(s) || !REACH_EVIDENCE.has(s.battery?.display?.evidence) ? "unk" : scen.ok_ids.has(s.site_id) ? (base.ok_ids.has(s.site_id) ? "ok" : "gain") : base.ok_ids.has(s.site_id) ? "lost" : "no"; }
   const keyOf = keyOfS;
@@ -92,19 +97,30 @@ export default function SimMap({ data, cfg, model, active, nop, setNop, allNops,
         <button onClick={() => setAdding(!adding)} aria-pressed={adding} className={`px-2.5 py-1 rounded-md border ${adding ? "bg-[#4a3aa7] text-white border-[#4a3aa7]" : "bg-white border-line text-ink hover:border-slate"}`}>{adding ? t("sim2.adding") : t("sim2.add")}</button>
         <button onClick={reset} disabled={!changed} className="px-2.5 py-1 rounded-md border border-line bg-white disabled:opacity-40">{t("sim2.reset")}</button>
       </div>
+      {ask && <div role="alertdialog" aria-label={t("sb.ask.title")} className="border-2 border-[#4a3aa7]/60 bg-[#4a3aa7]/[0.05] rounded-md px-3 py-2 text-[12.5px]">
+        <div className="font-semibold text-ink">{t("sb.ask.title")}</div>
+        <div className="text-slate">{t("sb.ask.body", { n: fInt(changed), p: ask.kind === "add" ? t("sb.ask.add", { n: fInt(ask.adds.length) }) : ask.kind === "remove" ? t("sb.ask.remove", { c: label({ mbp_id: ask.mbp_id }) }) : t("sb.ask.move", { c: label({ mbp_id: ask.mbp_id }), k: ask.label || "—" }) })}</div>
+        <div className="flex flex-wrap gap-2 mt-1.5">
+          <button onClick={() => { apply(ask, "replace"); setAsk(null); }} className="px-2.5 py-1 rounded bg-navy text-white">{t("sb.ask.replace")}</button>
+          <button onClick={() => { apply(ask, "merge"); setAsk(null); }} className="px-2.5 py-1 rounded border border-navy text-navy bg-white">{t("sb.ask.merge")}</button>
+          <button onClick={() => setAsk(null)} className="px-2.5 py-1 rounded border border-line bg-white text-slate">{t("sb.ask.cancel")}</button></div></div>}
       <Method title={t("sim2.how_title")}>{t("sim2.how")}</Method>
       {changed > 0 && <div role="status" className="text-[12.5px] border-2 border-s7/50 bg-s7/5 rounded-md px-3 py-1.5">{t("sim2.whatif", { m: moves.size, a: added.length, r: removed.size })}
         {" · "}{t("sim2.origin_line", { u: fInt(changed - [...moves.values()].filter((v) => v.origin === "model").length - [...fromModel].filter((id) => removed.has(id) || added.some((a) => a.mbp_id === id)).length), s: fInt([...moves.values()].filter((v) => v.origin === "model").length + [...fromModel].filter((id) => removed.has(id) || added.some((a) => a.mbp_id === id)).length) })}</div>}
       {/* Bucket 3 — two measures only, before → after with numerator / denominator */}
       <div className="grid md:grid-cols-2 gap-3">
-        <Kpi fixed label={t("sb.m.reach")} value={`${fInt(base.p12ok)}/${fInt(base.p12)} → ${fInt(scen.p12ok)}/${fInt(scen.p12)}`}
-          sub={t("sb.m.reach_sub", { d: sign(scen.p12ok - base.p12ok), a: fPct(base.p12 ? (100 * base.p12ok) / base.p12 : null, 1), b: fPct(scen.p12 ? (100 * scen.p12ok) / scen.p12 : null, 1) })}
-          tone={scen.p12ok > base.p12ok ? "good" : scen.p12ok < base.p12ok ? "crit" : "navy"} help={t("sim2.kpi.p12_help")} />
-        <Kpi fixed label={t("sb.m.ontime")} value={T1 ? `${fInt(T0.ontime)}/${fInt(T0.ontime + T0.late)} → ${fInt(T1.ontime)}/${fInt(T1.ontime + T1.late)}` : t("common.na")}
-          sub={T1 ? t("sb.m.ontime_sub", { d: sign(T1.ontime - T0.ontime), p: sign(pp(T1.ontime_rate, T0.ontime_rate), 1, " pp"), a: fPct(100 * T0.ontime_rate, 1), b: fPct(100 * T1.ontime_rate, 1) }) : t("sim2.no_jobs")}
-          tone={T1 && T1.ontime > T0.ontime ? "good" : T1 && T1.ontime < T0.ontime ? "crit" : "navy"} help={t("sim2.kpi.jobs_help")} />
+        <Tile label={t("sb.m.reach")} tip={t("sim2.kpi.p12_help")} badge={<ModeBadge kind="model" />} tone={scen.p12ok > base.p12ok ? "good" : scen.p12ok < base.p12ok ? "crit" : "ink"}
+          value={`${fInt(base.p12ok)}/${fInt(base.p12)} → ${fInt(scen.p12ok)}/${fInt(scen.p12)}`}
+          of={t("sb.m.reach_sub", { d: sign(scen.p12ok - base.p12ok), a: fPct(base.p12 ? (100 * base.p12ok) / base.p12 : null, 1), b: fPct(scen.p12 ? (100 * scen.p12ok) / scen.p12 : null, 1) })} />
+        <Tile label={t("sb.m.ontime")} tip={t("sim2.kpi.jobs_help")} badge={<ModeBadge kind="replay" />} na={!T1} tone={T1 && T1.ontime > T0.ontime ? "good" : T1 && T1.ontime < T0.ontime ? "crit" : "ink"}
+          value={T1 ? `${fInt(T0.ontime)}/${fInt(T0.ontime + T0.late)} → ${fInt(T1.ontime)}/${fInt(T1.ontime + T1.late)}` : null}
+          of={T1 ? t("sb.m.ontime_sub", { d: sign(T1.ontime - T0.ontime), p: sign(pp(T1.ontime_rate, T0.ontime_rate), 1, " pp"), a: fPct(100 * T0.ontime_rate, 1), b: fPct(100 * T1.ontime_rate, 1) }) : t("sim2.no_jobs")} />
       </div>
       <div className="text-[12px] text-slate">{t("sb.units_line", { b: fInt(mbpsN.length), a: fInt(camps.length), c: fInt(T1?.changed ?? 0) })}</div>
+      {focusSite && <div role="status" className="text-[12.5px] bg-warn/10 border border-warn/40 rounded-md px-3 py-1.5 flex flex-wrap items-center gap-2">
+        <b>{focusSite.site_id}</b> {focusSite.site_name} · MBP-{focusSite.mbp_priority_level} · <span>{t(`sim2.leg.${keyOf(focusSite)}`)}</span>
+        <span className="text-slate">ETA {fMin(base.eta.get(focusSite.site_id))} → {fMin(scen.eta.get(focusSite.site_id))} · BBT {fMin(focusSite.bbt_effective_min)}</span>
+        <button onClick={() => setFocus?.({ ...focus, site: null })} className="ml-auto text-s1 underline">{t("ws.clear_sel")}</button></div>}
       <Card title={t("sim2.map.title")} sub={t("sim2.map.sub")}>
         <div className={adding ? "cursor-crosshair" : ""}>
           <MapView sites={sitesN} mbps={camps} cfg={cfg} onPickSite={setPick} fitKey={"sim2" + nop} fitOnce height={600} colorOverride={colorOf} keyOverride={keyOf} legendOverride={legend}

@@ -69,7 +69,9 @@ export const ActionLabel = ({ r, strong = false, onNavigate }) => {
 /** A3 — the only way a BBT value is rendered: status basis and number can never contradict */
 export const BbtCell = ({ r, showStatus = false, statusFirst = false, noEv = false }) => {
   const d = bbtDisplay(r);
-  const v = d.text ? <span className="text-slate">{t("bbt.no_battery_ticket")}</span> : <span className="tabular">{fMin(d.value)}</span>;
+  // an estimate / unverified value is prefixed "≈" (presentation only) so it never reads as a measurement
+  const est = d.evidence === "ESTIMATED" || d.evidence === "DERIVED-UNVERIFIED";
+  const v = d.text ? <span className="text-slate">{t("bbt.no_battery_ticket")}</span> : <span className="tabular" title={est ? t("bbt.est_tip") : undefined}>{est && isNum(d.value) ? "≈ " : ""}{fMin(d.value)}</span>;
   return <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5">{statusFirst && <StatusTag v={r.bbt_status} />}{v}{showStatus && !statusFirst && <StatusTag v={r.bbt_status} />}{!noEv && <EvTag v={d.evidence} />}</span>;
 };
 export const bbtCsv = (r) => { const d = bbtDisplay(r); return d.text ? d.text : `${isNum(d.value) ? Math.round(d.value) : ""} ${d.evidence || ""}`.trim(); };
@@ -275,7 +277,7 @@ export function DataTable({ rows, columns, initialSort, onRowClick, filename = "
               return (
                 <Fragment key={k}>
                   <tr tabIndex={onRowClick || expand || onSelect ? 0 : undefined} ref={isSel ? selRow : undefined} aria-selected={onSelect ? isSel : undefined}
-                    onKeyDown={(e) => { if (e.key === "Enter") click(r, k); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); click(r, k); } }}
                     onClick={() => click(r, k)}
                     className={`border-b border-line/70 ${onRowClick || expand || onSelect ? "cursor-pointer hover:bg-s1/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-s1" : ""} ${isSel ? "!bg-warn/25 outline outline-2 outline-[#eda100] -outline-offset-2" : isOpen ? "bg-s1/5" : ""} ${rowClass ? rowClass(r) : ""}`}>
                     {expand && <td className="px-1 text-slate" aria-hidden>{isOpen ? "▾" : "▸"}</td>}
